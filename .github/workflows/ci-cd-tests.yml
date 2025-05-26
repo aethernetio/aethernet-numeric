@@ -1,0 +1,111 @@
+# This starter workflow is for a CMake project running on multiple platforms. There is a different starter workflow if you just want a single platform.
+# See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-single-platform.yml
+name: Test numerics
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+  #Allows you to start workflow manually from the actions tab in the interface github.com
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.config.shell }} {0}
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        config:
+          - {
+              name: "Windows MSVC",
+              os: windows-latest,
+              platform: "msvc64",
+              shell: "powershell",
+              generator: "Visual Studio 17 2022",
+              cc: "cl",
+              cxx: "cl",
+              build_type: Release,
+            }
+          - {
+              name: "Windows MinGW",
+              os: windows-latest,
+              platform: "mingw64_gcc",
+              shell: "msys2",
+              generator: "Ninja",
+              cc: "gcc",
+              cxx: "g++",
+              build_type: Release,
+            }
+          - {
+              name: "Ubuntu GCC",
+              os: ubuntu-latest,
+              platform: "linux_gcc",
+              shell: "bash",
+              generator: "Unix Makefiles",
+              cc: "gcc",
+              cxx: "g++",
+              build_type: Release,
+            }
+          - {
+              name: "macOS Apple-Clang",
+              os: macos-latest,
+              platform: "macos_clang",
+              shell: "bash",
+              generator: "Unix Makefiles",
+              cc: "clang",
+              cxx: "clang++",
+              build_type: Release,
+            }
+    steps:
+      - name: Set Windows environment
+        if: ${{ (matrix.config.platform == 'msvc64') }}
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set MinGW environment
+        if: ${{ (matrix.config.platform == 'mingw64_gcc') }}
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: >-
+            git
+            base-devel
+          pacboy: >-
+            cmake:p
+            ninja:p
+            gcc:p
+          update: true
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure CMake
+        run: >
+          cmake -B build-numerics
+          -G "${{ matrix.config.generator }}"
+          -DCMAKE_CXX_COMPILER=${{ matrix.config.cxx }}
+          -DCMAKE_C_COMPILER=${{ matrix.config.cc }}
+          -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }}
+          -DAE_BUILD_TESTS=On
+          -S ./
+
+      - name: Build
+        run: cmake --build build-numerics --config ${{ matrix.config.build_type }} --parallel
+
+      - name: Test
+        run: ctest --test-dir build-numerics --build-config ${{ matrix.config.build_type }} --output-on-failure
+
+  cpplint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v1
+      - run: pip install cpplint
+      - run: cpplint --recursive ./numerics
