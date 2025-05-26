@@ -1,0 +1,10 @@
+[submodule "third_party/gcem"]
+	path = third_party/gcem
+	url = https://github.com/aethernetio/gcem.git
+	branch = master
+
+# for tests only
+[submodule "third_party/Unity"]
+	path = third_party/Unity
+	url = https://github.com/ThrowTheSwitch/Unity.git
+	branch = master
