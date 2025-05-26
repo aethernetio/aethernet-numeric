@@ -21,7 +21,9 @@ option(AE_BUILD_TESTS Off "Build tests")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_subdirectory("third_party/gcem")
+if (NOT TARGET gcem)
+  add_subdirectory("third_party/gcem")
+endif()
 
 add_library(${PROJECT_NAME} INTERFACE)
 target_link_libraries(${PROJECT_NAME} INTERFACE gcem)

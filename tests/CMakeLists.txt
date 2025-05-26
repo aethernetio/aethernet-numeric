@@ -21,7 +21,9 @@ project(test-numeric LANGUAGES CXX)
 
 # enable doubles in unity tests
 add_compile_definitions("UNITY_INCLUDE_DOUBLE")
-add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../third_party/Unity" Unity)
+if(NOT TARGET unity)
+  add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../third_party/Unity" Unity)
+endif()
 
 add_executable(${PROJECT_NAME})
 target_sources(${PROJECT_NAME} PRIVATE
