@@ -352,6 +352,15 @@ namespace std {
 template <typename T, typename Min, Min MinMaxVal>
 class numeric_limits<ae::TieredInt<T, Min, MinMaxVal>> {
  public:
+  static constexpr bool is_specialized = true;
+  static constexpr bool is_signed = std::numeric_limits<T>::is_signed;
+  static constexpr int digits = std::numeric_limits<T>::digits;
+  static constexpr int digits10 = std::numeric_limits<T>::digits10;
+  static constexpr bool is_integer = true;
+  static constexpr bool is_exact = true;
+  static constexpr bool is_bounded = true;
+  static constexpr bool is_modulo = std::numeric_limits<T>::is_modulo;
+
   static constexpr T lowest() { return T{0}; }
   static constexpr T min() { return T{0}; }
   static constexpr T max() { return ae::TieredInt<T, Min, MinMaxVal>::kUpper; }
