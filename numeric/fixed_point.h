@@ -298,4 +298,4 @@ class numeric_limits<ae::FixedPoint<T, max_value, position>> {
                _FIXED_OPT_(T, MIN, MAX)::Value(_EXP_OPT_(T, MIN, MAX).base_), \
                _FIXED_OPT_(T, MIN, MAX)::Value(MIN)>
 
-#endif  // NUMERIC_FIXED_POINT_H_ */
+#endif  // NUMERIC_FIXED_POINT_H_

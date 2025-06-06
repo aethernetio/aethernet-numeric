@@ -365,4 +365,4 @@ struct hash<ae::TieredInt<T, Min, MinMaxVal>> {
 };
 }  // namespace std
 
-#endif  // NUMERIC_TIERED_INT_H_ */
+#endif  // NUMERIC_TIERED_INT_H_
