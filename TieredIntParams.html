@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Tiered Integer Encoding Calculator</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .tier { margin: 20px 0; }
+    .tier.hidden { display: none; }
+    .controls { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
+    label { display: inline-block; width: 100px; }
+    input[disabled] { background: #eee; }
+    #tieredCode { font-size: 1.1em; font-family: monospace; }
+    button.copy-btn { cursor: pointer; margin-left: 10px; }
+  </style>
+</head>
+<body>
+  <h2>Tiered Integer Encoding Calculator</h2>
+
+  <div>
+    <label for="startTier">Start Tier (bytes):</label>
+    <select id="startTier">
+      <option value="1">1 byte</option>
+      <option value="2">2 bytes</option>
+      <option value="4">4 bytes</option>
+    </select>
+  </div>
+
+  <div id="tiersContainer"></div>
+
+  <div style="margin-top: 20px;">
+    <code id="tieredCode"></code>
+    <button onclick="copyCode()" class="copy-btn">Copy</button>
+  </div>
+
+  <script>
+    const tiersContainer = document.getElementById('tiersContainer');
+    const startTierSelect = document.getElementById('startTier');
+    let tierData = [];
+
+    const bitsTable = {
+      1: [8, 8, 16, 32],
+      2: [16, 16, 32],
+      4: [32, 32]
+    };
+
+    const maxTiers = {
+      1: 4,
+      2: 3,
+      4: 2
+    };
+
+    function pow2(bits) {
+      return 2 ** bits;
+    }
+
+    function maxVal(bits) {
+      return pow2(bits) - 1;
+    }
+
+    function formatHuman(n) {
+      const P = 2 ** 50, T = 2 ** 40, G = 2 ** 30, M = 2 ** 20, K = 2 ** 10;
+      if (n >= P) return `${Math.floor(n / P)}P + ${n % P}`;
+      if (n >= T) return `${Math.floor(n / T)}T + ${n % T}`;
+      if (n >= G) return `${Math.floor(n / G)}G + ${n % G}`;
+      if (n >= M) return `${Math.floor(n / M)}M + ${n % M}`;
+      if (n >= K) return `${Math.floor(n / K)}K + ${n % K}`;
+      return `${n}`;
+    }
+
+    function createTierElement(index, readOnly = false) {
+      const tier = document.createElement('div');
+      tier.className = 'tier';
+      tier.id = `tier${index}`;
+
+      tier.innerHTML = `
+        <h3>Tier ${index + 1}${readOnly ? ' (Read-only)' : ''}</h3>
+        <div>Range: <span class="range"></span></div>
+        <div>Reserved for next tier: <span class="reserved"></span></div>
+        <div class="controls">
+          <label>Max Value:</label>
+          <input type="range" class="slider" ${readOnly ? 'disabled' : ''}>
+          <input type="number" class="input" ${readOnly ? 'disabled' : ''}>
+        </div>
+      `;
+      tiersContainer.appendChild(tier);
+      return tier;
+    }
+
+    function initTiers(startBytes) {
+      tiersContainer.innerHTML = '';
+      tierData = [];
+
+      const bitsList = bitsTable[startBytes];
+      const allowed = maxTiers[startBytes];
+
+      for (let i = 0; i < bitsList.length; i++) {
+        const isLast = i === allowed - 1;
+        const tierEl = createTierElement(i, isLast);
+        tierData.push({
+          el: tierEl,
+          bits: bitsList[i],
+          rangeEl: tierEl.querySelector('.range'),
+          reservedEl: tierEl.querySelector('.reserved'),
+          slider: tierEl.querySelector('.slider'),
+          input: tierEl.querySelector('.input'),
+          min: 0,
+          max: 0,
+          maxAllowed: 0,
+          value: 0,
+          wasAtMax: true,
+          readOnly: isLast
+        });
+      }
+
+      attachListeners();
+      updateAll();
+    }
+
+    function attachListeners() {
+      tierData.forEach((tier, i) => {
+        if (tier.readOnly) return;
+
+        tier.slider.addEventListener('input', () => {
+          tier.value = parseInt(tier.slider.value);
+          tier.wasAtMax = tier.value >= tier.maxAllowed;
+          tier.input.value = tier.value;
+          updateAll();
+        });
+
+        tier.input.addEventListener('input', () => {
+          tier.value = parseInt(tier.input.value);
+          tier.wasAtMax = tier.value >= tier.maxAllowed;
+          tier.slider.value = tier.value;
+          updateAll();
+        });
+      });
+    }
+
+    function updateAll() {
+      for (let i = 0; i < tierData.length; i++) {
+        const t = tierData[i];
+        const bits = t.bits;
+        const isFirst = i === 0;
+
+        let min = isFirst ? 0 : tierData[i - 1].value + 1;
+        let max = maxVal(bits);
+        let maxAllowed = isFirst ? max - 1 : max;
+
+        if (!isFirst) {
+          const prev = tierData[i - 1];
+          const reserved = prev.max - prev.value;
+          max = min + reserved * pow2(bits) - 1;
+          if (max > Number.MAX_SAFE_INTEGER) max = Number.MAX_SAFE_INTEGER;
+          maxAllowed = max;
+        }
+
+        t.min = min;
+        t.max = max;
+        t.maxAllowed = maxAllowed;
+
+        if (t.readOnly) {
+          t.value = max;
+        } else if (t.wasAtMax) {
+          t.value = maxAllowed;
+        } else {
+          t.value = Math.min(Math.max(t.value, min), maxAllowed);
+        }
+
+        t.slider.min = min;
+        t.slider.max = maxAllowed;
+        t.slider.value = t.value;
+        t.input.min = min;
+        t.input.max = maxAllowed;
+        t.input.value = t.value;
+
+        t.rangeEl.textContent = `${formatHuman(min)} .. ${formatHuman(max)}`;
+        t.reservedEl.textContent = `${formatHuman(max - t.value)}`;
+        t.el.classList.remove('hidden');
+
+        const next = tierData[i + 1];
+        if (next) {
+          const shouldEnableNext = isFirst || (!t.readOnly && t.value < t.maxAllowed);
+          if (shouldEnableNext) {
+            next.el.classList.remove('hidden');
+          } else {
+            for (let j = i + 1; j < tierData.length; j++) {
+              tierData[j].el.classList.add('hidden');
+            }
+            break;
+          }
+        }
+      }
+
+      const start = parseInt(startTierSelect.value);
+      document.getElementById('tieredCode').innerText = generateTieredIntString(start);
+    }
+
+    function generateTieredIntString(startBytes) {
+      const parts = [startBytes];
+
+      // Count how many tiers are currently visible (not hidden)
+      const visibleTiers = tierData.filter(t => !t.el.classList.contains('hidden'));
+
+      // Include current values for all visible tiers except the last
+      for (let i = 0; i < visibleTiers.length - 1; i++) {
+        parts.push(visibleTiers[i].value);
+      }
+
+      return `TieredInt<${parts.join(', ')}>`;
+    }
+
+    function copyCode() {
+      const text = document.getElementById('tieredCode').innerText;
+      navigator.clipboard.writeText(text);
+    }
+
+    startTierSelect.addEventListener('change', () => {
+      initTiers(parseInt(startTierSelect.value));
+    });
+
+    initTiers(parseInt(startTierSelect.value));
+  </script>
+</body>
+</html>
