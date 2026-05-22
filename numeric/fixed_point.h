@@ -247,16 +247,16 @@ struct ExponentOptions {
 
  private:
   static constexpr auto CalcBase(double min, double max) {
-    double v_ = max / min;
-    double n_ = gcem::pow(2ul, sizeof(T) * 8) - 1;
+    auto v_ = max / min;
+    auto n_ = static_cast<double>(gcem::pow(2ul, sizeof(T) * 8) - 1);
     return gcem::pow(v_, 1 / n_);
   }
 
   static constexpr auto CalcRange(double min, double max) {
-    double v_ = max / min;
-    double n_ = gcem::pow(2ul, sizeof(T) * 8) - 1;
-    double base = gcem::pow(v_, 1 / n_);
-    double step_ = min * base - min;
+    auto v_ = max / min;
+    auto n_ = static_cast<double>(gcem::pow(2ul, sizeof(T) * 8) - 1);
+    auto base = static_cast<double>(gcem::pow(v_, 1 / n_));
+    auto step_ = min * base - min;
     return v_ / step_;
   }
 };
