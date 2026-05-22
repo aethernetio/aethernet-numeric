@@ -18,16 +18,20 @@ project(numeric CXX)
 
 option(AE_BUILD_TESTS Off "Build tests")
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if (NOT TARGET gcem)
-  add_subdirectory("third_party/gcem")
-endif()
+include(cmake/CPM.cmake)
+
+CPMAddPackage("https://github.com/aethernetio/gcem.git#master")
 
 add_library(${PROJECT_NAME} INTERFACE)
 target_link_libraries(${PROJECT_NAME} INTERFACE gcem)
-target_include_directories(${PROJECT_NAME} INTERFACE ${CMAKE_CURRENT_LIST_DIR})
+
+target_include_directories(${PROJECT_NAME} INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 
 if ( AE_BUILD_TESTS )
   enable_testing()
