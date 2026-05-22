@@ -186,7 +186,7 @@ void test_StorePackedInt250() {
 
 void test_StoreOneByteMin() {
   using P16_128 = TieredInt<std::uint16_t, std::uint8_t, 127>;
-  constexpr auto upper_128 = P16_128::kUpper;
+  [[maybe_unused]] constexpr auto upper_128 = P16_128::kUpper;
   TestValueToSize<P16_128>(0, 1);
   TestValueToSize<P16_128>(127, 1);
   TestValueToSize<P16_128>(128, 2);
@@ -199,7 +199,7 @@ void test_StoreOneByteMin() {
   TestRange<P16_128>();
 
   using P16_255 = TieredInt<std::uint16_t, std::uint8_t, 254>;
-  constexpr auto upper_255 = P16_255::kUpper;
+  [[maybe_unused]] constexpr auto upper_255 = P16_255::kUpper;
   TestValueToSize<P16_255>(0, 1);
   TestValueToSize<P16_255>(127, 1);
   TestValueToSize<P16_255>(250, 1);
@@ -211,7 +211,7 @@ void test_StoreOneByteMin() {
   TestRange<P16_255>();
 
   using P16_2 = TieredInt<std::uint16_t, std::uint8_t, 1>;
-  constexpr auto upper_2 = P16_2::kUpper;
+  [[maybe_unused]] constexpr auto upper_2 = P16_2::kUpper;
   TestValueToSize<P16_2>(0, 1);
   TestValueToSize<P16_2>(1, 1);
   TestValueToSize<P16_2>(2, 2);
@@ -225,7 +225,7 @@ void test_StoreOneByteMin() {
 
 void test_StoreTwoBytesMin() {
   using P32_32768 = TieredInt<std::uint32_t, std::uint16_t, 32767>;
-  constexpr auto upper_32768 = P32_32768::kUpper;
+  [[maybe_unused]] constexpr auto upper_32768 = P32_32768::kUpper;
   TestValueToSize<P32_32768>(0, 2);
   TestValueToSize<P32_32768>(1200, 2);
   TestValueToSize<P32_32768>(1548, 2);
@@ -238,7 +238,7 @@ void test_StoreTwoBytesMin() {
   TestRange<P32_32768>();
 
   using P32_65531 = TieredInt<std::uint32_t, std::uint16_t, 65530>;
-  constexpr auto upper_65531 = P32_65531::kUpper;
+  [[maybe_unused]] constexpr auto upper_65531 = P32_65531::kUpper;
   TestValueToSize<P32_65531>(0, 2);
   TestValueToSize<P32_65531>(1598, 2);
   TestValueToSize<P32_65531>(20000, 2);
@@ -253,7 +253,7 @@ void test_StoreTwoBytesMin() {
 
 void test_StoreFourBytesMin() {
   using P64_0xfffffffb = TieredInt<std::uint64_t, std::uint32_t, 0xfffffffa>;
-  constexpr auto upper_0xfffffffb = P64_0xfffffffb::kUpper;
+  [[maybe_unused]] constexpr auto upper_0xfffffffb = P64_0xfffffffb::kUpper;
   TestValueToSize<P64_0xfffffffb>(0, 4);
   TestValueToSize<P64_0xfffffffb>(0xffff, 4);
   TestValueToSize<P64_0xfffffffb>(0xfffffffa, 4);
@@ -263,7 +263,7 @@ void test_StoreFourBytesMin() {
   TestRange<P64_0xfffffffb>();
 
   using P64_0x10000000 = TieredInt<std::uint64_t, std::uint32_t, 0x0fffffff>;
-  constexpr auto upper_0x10000000 = P64_0x10000000::kUpper;
+  [[maybe_unused]] constexpr auto upper_0x10000000 = P64_0x10000000::kUpper;
   TestValueToSize<P64_0x10000000>(0, 4);
   TestValueToSize<P64_0x10000000>(0xffff, 4);
   TestValueToSize<P64_0x10000000>(0x0fffffff, 4);

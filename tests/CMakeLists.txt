@@ -14,16 +14,17 @@
 
 cmake_minimum_required(VERSION 3.16)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(test-numeric LANGUAGES CXX)
 
-# enable doubles in unity tests
-add_compile_definitions("UNITY_INCLUDE_DOUBLE")
-if(NOT TARGET unity)
-  add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../third_party/Unity" Unity)
-endif()
+include(../cmake/CPM.cmake)
+
+# add Unity with support for double precision
+add_compile_definitions(UNITY_INCLUDE_DOUBLE=1)
+CPMAddPackage("https://github.com/ThrowTheSwitch/Unity.git#master")
+
 
 add_executable(${PROJECT_NAME})
 target_sources(${PROJECT_NAME} PRIVATE
@@ -32,7 +33,13 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-fixed-point.cpp
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE numeric)
-target_link_libraries(${PROJECT_NAME} PRIVATE unity)
+target_link_libraries(${PROJECT_NAME} PRIVATE numeric unity)
+
+# enable warnings and werror
+target_compile_options(${PROJECT_NAME} PRIVATE
+  $<$<CXX_COMPILER_ID:Clang>: -Wall -Wextra -Werror>
+  $<$<CXX_COMPILER_ID:GNU>: -Wall -Wextra -Werror>
+  $<$<CXX_COMPILER_ID:MSVC>: -W4 -WX>
+)
 
 add_test(NAME ${PROJECT_NAME} COMMAND $<TARGET_FILE:${PROJECT_NAME}>)

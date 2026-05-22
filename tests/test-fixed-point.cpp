@@ -81,16 +81,18 @@ void test_FixedPoint() {
       std::numeric_limits<FixedPoint<uint8_t, 0, 0>>::min(), 1.0 / 256));
   static_assert(CompareDoubles<uint16_t>(
       std::numeric_limits<FixedPoint<uint16_t, 0, 0>>::min(), 1.0 / 65536));
-  static_assert(
-      CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, -1>::kMinValue, 1.0 / 512));
+  static_assert(CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, -1>::kMinValue,
+                                        1.0 / 512));
   static_assert(
       CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, 0>::kMinValue, 1.0 / 256));
   static_assert(
       CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, 1>::kMinValue, 1.0 / 128));
   static_assert(
       CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, 7>::kMinValue, 1.0 / 2));
-  static_assert(CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, 8>::kMinValue, 1.0));
-  static_assert(CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, 9>::kMinValue, 2.0));
+  static_assert(
+      CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, 8>::kMinValue, 1.0));
+  static_assert(
+      CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, 9>::kMinValue, 2.0));
   static_assert(FixedPoint<uint8_t, 0, -21>::Value(4.1e-7) ==
                 static_cast<uint8_t>(4.1e-7 * (1ul << (21 + 8))));
   static_assert(FixedPoint<uint8_t, 0, 7>::Value(123.5) == 123.5 * 2);
@@ -111,16 +113,18 @@ void test_FixedPoint() {
     auto v2 = AE_FIXED(T, 100){0.5};
     auto v3 = v1 / v2;
     //    auto v3 = Div<T, decltype(v2)::Value(0.5)>(v1, v2);
-    double b0 = decltype(v3)::kTotalBits;
-    double b1 = decltype(v3)::kIntBits;
-    double b2 = decltype(v3)::kMaxValue * decltype(v3)::kMinValue;
-    double r = v3;
+    [[maybe_unused]] double b0 = decltype(v3)::kTotalBits;
+    [[maybe_unused]] double b1 = decltype(v3)::kIntBits;
+    [[maybe_unused]] double b2 =
+        decltype(v3)::kMaxValue * decltype(v3)::kMinValue;
+    [[maybe_unused]] double r = v3;
     auto v4 = v3 - AE_FIXED(T, 4){3.1};
-    double n0 = decltype(v4)::kTotalBits;
-    double n1 = decltype(v4)::kIntBits;
-    double n2 = decltype(v4)::kMaxValue * decltype(v4)::kMinValue;
-    double r1 = v4;
-    int df = 0;
+    [[maybe_unused]] double n0 = decltype(v4)::kTotalBits;
+    [[maybe_unused]] double n1 = decltype(v4)::kIntBits;
+    [[maybe_unused]] double n2 =
+        decltype(v4)::kMaxValue * decltype(v4)::kMinValue;
+    [[maybe_unused]] double r1 = v4;
+    [[maybe_unused]] int df = 0;
   }
 }
 
@@ -133,12 +137,15 @@ void test_Exponent() {
     auto stored = e.Serialize();
     E e2;
     e2.Deserialize(stored);
+    // cast to double is working
     double rr = e2;
+    TEST_ASSERT_DOUBLE_WITHIN(0.1, 60.0, rr);
 
     e = E(0.01);
     stored = e.Serialize();
     e2.Deserialize(stored);
     double rr2 = e2;
+    TEST_ASSERT_DOUBLE_WITHIN(0.1, 0.01, rr2);
   }
   {
     using E = AE_EXPONENT(uint8_t, 0.001, 60.0);
@@ -147,11 +154,13 @@ void test_Exponent() {
     E e2;
     e2.Deserialize(stored);
     double rr = e2;
+    TEST_ASSERT_DOUBLE_WITHIN(0.1, 60.0, rr);
 
     e = E(E::Value(0.01));
     stored = e.Serialize();
     e2.Deserialize(stored);
     double rr2 = e2;
+    TEST_ASSERT_DOUBLE_WITHIN(0.1, 0.01, rr2);
   }
 }
 }  // namespace ae::test_fixed_point
