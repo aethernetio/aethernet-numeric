@@ -31,7 +31,7 @@ using TierTypeList =
     std::tuple<std::uint8_t, std::uint16_t, std::uint32_t, std::uint64_t>;
 
 template <typename T, typename TypeList, std::size_t... Is>
-constexpr auto TierIndexImpl(std::index_sequence<Is...> const &) {
+constexpr auto TierIndexImpl(std::index_sequence<Is...> const&) {
   constexpr auto arr =
       std::array{std::is_same_v<T, std::tuple_element_t<Is, TypeList>>...};
 
@@ -210,11 +210,11 @@ struct TieredInt {
   }
   TieredInt() = default;
 
-  operator ValueType &() noexcept { return value.value; }
-  operator ValueType const &() const noexcept { return value.value; }
+  operator ValueType&() noexcept { return value.value; }
+  operator ValueType const&() const noexcept { return value.value; }
 
   template <typename TStream>
-  TierDeserializeRes Deserialize(TStream &is) {
+  TierDeserializeRes Deserialize(TStream& is) {
     constexpr auto prev_upper = PrevPacked::kUpper;
 
     auto high = PrevPacked{};
@@ -242,7 +242,7 @@ struct TieredInt {
   }
 
   template <typename TStream>
-  void Serialize(TStream &os) const {
+  void Serialize(TStream& os) const {
     constexpr auto prev_upper = PrevPacked::kUpper;
 
     if (value.value >= prev_upper) {
@@ -279,11 +279,11 @@ struct TieredInt<StoredType, StoredType, MaxValue> {
   }
   TieredInt() = default;
 
-  operator ValueType &() noexcept { return value.value; }
-  operator ValueType const &() const noexcept { return value.value; }
+  operator ValueType&() noexcept { return value.value; }
+  operator ValueType const&() const noexcept { return value.value; }
 
   template <typename TStream>
-  TierDeserializeRes Deserialize(TStream &is) {
+  TierDeserializeRes Deserialize(TStream& is) {
     is >> value.value;
     if (value.value >= kUpper) {
       value.value -= kUpper;
@@ -293,7 +293,7 @@ struct TieredInt<StoredType, StoredType, MaxValue> {
   }
 
   template <typename TStream>
-  void Serialize(TStream &os) const {
+  void Serialize(TStream& os) const {
     os << value.value;
   }
 
@@ -301,21 +301,21 @@ struct TieredInt<StoredType, StoredType, MaxValue> {
 };
 
 template <typename TStream, typename T, typename Min, Min MinMaxVal>
-TStream &operator<<(TStream &os, TieredInt<T, Min, MinMaxVal> const &v) {
+TStream& operator<<(TStream& os, TieredInt<T, Min, MinMaxVal> const& v) {
   v.Serialize(os);
   return os;
 }
 
 template <typename TStream, typename T, typename Min, Min MinMaxVal>
-TStream &operator>>(TStream &is, TieredInt<T, Min, MinMaxVal> &v) {
+TStream& operator>>(TStream& is, TieredInt<T, Min, MinMaxVal>& v) {
   v.Deserialize(is);
   return is;
 }
 
 template <typename T1, typename Min1, Min1 MinMaxVal1, typename T2,
           typename Min2, Min2 MinMaxVal2>
-int TieredIntCompare(TieredInt<T1, Min1, MinMaxVal1> const &left,
-                     TieredInt<T2, Min2, MinMaxVal2> const &right) {
+int TieredIntCompare(TieredInt<T1, Min1, MinMaxVal1> const& left,
+                     TieredInt<T2, Min2, MinMaxVal2> const& right) {
   if (left.value.value < right.value.value) {
     return -1;
   } else if (left.value.value > right.value.value) {
@@ -327,22 +327,22 @@ int TieredIntCompare(TieredInt<T1, Min1, MinMaxVal1> const &left,
 
 template <typename T1, typename Min1, Min1 MinMaxVal1, typename T2,
           typename Min2, Min2 MinMaxVal2>
-static bool operator==(TieredInt<T1, Min1, MinMaxVal1> const &left,
-                       TieredInt<T2, Min2, MinMaxVal2> const &right) {
+static bool operator==(TieredInt<T1, Min1, MinMaxVal1> const& left,
+                       TieredInt<T2, Min2, MinMaxVal2> const& right) {
   return TieredIntCompare(left, right) == 0;
 }
 
 template <typename T1, typename Min1, Min1 MinMaxVal1, typename T2,
           typename Min2, Min2 MinMaxVal2>
-static bool operator<(TieredInt<T1, Min1, MinMaxVal1> const &left,
-                      TieredInt<T2, Min2, MinMaxVal2> const &right) {
+static bool operator<(TieredInt<T1, Min1, MinMaxVal1> const& left,
+                      TieredInt<T2, Min2, MinMaxVal2> const& right) {
   return TieredIntCompare(left, right) < 0;
 }
 
 template <typename T1, typename Min1, Min1 MinMaxVal1, typename T2,
           typename Min2, Min2 MinMaxVal2>
-static bool operator>(TieredInt<T1, Min1, MinMaxVal1> const &left,
-                      TieredInt<T2, Min2, MinMaxVal2> const &right) {
+static bool operator>(TieredInt<T1, Min1, MinMaxVal1> const& left,
+                      TieredInt<T2, Min2, MinMaxVal2> const& right) {
   return TieredIntCompare(left, right) > 0;
 }
 
@@ -368,7 +368,7 @@ class numeric_limits<ae::TieredInt<T, Min, MinMaxVal>> {
 
 template <typename T, typename Min, Min MinMaxVal>
 struct hash<ae::TieredInt<T, Min, MinMaxVal>> {
-  std::size_t operator()(ae::TieredInt<T, Min, MinMaxVal> const &packed) const {
+  std::size_t operator()(ae::TieredInt<T, Min, MinMaxVal> const& packed) const {
     return static_cast<std::size_t>(static_cast<T>(packed));
   }
 };
