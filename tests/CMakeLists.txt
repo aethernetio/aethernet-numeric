@@ -23,8 +23,10 @@ include(../cmake/CPM.cmake)
 
 # add Unity with support for double precision
 add_compile_definitions(UNITY_INCLUDE_DOUBLE=1)
+if (CMAKE_COLOR_DIAGNOSTICS)
+  add_compile_definitions(UNITY_OUTPUT_COLOR=1)
+endif()
 CPMAddPackage("https://github.com/ThrowTheSwitch/Unity.git#master")
-
 
 add_executable(${PROJECT_NAME})
 target_sources(${PROJECT_NAME} PRIVATE
