@@ -22,7 +22,7 @@
 #include <algorithm>
 #include <type_traits>
 
-#include "third_party/gcem/include/gcem.hpp"
+#include <gcem.hpp>
 
 namespace ae {
 // Compile-time fixed point number representation.
