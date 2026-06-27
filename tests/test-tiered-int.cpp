@@ -220,6 +220,26 @@ void TestValueToSizeStream(typename TInt::ValueType value,
                     static_cast<typename TInt::ValueType>(des_p));
 }
 
+template <typename TInt>
+void TestWireSizeTransition(typename TInt::ValueType last_small,
+                            typename TInt::ValueType first_large,
+                            std::size_t small_bytes,
+                            std::size_t large_bytes) {
+  TestValueToSize<TInt>(last_small, small_bytes);
+  TestValueToSize<TInt>(first_large, large_bytes);
+  TestValueToSizeStream<TInt>(last_small, small_bytes);
+  TestValueToSizeStream<TInt>(first_large, large_bytes);
+  TestRoundTripBuffer(TInt{last_small});
+  TestRoundTripBuffer(TInt{first_large});
+}
+
+template <typename TInt>
+void TestMaxWireSize() {
+  TestValueToSize<TInt>(TInt::kUpper, TInt::kMaxWireBytes);
+  TestValueToSizeStream<TInt>(TInt::kUpper, TInt::kMaxWireBytes);
+  TestRoundTripBuffer(TInt{TInt::kUpper});
+}
+
 template <typename PInt>
 void TestRange() {
   auto get_next_step = [&]() {
@@ -361,6 +381,30 @@ void test_MinimalValueType() {
   TestValueToSize<T7>(254, 1);
 }
 
+void test_WireSizeTransitions() {
+  TestWireSizeTransition<T1>(249, 250, 1, 2);
+  TestMaxWireSize<T1>();
+
+  TestWireSizeTransition<T2>(249, 250, 1, 2);
+  TestWireSizeTransition<T2>(1529, 1530, 2, 4);
+  TestMaxWireSize<T2>();
+
+  TestWireSizeTransition<T3>(249, 250, 1, 2);
+  TestWireSizeTransition<T3>(1529, 1530, 2, 4);
+  TestWireSizeTransition<T3>(16777215, 16777216, 4, 8);
+  TestMaxWireSize<T3>();
+
+  TestWireSizeTransition<T4>(1000, 1001, 2, 4);
+  TestMaxWireSize<T4>();
+
+  TestWireSizeTransition<T5>(1000, 1001, 2, 4);
+  TestWireSizeTransition<T5>(8000, 8001, 4, 8);
+  TestMaxWireSize<T5>();
+
+  TestWireSizeTransition<T6>(10, 11, 4, 8);
+  TestMaxWireSize<T6>();
+}
+
 void test_Range() {
   TestRange<T1>();
   TestRange<T2>();
@@ -377,6 +421,7 @@ int test_tiered_int() {
   RUN_TEST(ae::test_tiered_int::test_FourTier);
   RUN_TEST(ae::test_tiered_int::test_StartSizeTwoAndFour);
   RUN_TEST(ae::test_tiered_int::test_MinimalValueType);
+  RUN_TEST(ae::test_tiered_int::test_WireSizeTransitions);
   RUN_TEST(ae::test_tiered_int::test_Range);
   return UNITY_END();
 }
