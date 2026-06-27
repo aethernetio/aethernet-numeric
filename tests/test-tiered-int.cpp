@@ -119,7 +119,7 @@ T GetRandom(T min, T max) {
 
 template <typename TInt>
 void TestRoundTripBuffer(TInt x) {
-  std::uint8_t buf[8] = {};
+  std::uint8_t buf[TInt::kMaxWireBytes] = {};
   auto l0 = x.Serialize(buf);
 
   TInt y;
@@ -133,7 +133,7 @@ template <typename TInt>
 void TestValueToSize(typename TInt::ValueType value,
                      std::size_t expected_size) {
   auto p = TInt{value};
-  std::uint8_t buf[8] = {};
+  std::uint8_t buf[TInt::kMaxWireBytes] = {};
   auto size = p.Serialize(buf);
 
   auto s = (std::stringstream{}
@@ -189,7 +189,7 @@ void TestRange() {
 
   for (auto i = get_next_step(); i < PInt::kUpper; i += get_next_step()) {
     TestRoundTripBuffer(PInt{i});
-    std::uint8_t buf[8] = {};
+    std::uint8_t buf[PInt::kMaxWireBytes] = {};
     auto size = PInt{i}.Serialize(buf);
     TestValueToSizeStream<PInt>(i, size);
   }
@@ -277,18 +277,32 @@ void test_FourTier() {
 }
 
 void test_StartSizeTwoAndFour() {
-  // StartSize selects ValueType; the first wire byte is always uint8_t, so tier
-  // max values above 255 only affect range typing, not multi-byte thresholds.
-  TestRoundTripBuffer(T4{255});
-  TestRoundTripBuffer(T5{255});
+  TestRoundTripBuffer(T4{500});
+  TestRoundTripBuffer(T4{1000});
+  TestRoundTripBuffer(T4{1001});
+  TestRoundTripBuffer(T4{70000});
+
+  TestValueToSize<T4>(500, 2);
+  TestValueToSize<T4>(1000, 2);
+  TestValueToSize<T4>(1001, 4);
+  TestValueToSizeStream<T4>(1001, 4);
+
+  TestRoundTripBuffer(T5{8000});
+  TestRoundTripBuffer(T5{8001});
+  TestValueToSize<T5>(8000, 4);
+  TestValueToSize<T5>(8001, 8);
+
   TestRoundTripBuffer(T6{10});
   TestRoundTripBuffer(T6{11});
-  TestRoundTripBuffer(T6{255});
+  TestValueToSize<T6>(10, 4);
+  TestValueToSize<T6>(11, 8);
+  TestValueToSizeStream<T6>(11, 8);
 }
 
 void test_Range() {
   TestRange<T1>();
   TestRange<T2>();
+  TestRange<T4>();
 }
 
 }  // namespace ae::test_tiered_int

@@ -21,7 +21,6 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
-#include <tuple>
 #include <type_traits>
 
 namespace ae {
@@ -41,27 +40,87 @@ struct TieredStorageType {
           std::uint32_t, std::uint64_t>>;
 };
 
-template <typename T>
-inline T read_little_endian(const std::uint8_t*& p, int bytes) {
-  T out = 0;
+template <int StartSize>
+struct StartSizeTraits {
+  static constexpr int kBytes = StartSize;
+  static constexpr std::uint64_t kWord =
+      StartSize == 1   ? 256ull
+      : StartSize == 2 ? 65536ull
+                       : 4294967296ull;
+  static constexpr std::uint64_t kHeaderMax = kWord - 1;
+  static constexpr std::size_t kMaxWireBytes = static_cast<std::size_t>(StartSize) * 8u;
+};
+
+template <int StartSize>
+constexpr std::uint64_t kWordPow(int tier_idx) {
+  const std::uint64_t w = StartSizeTraits<StartSize>::kWord;
+  if (tier_idx <= 0) {
+    return w;
+  }
+  const std::uint64_t half = kWordPow<StartSize>(tier_idx - 1);
+  return half * half;
+}
+
+inline std::uint64_t read_little_endian_u64(const std::uint8_t* p, int bytes) {
+  std::uint64_t out = 0;
   for (int i = 0; i < bytes; ++i) {
-    out |= static_cast<T>(*p++) << (i * 8);
+    out |= static_cast<std::uint64_t>(p[i]) << (i * 8);
   }
   return out;
 }
 
-template <typename T>
-inline void write_little_endian(std::uint8_t* p, T value, int bytes) {
+inline void write_little_endian_u64(std::uint8_t* p, std::uint64_t value,
+                                    int bytes) {
   for (int i = 0; i < bytes; ++i) {
-    *p++ = static_cast<std::uint8_t>((value >> (i * 8)) & 0xFF);
+    p[i] = static_cast<std::uint8_t>((value >> (i * 8)) & 0xFF);
   }
 }
+
+template <std::uint32_t First, std::uint32_t... Rest>
+struct FirstOf {
+  static constexpr std::uint32_t value = First;
+};
+
+template <std::uint32_t... Vals>
+struct IsStrictlyIncreasing;
+
+template <>
+struct IsStrictlyIncreasing<> {
+  static constexpr bool value = true;
+};
+
+template <std::uint32_t V>
+struct IsStrictlyIncreasing<V> {
+  static constexpr bool value = true;
+};
+
+template <std::uint32_t A, std::uint32_t B, std::uint32_t... Rest>
+struct IsStrictlyIncreasing<A, B, Rest...> {
+  static constexpr bool value =
+      (A < B) && IsStrictlyIncreasing<B, Rest...>::value;
+};
 
 }  // namespace tiered_int_internal
 
 template <int StartSize, std::uint32_t... TierMaxVals>
 struct TieredInt {
   static constexpr int NumTiers = sizeof...(TierMaxVals) + 1;
+  static constexpr int kBaseBytes = StartSize;
+  static constexpr std::uint64_t kWord =
+      tiered_int_internal::StartSizeTraits<StartSize>::kWord;
+  static constexpr std::uint64_t kHeaderMax =
+      tiered_int_internal::StartSizeTraits<StartSize>::kHeaderMax;
+  static constexpr std::size_t kMaxWireBytes =
+      tiered_int_internal::StartSizeTraits<StartSize>::kMaxWireBytes;
+
+  static_assert(sizeof...(TierMaxVals) >= 1,
+                "At least one tier maximum is required");
+  static_assert(
+      tiered_int_internal::IsStrictlyIncreasing<TierMaxVals...>::value,
+      "Tier max values must be strictly increasing");
+  static_assert(tiered_int_internal::FirstOf<TierMaxVals...>::value <= kHeaderMax,
+                "First tier max must fit in the base wire word");
+
   using ValueType =
       typename tiered_int_internal::TieredStorageType<StartSize,
                                                       NumTiers>::type;
@@ -73,23 +132,28 @@ struct TieredInt {
     if constexpr (NumTiers == 1) {
       return static_cast<ValueType>(tiers[0]);
     } else if constexpr (NumTiers == 2) {
-      return static_cast<ValueType>((255 - tiers[0] - 1) * 256 + tiers[0] + 1 +
-                                    255);
+      return static_cast<ValueType>((kHeaderMax - tiers[0] - 1) * kWord +
+                                    tiers[0] + 1 + kHeaderMax);
     } else if constexpr (NumTiers == 3) {
       constexpr auto two_tier_v =
-          static_cast<std::uint64_t>((255 - tiers[0] - 1) * 256 + tiers[0] +
-                                     1 + 255);
-      return static_cast<ValueType>(
-          (two_tier_v - tiers[1] - 1) * 65536ull + tiers[1] + 1 + 65535ull);
+          static_cast<std::uint64_t>((kHeaderMax - tiers[0] - 1) * kWord +
+                                     tiers[0] + 1 + kHeaderMax);
+      constexpr auto word2 =
+          tiered_int_internal::kWordPow<StartSize>(1);
+      return static_cast<ValueType>((two_tier_v - tiers[1] - 1) * word2 +
+                                    tiers[1] + 1 + (word2 - 1));
     } else {
+      constexpr auto two_tier_v =
+          static_cast<std::uint64_t>((kHeaderMax - tiers[0] - 1) * kWord +
+                                     tiers[0] + 1 + kHeaderMax);
+      constexpr auto word2 =
+          tiered_int_internal::kWordPow<StartSize>(1);
       constexpr auto three_tier_v =
-          static_cast<std::uint64_t>((255 - tiers[0] - 1) * 256 + tiers[0] +
-                                     1 + 255);
-      constexpr auto three_tier_v2 =
-          (three_tier_v - tiers[1] - 1) * 65536ull + tiers[1] + 1 + 65535ull;
-      return static_cast<ValueType>((three_tier_v2 - tiers[2] - 1) *
-                                        65536ull * 65536ull +
-                                    tiers[2] + 1 + 4294967295ull);
+          (two_tier_v - tiers[1] - 1) * word2 + tiers[1] + 1 + (word2 - 1);
+      constexpr auto word4 =
+          tiered_int_internal::kWordPow<StartSize>(2);
+      return static_cast<ValueType>((three_tier_v - tiers[2] - 1) * word4 +
+                                    tiers[2] + 1 + (word4 - 1));
     }
   }();
 
@@ -102,75 +166,85 @@ struct TieredInt {
 
   std::size_t Serialize(std::uint8_t* out) const {
     constexpr ValueType tiers[] = {TierMaxVals...};
-    auto v = value_;
+    auto v = static_cast<std::uint64_t>(value_);
     std::size_t ret = 0;
 
     if constexpr (NumTiers == 4) {
       if (v > tiers[2]) {
-        auto b2 = (v - tiers[2] - 1) % (256ul * 256 * 256 * 256);
-        v = ((v - tiers[2] - 1 - b2) / (256ul * 256 * 256 * 256)) + tiers[2] +
-            1;
-        tiered_int_internal::write_little_endian<std::uint32_t>(out + 4, b2, 4);
-        ret = 8;
+        constexpr auto mod = tiered_int_internal::kWordPow<StartSize>(2);
+        auto b2 = (v - tiers[2] - 1) % mod;
+        v = ((v - tiers[2] - 1 - b2) / mod) + tiers[2] + 1;
+        tiered_int_internal::write_little_endian_u64(
+            out + kBaseBytes * 4, b2, kBaseBytes * 4);
+        ret = kBaseBytes * 8;
       }
     }
     if constexpr (NumTiers >= 3) {
       if (v > tiers[1]) {
-        auto b2 = (v - tiers[1] - 1) % (256 * 256);
-        v = ((v - tiers[1] - 1 - b2) / (256 * 256)) + tiers[1] + 1;
-        tiered_int_internal::write_little_endian<std::uint16_t>(out + 2, b2, 2);
-        ret = std::max(ret, 4ul);
+        constexpr auto mod = tiered_int_internal::kWordPow<StartSize>(1);
+        auto b2 = (v - tiers[1] - 1) % mod;
+        v = ((v - tiers[1] - 1 - b2) / mod) + tiers[1] + 1;
+        tiered_int_internal::write_little_endian_u64(
+            out + kBaseBytes * 2, b2, kBaseBytes * 2);
+        ret = std::max(ret, kBaseBytes * 4ul);
       }
     }
     if (v > tiers[0]) {
-      auto b2 = (v - tiers[0] - 1) % 256;
-      v = ((v - tiers[0] - 1 - b2) / 256) + tiers[0] + 1;
-      out[1] = static_cast<std::uint8_t>(b2);
-      ret = std::max(ret, 2ul);
+      auto b2 = (v - tiers[0] - 1) % kWord;
+      v = ((v - tiers[0] - 1 - b2) / kWord) + tiers[0] + 1;
+      tiered_int_internal::write_little_endian_u64(out + kBaseBytes, b2,
+                                                   kBaseBytes);
+      ret = std::max(ret, kBaseBytes * 2ul);
     }
-    out[0] = static_cast<std::uint8_t>(v);
-    return std::max(ret, 1ul);
+    tiered_int_internal::write_little_endian_u64(out, v, kBaseBytes);
+    return std::max(ret, static_cast<std::size_t>(kBaseBytes));
   }
 
   std::size_t Deserialize(const std::uint8_t* in) {
     constexpr ValueType tiers[] = {TierMaxVals...};
+    const std::uint8_t* p = in;
 
-    ValueType v = *in++;
+    std::uint64_t v =
+        tiered_int_internal::read_little_endian_u64(p, kBaseBytes);
+    p += kBaseBytes;
     if (v <= tiers[0]) {
-      value_ = v;
-      return 1;
+      value_ = static_cast<ValueType>(v);
+      return kBaseBytes;
     }
 
-    std::uint8_t b2 = *in++;
-    v = (v - tiers[0] - 1) * 256 + tiers[0] + 1 + b2;
+    std::uint64_t low =
+        tiered_int_internal::read_little_endian_u64(p, kBaseBytes);
+    p += kBaseBytes;
+    v = (v - tiers[0] - 1) * kWord + tiers[0] + 1 + low;
     if constexpr (NumTiers < 3) {
-      value_ = v;
-      return 2;
-    }
-    if (v <= tiers[1]) {
-      value_ = v;
-      return 2;
-    }
+      value_ = static_cast<ValueType>(v);
+      return kBaseBytes * 2;
+    } else {
+      if (v <= tiers[1]) {
+        value_ = static_cast<ValueType>(v);
+        return kBaseBytes * 2;
+      }
 
-    std::uint16_t next2 =
-        tiered_int_internal::read_little_endian<std::uint16_t>(in, 2);
-    v = (v - tiers[1] - 1) * 256 * 256 + tiers[1] + 1 + next2;
-    if constexpr (NumTiers < 4) {
-      value_ = v;
-      return 4;
-    }
-    if (v <= tiers[2]) {
-      value_ = v;
-      return 4;
-    }
+      low = tiered_int_internal::read_little_endian_u64(p, kBaseBytes * 2);
+      p += kBaseBytes * 2;
+      constexpr auto word2 = tiered_int_internal::kWordPow<StartSize>(1);
+      v = (v - tiers[1] - 1) * word2 + tiers[1] + 1 + low;
+      if constexpr (NumTiers < 4) {
+        value_ = static_cast<ValueType>(v);
+        return kBaseBytes * 4;
+      } else {
+        if (v <= tiers[2]) {
+          value_ = static_cast<ValueType>(v);
+          return kBaseBytes * 4;
+        }
 
-    if constexpr (NumTiers == 4) {
-      std::uint32_t next4 =
-          tiered_int_internal::read_little_endian<std::uint32_t>(in, 4);
-      value_ = (v - tiers[2] - 1) * 256ull * 256 * 256 * 256 + tiers[2] + 1 +
-               next4;
+        low = tiered_int_internal::read_little_endian_u64(p, kBaseBytes * 4);
+        constexpr auto word4 = tiered_int_internal::kWordPow<StartSize>(2);
+        value_ = static_cast<ValueType>((v - tiers[2] - 1) * word4 + tiers[2] +
+                                        1 + low);
+        return kBaseBytes * 8;
+      }
     }
-    return 8;
   }
 
   template <typename TStream,
@@ -179,7 +253,7 @@ struct TieredInt {
                     !std::is_array_v<std::remove_reference_t<TStream>>,
                 int> = 0>
   void SerializeTo(TStream& os) const {
-    std::uint8_t buf[8];
+    std::uint8_t buf[kMaxWireBytes];
     auto n = Serialize(buf);
     for (std::size_t i = 0; i < n; ++i) {
       std::uint8_t b = buf[i];
@@ -193,33 +267,52 @@ struct TieredInt {
                     !std::is_array_v<std::remove_reference_t<TStream>>,
                 int> = 0>
   void DeserializeFrom(TStream& is) {
-    std::uint8_t buf[8] = {};
-    is >> buf[0];
-
+    std::uint8_t buf[kMaxWireBytes] = {};
     constexpr ValueType tiers[] = {TierMaxVals...};
 
-    if (buf[0] > tiers[0]) {
-      is >> buf[1];
+    for (int i = 0; i < kBaseBytes; ++i) {
+      is >> buf[i];
+    }
+
+    std::size_t total = kBaseBytes;
+    std::uint64_t v =
+        tiered_int_internal::read_little_endian_u64(buf, kBaseBytes);
+
+    if (v > tiers[0]) {
+      for (int i = 0; i < kBaseBytes; ++i) {
+        is >> buf[kBaseBytes + i];
+      }
+      total = kBaseBytes * 2;
       if constexpr (NumTiers >= 3) {
-        auto v = (buf[0] - tiers[0] - 1) * 256 + tiers[0] + 1 + buf[1];
+        const std::uint64_t low =
+            tiered_int_internal::read_little_endian_u64(buf + kBaseBytes,
+                                                        kBaseBytes);
+        v = (v - tiers[0] - 1) * kWord + tiers[0] + 1 + low;
         if (v > tiers[1]) {
-          is >> buf[2];
-          is >> buf[3];
+          for (std::size_t i = 0; i < kBaseBytes * 2; ++i) {
+            is >> buf[kBaseBytes * 2 + i];
+          }
+          total = kBaseBytes * 4;
           if constexpr (NumTiers == 4) {
-            auto v2 = (v - tiers[1] - 1) * 256 * 256 + tiers[1] + 1 +
-                      (static_cast<std::uint16_t>(buf[2]) |
-                       (static_cast<std::uint16_t>(buf[3]) << 8));
+            const std::uint64_t low2 =
+                tiered_int_internal::read_little_endian_u64(
+                    buf + kBaseBytes * 2, kBaseBytes * 2);
+            constexpr auto word2 =
+                tiered_int_internal::kWordPow<StartSize>(1);
+            const std::uint64_t v2 =
+                (v - tiers[1] - 1) * word2 + tiers[1] + 1 + low2;
             if (v2 > tiers[2]) {
-              is >> buf[4];
-              is >> buf[5];
-              is >> buf[6];
-              is >> buf[7];
+              for (std::size_t i = 0; i < kBaseBytes * 4; ++i) {
+                is >> buf[kBaseBytes * 4 + i];
+              }
+              total = kBaseBytes * 8;
             }
           }
         }
       }
     }
 
+    (void)total;
     Deserialize(buf);
   }
 };
