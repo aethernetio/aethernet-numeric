@@ -528,11 +528,7 @@ struct TieredInt {
   }
 
   static void throw_or_assert_buffer_too_short() {
-    if consteval {
-      throw std::out_of_range("TieredInt deserialize buffer is too short");
-    } else {
-      assert(false && "TieredInt deserialize buffer is too short");
-    }
+    throw std::out_of_range("TieredInt deserialize buffer is too short");
   }
 
  public:

@@ -32,6 +32,7 @@ add_executable(${PROJECT_NAME})
 target_sources(${PROJECT_NAME} PRIVATE
   main.cpp
   test-tiered-int.cpp
+  test-tiered-int-view.cpp
   test-fixed-point.cpp
 )
 
