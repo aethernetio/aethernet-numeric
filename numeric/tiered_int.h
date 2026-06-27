@@ -20,7 +20,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
-#include <cstring>
 #include <functional>
 #include <limits>
 #include <stdexcept>
@@ -55,6 +54,39 @@ constexpr std::uint64_t kWordPow(int tier_idx) {
   return half * half;
 }
 
+constexpr std::uint64_t zigzag_encode64(std::int64_t n) {
+  return (static_cast<std::uint64_t>(n) << 1) ^
+         static_cast<std::uint64_t>(n >> 63);
+}
+
+constexpr std::int64_t zigzag_decode64(std::uint64_t u) {
+  return static_cast<std::int64_t>((u >> 1) ^
+                                   (-static_cast<std::int64_t>(u & 1)));
+}
+
+template <typename WireCell, std::uint32_t V>
+constexpr std::uint32_t WireTierThreshold() {
+  if constexpr (std::is_signed_v<WireCell>) {
+    return static_cast<std::uint32_t>(
+        zigzag_encode64(static_cast<std::int64_t>(V)));
+  } else {
+    return V;
+  }
+}
+
+template <std::uint64_t MaxZigZag>
+constexpr std::int64_t SignedUpperFromWireMax() {
+  return zigzag_decode64(MaxZigZag);
+}
+
+template <std::uint64_t MaxZigZag>
+constexpr std::int64_t SignedLowerFromWireMax() {
+  if (MaxZigZag == 0) {
+    return 0;
+  }
+  return -static_cast<std::int64_t>((MaxZigZag + 1) / 2);
+}
+
 template <typename WireCell, std::uint32_t... TierMaxVals>
 struct MaxEncodableValue {
   static constexpr int NumTiers = sizeof...(TierMaxVals) + 1;
@@ -63,7 +95,8 @@ struct MaxEncodableValue {
       WireCellTraits<WireCell>::kHeaderMax;
 
   static constexpr std::uint64_t value = []() constexpr {
-    constexpr std::uint32_t tiers[] = {TierMaxVals...};
+    constexpr std::uint32_t tiers[] = {
+        WireTierThreshold<WireCell, TierMaxVals>()...};
     if constexpr (NumTiers == 1) {
       return tiers[0];
     } else if constexpr (NumTiers == 2) {
@@ -129,20 +162,6 @@ inline void write_little_endian_u64(std::uint8_t* p, std::uint64_t value,
   for (int i = 0; i < bytes; ++i) {
     p[i] = static_cast<std::uint8_t>((value >> (i * 8)) & 0xFF);
   }
-}
-
-template <typename WireCell>
-WireCell read_le(const std::uint8_t* p, int bytes) {
-  using Unsigned = std::make_unsigned_t<WireCell>;
-  const auto bits = static_cast<Unsigned>(read_little_endian_u64(p, bytes));
-  return static_cast<WireCell>(bits);
-}
-
-template <typename WireCell>
-void write_le(std::uint8_t* p, WireCell value, int bytes) {
-  using Unsigned = std::make_unsigned_t<WireCell>;
-  write_little_endian_u64(p, static_cast<std::uint64_t>(static_cast<Unsigned>(value)),
-                          bytes);
 }
 
 template <std::uint32_t First, std::uint32_t... Rest>
@@ -216,6 +235,12 @@ struct TieredInt {
       "Tier max values must be strictly increasing");
   static_assert(tiered_int_internal::FirstOf<TierMaxVals...>::value <= kHeaderMax,
                 "First tier max must fit in the base wire word");
+  static_assert(
+      !kIsSigned ||
+          (tiered_int_internal::WireTierThreshold<
+               WireCell, tiered_int_internal::FirstOf<TierMaxVals...>::value>() <=
+           kHeaderMax),
+      "First signed tier max must fit in the base wire word after ZigZag");
 
   static constexpr std::uint64_t kMaxEncodable =
       tiered_int_internal::MaxEncodableValue<WireCell,
@@ -234,8 +259,8 @@ struct TieredInt {
   using ValueType = std::conditional_t<
       kIsSigned,
       typename tiered_int_internal::MinimalIntFor<
-          -static_cast<std::int64_t>(kMaxEncodable),
-          static_cast<std::int64_t>(kMaxEncodable)>::type,
+          tiered_int_internal::SignedLowerFromWireMax<kMaxEncodable>(),
+          tiered_int_internal::SignedUpperFromWireMax<kMaxEncodable>()>::type,
       typename tiered_int_internal::MinimalUIntFor<kMaxEncodable>::type>;
 
   static_assert(
@@ -244,16 +269,21 @@ struct TieredInt {
       "ValueType must hold kMaxEncodable");
   static_assert(
       !kIsSigned ||
-          (static_cast<std::int64_t>(kMaxEncodable) <=
-           static_cast<std::int64_t>(std::numeric_limits<ValueType>::max()) &&
-           -static_cast<std::int64_t>(kMaxEncodable) >=
-               static_cast<std::int64_t>(std::numeric_limits<ValueType>::min())),
+          (tiered_int_internal::SignedLowerFromWireMax<kMaxEncodable>() >=
+               static_cast<std::int64_t>(
+                   std::numeric_limits<ValueType>::min()) &&
+           tiered_int_internal::SignedUpperFromWireMax<kMaxEncodable>() <=
+               static_cast<std::int64_t>(
+                   std::numeric_limits<ValueType>::max())),
       "ValueType must hold the signed encodable range");
 
   static constexpr ValueType kUpper =
-      kIsSigned ? static_cast<ValueType>(kMaxEncodable) : static_cast<ValueType>(kMaxEncodable);
+      kIsSigned ? static_cast<ValueType>(
+                      tiered_int_internal::SignedUpperFromWireMax<kMaxEncodable>())
+                : static_cast<ValueType>(kMaxEncodable);
   static constexpr ValueType kLower =
-      kIsSigned ? static_cast<ValueType>(-static_cast<std::int64_t>(kMaxEncodable))
+      kIsSigned ? static_cast<ValueType>(
+                      tiered_int_internal::SignedLowerFromWireMax<kMaxEncodable>())
                 : static_cast<ValueType>(0);
 
   ValueType value_ = 0;
@@ -312,12 +342,13 @@ struct TieredInt {
     return static_cast<ValueType>(v);
   }
 
-  static constexpr std::uint64_t kSignBit =
-      static_cast<std::uint64_t>(1) << (8 * kBaseBytes - 1);
+  static constexpr std::uint32_t kWireTiers[] = {
+      tiered_int_internal::WireTierThreshold<WireCell, TierMaxVals>()...};
 
   std::size_t serialize_unsigned_magnitude(std::uint64_t v,
                                            std::uint8_t* out) const {
-    constexpr std::uint32_t tiers[] = {TierMaxVals...};
+    constexpr std::uint32_t tiers[] = {
+        tiered_int_internal::WireTierThreshold<WireCell, TierMaxVals>()...};
     std::size_t ret = 0;
 
     if constexpr (NumTiers == 4) {
@@ -352,7 +383,8 @@ struct TieredInt {
   }
 
   std::uint64_t deserialize_unsigned_magnitude(const std::uint8_t* in) const {
-    constexpr std::uint32_t tiers[] = {TierMaxVals...};
+    constexpr std::uint32_t tiers[] = {
+        tiered_int_internal::WireTierThreshold<WireCell, TierMaxVals>()...};
     const std::uint8_t* p = in;
 
     std::uint64_t v = tiered_int_internal::read_little_endian_u64(p, kBaseBytes);
@@ -396,7 +428,8 @@ struct TieredInt {
   }
 
   std::size_t wire_bytes_for_magnitude(std::uint64_t v) const {
-    constexpr std::uint32_t tiers[] = {TierMaxVals...};
+    constexpr std::uint32_t tiers[] = {
+        tiered_int_internal::WireTierThreshold<WireCell, TierMaxVals>()...};
     if (v <= tiers[0]) {
       return kBaseBytes;
     }
@@ -421,68 +454,22 @@ struct TieredInt {
 
  public:
   std::size_t Serialize(std::uint8_t* out) const {
-    constexpr std::uint32_t tiers[] = {TierMaxVals...};
-
     if constexpr (kIsSigned) {
-      const auto v = static_cast<std::int64_t>(value_);
-      const auto tier0 = static_cast<std::int64_t>(tiers[0]);
-      if (v >= -tier0 && v <= tier0) {
-        tiered_int_internal::write_le(out, static_cast<WireCell>(value_),
-                                      kBaseBytes);
-        return kBaseBytes;
-      }
-      if (v < 0) {
-        std::uint8_t tmp[kMaxWireBytes];
-        const auto mag = static_cast<std::uint64_t>(-v);
-        const auto n = serialize_unsigned_magnitude(mag, tmp);
-        using Unsigned = std::make_unsigned_t<WireCell>;
-        const auto first_u = static_cast<std::uint64_t>(
-            static_cast<Unsigned>(
-                tiered_int_internal::read_le<WireCell>(tmp, kBaseBytes)));
-        tiered_int_internal::write_little_endian_u64(
-            out, first_u | kSignBit, kBaseBytes);
-        for (std::size_t i = static_cast<std::size_t>(kBaseBytes); i < n; ++i) {
-          out[i] = tmp[i];
-        }
-        return n;
-      }
+      const std::uint64_t u = tiered_int_internal::zigzag_encode64(
+          static_cast<std::int64_t>(value_));
+      return serialize_unsigned_magnitude(u, out);
     }
-
     return serialize_unsigned_magnitude(static_cast<std::uint64_t>(value_), out);
   }
 
   std::size_t Deserialize(const std::uint8_t* in) {
-    constexpr std::uint32_t tiers[] = {TierMaxVals...};
-
+    const std::uint64_t u = deserialize_unsigned_magnitude(in);
     if constexpr (kIsSigned) {
-      using Unsigned = std::make_unsigned_t<WireCell>;
-      const WireCell first = tiered_int_internal::read_le<WireCell>(in, kBaseBytes);
-      const auto first_u = static_cast<std::uint64_t>(static_cast<Unsigned>(first));
-      const auto tier0 = static_cast<std::int64_t>(tiers[0]);
-      const auto tier0_u = static_cast<std::uint64_t>(tiers[0]);
-      const auto first_v = static_cast<std::int64_t>(first);
-
-      const bool in_overflow_zone =
-          first_u > tier0_u && first_u < (kWord - tier0_u);
-
-      if (!in_overflow_zone && first_v >= -tier0 && first_v <= tier0) {
-        value_ = static_cast<ValueType>(first);
-        return kBaseBytes;
-      }
-
-      if (in_overflow_zone && (first_u & kSignBit) != 0) {
-        std::uint8_t tmp[kMaxWireBytes];
-        std::memcpy(tmp, in, kMaxWireBytes);
-        tiered_int_internal::write_little_endian_u64(
-            tmp, first_u & ~kSignBit, kBaseBytes);
-        const auto mag = deserialize_unsigned_magnitude(tmp);
-        value_ = static_cast<ValueType>(-static_cast<std::int64_t>(mag));
-        return wire_bytes_for_magnitude(mag);
-      }
+      value_ = static_cast<ValueType>(tiered_int_internal::zigzag_decode64(u));
+    } else {
+      value_ = static_cast<ValueType>(u);
     }
-
-    value_ = static_cast<ValueType>(deserialize_unsigned_magnitude(in));
-    return wire_bytes_for_magnitude(static_cast<std::uint64_t>(value_));
+    return wire_bytes_for_magnitude(u);
   }
 
   template <typename TStream,
@@ -506,7 +493,6 @@ struct TieredInt {
                 int> = 0>
   void DeserializeFrom(TStream& is) {
     std::uint8_t buf[kMaxWireBytes] = {};
-    constexpr std::uint32_t tiers[] = {TierMaxVals...};
 
     for (int i = 0; i < kBaseBytes; ++i) {
       is >> buf[i];
@@ -515,21 +501,7 @@ struct TieredInt {
     const std::uint64_t first_u =
         tiered_int_internal::read_little_endian_u64(buf, kBaseBytes);
 
-    if constexpr (kIsSigned) {
-      const auto tier0_u = static_cast<std::uint64_t>(tiers[0]);
-      const WireCell first = tiered_int_internal::read_le<WireCell>(buf, kBaseBytes);
-      const auto first_v = static_cast<std::int64_t>(first);
-      const auto tier0 = static_cast<std::int64_t>(tiers[0]);
-      const bool in_overflow_zone =
-          first_u > tier0_u && first_u < (kWord - tier0_u);
-
-      if (!in_overflow_zone && first_v >= -tier0 && first_v <= tier0) {
-        Deserialize(buf);
-        return;
-      }
-    }
-
-    if (first_u > tiers[0]) {
+    if (first_u > kWireTiers[0]) {
       for (int i = 0; i < kBaseBytes; ++i) {
         is >> buf[kBaseBytes + i];
       }
@@ -538,8 +510,8 @@ struct TieredInt {
             tiered_int_internal::read_little_endian_u64(buf + kBaseBytes,
                                                         kBaseBytes);
         const std::uint64_t v =
-            (first_u - tiers[0] - 1) * kWord + tiers[0] + 1 + low;
-        if (v > tiers[1]) {
+            (first_u - kWireTiers[0] - 1) * kWord + kWireTiers[0] + 1 + low;
+        if (v > kWireTiers[1]) {
           for (std::size_t i = 0; i < static_cast<std::size_t>(kBaseBytes * 2);
                ++i) {
             is >> buf[kBaseBytes * 2 + i];
@@ -550,8 +522,8 @@ struct TieredInt {
                     buf + kBaseBytes * 2, kBaseBytes * 2);
             constexpr auto word2 = tiered_int_internal::kWordPow<WireCell>(1);
             const std::uint64_t v2 =
-                (v - tiers[1] - 1) * word2 + tiers[1] + 1 + low2;
-            if (v2 > tiers[2]) {
+                (v - kWireTiers[1] - 1) * word2 + kWireTiers[1] + 1 + low2;
+            if (v2 > kWireTiers[2]) {
               for (std::size_t i = 0; i < static_cast<std::size_t>(kBaseBytes * 4);
                    ++i) {
                 is >> buf[kBaseBytes * 4 + i];

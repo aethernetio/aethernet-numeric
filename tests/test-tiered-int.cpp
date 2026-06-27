@@ -102,9 +102,9 @@ static_assert(T7::kUpper <= static_cast<T7::ValueType>(T7::kHeaderMax));
 
 static_assert(S1::kBaseBytes == 2);
 static_assert(S1::kMaxWireBytes == 4);
-static_assert(sizeof(S1::ValueType) == 8);
-static_assert(S1::kLower == -4229366760);
-static_assert(S1::kUpper == 4229366760);
+static_assert(sizeof(S1::ValueType) == 4);
+static_assert(S1::kLower == -2081915880);
+static_assert(S1::kUpper == 2081915880);
 
 struct ObVector {
   using size_type = std::uint32_t;
@@ -427,6 +427,8 @@ void test_SignedWireCell() {
   TestRoundTripBuffer(S1{1000});
   TestRoundTripBuffer(S1{-1001});
   TestRoundTripBuffer(S1{1001});
+  TestRoundTripBuffer(S1{S1::kUpper});
+  TestRoundTripBuffer(S1{S1::kLower});
 
   TestWireSizeTransition<S1>(1000, 1001, 2, 4);
   TestWireSizeTransition<S1>(-1000, -1001, 2, 4);
@@ -434,6 +436,8 @@ void test_SignedWireCell() {
   TestValueToSize<S1>(-500, 2);
   TestValueToSize<S1>(500, 2);
   TestValueToSizeStream<S1>(-1001, 4);
+  TestValueToSize<S1>(S1::kUpper, S1::kMaxWireBytes);
+  TestValueToSize<S1>(S1::kLower, S1::kMaxWireBytes);
 
   TEST_ASSERT(S1{-1000} < S1{1000});
   TEST_ASSERT(std::numeric_limits<S1>::min() == S1::kLower);
