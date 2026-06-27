@@ -276,16 +276,16 @@ struct TieredInt {
  private:
   template <typename T>
   static constexpr ValueType check_value(T v) {
-    using Wide = std::int64_t;
-    const Wide w = static_cast<Wide>(v);
     if constexpr (kIsSigned) {
-      if (w < static_cast<Wide>(kLower) || w > static_cast<Wide>(kUpper)) {
+      const std::int64_t w = static_cast<std::int64_t>(v);
+      if (w < static_cast<std::int64_t>(kLower) ||
+          w > static_cast<std::int64_t>(kUpper)) {
         if consteval {
           throw std::out_of_range(
               "TieredInt value is outside the encodable range");
         } else {
-          assert(w >= static_cast<Wide>(kLower) &&
-                 w <= static_cast<Wide>(kUpper));
+          assert(w >= static_cast<std::int64_t>(kLower) &&
+                 w <= static_cast<std::int64_t>(kUpper));
         }
       }
     } else {
@@ -299,13 +299,13 @@ struct TieredInt {
           }
         }
       }
-      if (static_cast<std::uint64_t>(v) > static_cast<std::uint64_t>(kUpper)) {
+      const std::uint64_t u = static_cast<std::uint64_t>(v);
+      if (u > static_cast<std::uint64_t>(kUpper)) {
         if consteval {
           throw std::out_of_range(
               "TieredInt value exceeds the maximum encodable value");
         } else {
-          assert(static_cast<std::uint64_t>(v) <=
-                 static_cast<std::uint64_t>(kUpper));
+          assert(u <= static_cast<std::uint64_t>(kUpper));
         }
       }
     }

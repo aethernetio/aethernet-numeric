@@ -90,6 +90,9 @@ static_assert(T6::kBaseBytes == 4);
 static_assert(T6::kMaxWireBytes == 8);
 static_assert(sizeof(T6::ValueType) == 8);
 static_assert(T6::kMaxWireBytes == sizeof(T6::ValueType));
+static_assert(T6::kUpper >
+              static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()));
+static_assert(T6{T6::kUpper}.value_ == T6::kUpper);
 
 static_assert(T7::kBaseBytes == 1);
 static_assert(T7::kMaxWireBytes == 2);
