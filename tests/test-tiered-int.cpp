@@ -170,8 +170,7 @@ void TestValueToSizeStream(typename TInt::ValueType value,
 
   Imstream is{os.data()};
   auto des_p = TInt{};
-  auto res = des_p.DeserializeFrom(is.stream());
-  TEST_ASSERT_EQUAL(TierDeserializeRes::kFinished, res);
+  des_p.DeserializeFrom(is.stream());
   TEST_ASSERT_EQUAL(static_cast<typename TInt::ValueType>(p),
                     static_cast<typename TInt::ValueType>(des_p));
 }

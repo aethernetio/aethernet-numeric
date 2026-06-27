@@ -26,12 +26,6 @@
 
 namespace ae {
 
-enum class TierDeserializeRes : std::uint8_t {
-  kNo,
-  kFinished,
-  kNext,
-};
-
 namespace tiered_int_internal {
 
 template <int StartSize, int NumTiers>
@@ -198,7 +192,7 @@ struct TieredInt {
                 !std::is_pointer_v<std::decay_t<TStream>> &&
                     !std::is_array_v<std::remove_reference_t<TStream>>,
                 int> = 0>
-  TierDeserializeRes DeserializeFrom(TStream& is) {
+  void DeserializeFrom(TStream& is) {
     std::uint8_t buf[8] = {};
     is >> buf[0];
 
@@ -227,7 +221,6 @@ struct TieredInt {
     }
 
     Deserialize(buf);
-    return TierDeserializeRes::kFinished;
   }
 };
 
