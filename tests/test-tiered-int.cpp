@@ -40,9 +40,15 @@ using T6 = TieredInt<std::uint32_t, 10>;
 using T7 = TieredInt<std::uint8_t, 255>;
 
 using S1 = TieredInt<std::int16_t, 1000>;
+using S2 = TieredInt<std::int8_t, 10, 20>;
+using S3 = TieredInt<std::int16_t, 100>;
+using S4 = TieredInt<std::int8_t, 124, 125, 126>;
 
 static_assert(T1::kIsSigned == false);
 static_assert(S1::kIsSigned == true);
+static_assert(S2::kIsSigned == true);
+static_assert(S3::kIsSigned == true);
+static_assert(S4::kIsSigned == true);
 static_assert(std::is_same_v<T1, TieredIntFromStartSize<1, 249>>);
 static_assert(std::is_same_v<T4, TieredIntFromStartSize<2, 1000>>);
 
@@ -105,6 +111,31 @@ static_assert(S1::kMaxWireBytes == 4);
 static_assert(sizeof(S1::ValueType) == 4);
 static_assert(S1::kLower == -2081915880);
 static_assert(S1::kUpper == 2081915880);
+static_assert(S1::kUpper > 2000000000);
+static_assert(S1::kLower < -2000000000);
+static_assert(ae::tiered_int_internal::zigzag_encode64(S1::kUpper) >
+              static_cast<std::uint64_t>(1) << 31);
+
+static_assert(S2::kBaseBytes == 1);
+static_assert(S2::kMaxWireBytes == 4);
+static_assert(sizeof(S2::ValueType) == 4);
+static_assert(S2::kLower == -1970667540);
+static_assert(S2::kUpper == 1970667540);
+
+static_assert(S3::kBaseBytes == 2);
+static_assert(S3::kMaxWireBytes == 4);
+static_assert(sizeof(S3::ValueType) == 4);
+static_assert(S3::kLower == -2140897380);
+static_assert(S3::kUpper == 2140897380);
+static_assert(S3::kUpper > 2000000000);
+static_assert(S3::kUpper < static_cast<std::int32_t>(2147483647));
+
+static_assert(S4::kBaseBytes == 1);
+static_assert(S4::kMaxWireBytes == 8);
+static_assert(sizeof(S4::ValueType) == 8);
+static_assert(S4::kLower == -251920099861069950LL);
+static_assert(S4::kUpper == 251920099861069950LL);
+static_assert(S4::kUpper > static_cast<std::int64_t>(1) << 31);
 
 struct ObVector {
   using size_type = std::uint32_t;
@@ -184,10 +215,16 @@ void TestRoundTripBuffer(TInt x) {
   auto l0 = x.Serialize(buf);
 
   TInt y;
-  auto l1 = y.Deserialize(buf);
+  auto l1 = y.Deserialize(buf, l0);
   TEST_ASSERT_EQUAL(static_cast<typename TInt::ValueType>(x.value_),
                     static_cast<typename TInt::ValueType>(y.value_));
   TEST_ASSERT_EQUAL(l0, l1);
+
+  TInt z;
+  auto l2 = z.Deserialize(buf);
+  TEST_ASSERT_EQUAL(static_cast<typename TInt::ValueType>(x.value_),
+                    static_cast<typename TInt::ValueType>(z.value_));
+  TEST_ASSERT_EQUAL(l0, l2);
 }
 
 template <typename TInt>
@@ -207,7 +244,7 @@ void TestValueToSize(typename TInt::ValueType value,
   TEST_ASSERT_EQUAL(expected_size, size);
 
   TInt des_p;
-  auto read_size = des_p.Deserialize(buf);
+  auto read_size = des_p.Deserialize(buf, size);
   TEST_ASSERT_EQUAL(expected_size, read_size);
   TEST_ASSERT_EQUAL(static_cast<typename TInt::ValueType>(p),
                     static_cast<typename TInt::ValueType>(des_p));
@@ -427,6 +464,8 @@ void test_SignedWireCell() {
   TestRoundTripBuffer(S1{1000});
   TestRoundTripBuffer(S1{-1001});
   TestRoundTripBuffer(S1{1001});
+  TestRoundTripBuffer(S1{2000000000});
+  TestRoundTripBuffer(S1{-2000000000});
   TestRoundTripBuffer(S1{S1::kUpper});
   TestRoundTripBuffer(S1{S1::kLower});
 
@@ -438,10 +477,93 @@ void test_SignedWireCell() {
   TestValueToSizeStream<S1>(-1001, 4);
   TestValueToSize<S1>(S1::kUpper, S1::kMaxWireBytes);
   TestValueToSize<S1>(S1::kLower, S1::kMaxWireBytes);
+  TestValueToSizeStream<S1>(S1::kUpper, S1::kMaxWireBytes);
+  TestValueToSizeStream<S1>(S1::kLower, S1::kMaxWireBytes);
+  TestMaxWireSize<S1>();
 
   TEST_ASSERT(S1{-1000} < S1{1000});
   TEST_ASSERT(std::numeric_limits<S1>::min() == S1::kLower);
   TEST_ASSERT(std::numeric_limits<S1>::max() == S1::kUpper);
+}
+
+void test_SignedThreeTier() {
+  TestRoundTripBuffer(S2{10});
+  TestRoundTripBuffer(S2{11});
+  TestRoundTripBuffer(S2{20});
+  TestRoundTripBuffer(S2{21});
+  TestRoundTripBuffer(S2{-10});
+  TestRoundTripBuffer(S2{-11});
+  TestRoundTripBuffer(S2{-20});
+  TestRoundTripBuffer(S2{-21});
+  TestRoundTripBuffer(S2{S2::kUpper});
+  TestRoundTripBuffer(S2{S2::kLower});
+
+  TestWireSizeTransition<S2>(10, 11, 1, 2);
+  TestWireSizeTransition<S2>(-10, -11, 1, 2);
+  TestWireSizeTransition<S2>(20, 21, 2, 4);
+  TestWireSizeTransition<S2>(-20, -21, 2, 4);
+  TestMaxWireSize<S2>();
+
+  TestValueToSize<S2>(10, 1);
+  TestValueToSize<S2>(11, 2);
+  TestValueToSize<S2>(20, 2);
+  TestValueToSize<S2>(21, 4);
+  TestValueToSizeStream<S2>(S2::kUpper, S2::kMaxWireBytes);
+  TestValueToSizeStream<S2>(S2::kLower, S2::kMaxWireBytes);
+
+  TEST_ASSERT(std::numeric_limits<S2>::min() == S2::kLower);
+  TEST_ASSERT(std::numeric_limits<S2>::max() == S2::kUpper);
+}
+
+void test_SignedNearInt32Limit() {
+  TestRoundTripBuffer(S3{2140897380});
+  TestRoundTripBuffer(S3{-2140897380});
+  TestRoundTripBuffer(S3{2100000000});
+  TestRoundTripBuffer(S3{-2100000000});
+  TestRoundTripBuffer(S3{S3::kUpper});
+  TestRoundTripBuffer(S3{S3::kLower});
+
+  TestValueToSize<S3>(S3::kUpper, S3::kMaxWireBytes);
+  TestValueToSize<S3>(S3::kLower, S3::kMaxWireBytes);
+  TestValueToSizeStream<S3>(2100000000, S3::kMaxWireBytes);
+  TestMaxWireSize<S3>();
+
+  TEST_ASSERT(S3::kUpper > static_cast<std::int32_t>(2000000000));
+  TEST_ASSERT(std::numeric_limits<S3>::max() == S3::kUpper);
+  TEST_ASSERT(std::numeric_limits<S3>::min() == S3::kLower);
+}
+
+void test_SignedFourTier() {
+  TestRoundTripBuffer(S4{124});
+  TestRoundTripBuffer(S4{125});
+  TestRoundTripBuffer(S4{126});
+  TestRoundTripBuffer(S4{127});
+  TestRoundTripBuffer(S4{-124});
+  TestRoundTripBuffer(S4{-125});
+  TestRoundTripBuffer(S4{-126});
+  TestRoundTripBuffer(S4{-127});
+  TestRoundTripBuffer(S4{2147483648LL});
+  TestRoundTripBuffer(S4{-2147483648LL});
+  TestRoundTripBuffer(S4{S4::kUpper});
+  TestRoundTripBuffer(S4{S4::kLower});
+
+  TestWireSizeTransition<S4>(124, 125, 1, 2);
+  TestWireSizeTransition<S4>(-124, -125, 1, 2);
+  TestWireSizeTransition<S4>(125, 126, 2, 4);
+  TestWireSizeTransition<S4>(-125, -126, 2, 4);
+  TestWireSizeTransition<S4>(126, 127, 4, 8);
+  TestWireSizeTransition<S4>(-126, -127, 4, 8);
+  TestMaxWireSize<S4>();
+
+  TestValueToSize<S4>(124, 1);
+  TestValueToSize<S4>(125, 2);
+  TestValueToSize<S4>(126, 4);
+  TestValueToSize<S4>(127, 8);
+  TestValueToSizeStream<S4>(2147483648LL, 8);
+  TestValueToSizeStream<S4>(S4::kUpper, S4::kMaxWireBytes);
+
+  TEST_ASSERT(std::numeric_limits<S4>::min() == S4::kLower);
+  TEST_ASSERT(std::numeric_limits<S4>::max() == S4::kUpper);
 }
 
 void test_Range() {
@@ -462,6 +584,9 @@ int test_tiered_int() {
   RUN_TEST(ae::test_tiered_int::test_MinimalValueType);
   RUN_TEST(ae::test_tiered_int::test_WireSizeTransitions);
   RUN_TEST(ae::test_tiered_int::test_SignedWireCell);
+  RUN_TEST(ae::test_tiered_int::test_SignedThreeTier);
+  RUN_TEST(ae::test_tiered_int::test_SignedNearInt32Limit);
+  RUN_TEST(ae::test_tiered_int::test_SignedFourTier);
   RUN_TEST(ae::test_tiered_int::test_Range);
   return UNITY_END();
 }
