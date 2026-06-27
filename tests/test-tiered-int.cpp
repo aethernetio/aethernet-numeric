@@ -23,12 +23,27 @@
 #include <sstream>
 #include <iomanip>
 #include <iostream>
+#include <type_traits>
 
 #include "numeric/tiered_int.h"
 
 #include "mstream.h"
 
 namespace ae::test_tiered_int {
+
+using T1 = TieredInt<1, 249>;
+using T2 = TieredInt<1, 249, 1529>;
+using T3 = TieredInt<1, 249, 1529, 16777215>;
+using T4 = TieredInt<2, 1000>;
+using T5 = TieredInt<2, 1000, 8000>;
+using T6 = TieredInt<4, 10>;
+
+static_assert(std::is_same_v<T1::ValueType, std::uint16_t>);
+static_assert(std::is_same_v<T2::ValueType, std::uint32_t>);
+static_assert(std::is_same_v<T3::ValueType, std::uint64_t>);
+static_assert(std::is_same_v<T4::ValueType, std::uint32_t>);
+static_assert(std::is_same_v<T5::ValueType, std::uint64_t>);
+static_assert(std::is_same_v<T6::ValueType, std::uint64_t>);
 
 struct ObVector {
   using size_type = std::uint32_t;
@@ -72,6 +87,16 @@ struct Imstream {
   auto& stream() { return stream_; }
 };
 
+#pragma pack(push, 1)
+struct S {
+  std::uint8_t v8_1;
+  std::uint8_t v8_2{0};
+  std::uint16_t v16{0};
+  std::uint32_t v32{0};
+};
+#pragma pack(pop)
+static_assert(sizeof(S) == 8);
+
 static std::string print(std::vector<std::uint8_t> const& v) {
   std::stringstream ss;
   ss << "[";
@@ -92,6 +117,65 @@ T GetRandom(T min, T max) {
   return dis(gen);
 }
 
+template <typename TInt>
+void TestRoundTripBuffer(TInt x) {
+  std::uint8_t buf[8] = {};
+  auto l0 = x.Serialize(buf);
+
+  TInt y;
+  auto l1 = y.Deserialize(buf);
+  TEST_ASSERT_EQUAL(static_cast<typename TInt::ValueType>(x.value_),
+                    static_cast<typename TInt::ValueType>(y.value_));
+  TEST_ASSERT_EQUAL(l0, l1);
+}
+
+template <typename TInt>
+void TestValueToSize(typename TInt::ValueType value,
+                     std::size_t expected_size) {
+  auto p = TInt{value};
+  std::uint8_t buf[8] = {};
+  auto size = p.Serialize(buf);
+
+  auto s = (std::stringstream{}
+            << "Test on value " << static_cast<std::uint64_t>(value)
+            << ", serialized as hex_arr: " << print({buf, buf + size})
+            << " expected size:" << expected_size)
+               .str();
+  UNITY_SET_DETAIL(s.c_str());
+
+  TEST_ASSERT_EQUAL(expected_size, size);
+
+  TInt des_p;
+  auto read_size = des_p.Deserialize(buf);
+  TEST_ASSERT_EQUAL(expected_size, read_size);
+  TEST_ASSERT_EQUAL(static_cast<typename TInt::ValueType>(p),
+                    static_cast<typename TInt::ValueType>(des_p));
+}
+
+template <typename TInt>
+void TestValueToSizeStream(typename TInt::ValueType value,
+                           std::size_t expected_size) {
+  auto p = TInt{value};
+  Omstream os{};
+  p.SerializeTo(os.stream());
+
+  auto s = (std::stringstream{}
+            << "Stream test on value " << static_cast<std::uint64_t>(value)
+            << ", serialized as hex_arr: " << print(os.data())
+            << " expected size:" << expected_size)
+               .str();
+  UNITY_SET_DETAIL(s.c_str());
+
+  TEST_ASSERT_EQUAL(expected_size, os.data().size());
+
+  Imstream is{os.data()};
+  auto des_p = TInt{};
+  auto res = des_p.DeserializeFrom(is.stream());
+  TEST_ASSERT_EQUAL(TierDeserializeRes::kFinished, res);
+  TEST_ASSERT_EQUAL(static_cast<typename TInt::ValueType>(p),
+                    static_cast<typename TInt::ValueType>(des_p));
+}
+
 template <typename PInt>
 void TestRange() {
   auto get_next_step = [&]() {
@@ -100,185 +184,122 @@ void TestRange() {
     if constexpr (step == 0 || step == 1) {
       return typename PInt::ValueType{1};
     } else {
-      return GetRandom<typename PInt::ValueType>(0, step);
+      return GetRandom<typename PInt::ValueType>(1, step);
     }
   };
 
   for (auto i = get_next_step(); i < PInt::kUpper; i += get_next_step()) {
-    auto p = PInt{i};
-    Omstream os{};
-    p.Serialize(os.stream());
-
-    auto s = (std::stringstream{}
-              << "Test on value " << static_cast<std::uint64_t>(i)
-              << " serialized as hex_arr: " << print(os.data()))
-                 .str();
-    UNITY_SET_DETAIL(s.c_str());
-
-    Imstream is{os.data()};
-    auto des_p = PInt{};
-    auto res = des_p.Deserialize(is.stream());
-    TEST_ASSERT_EQUAL(res, TierDeserializeRes::kFinished);
-    TEST_ASSERT_EQUAL(static_cast<typename PInt::ValueType>(p),
-                      static_cast<typename PInt::ValueType>(des_p));
+    TestRoundTripBuffer(PInt{i});
+    std::uint8_t buf[8] = {};
+    auto size = PInt{i}.Serialize(buf);
+    TestValueToSizeStream<PInt>(i, size);
   }
 }
 
-template <typename TInt>
-void TestValueToSize(typename TInt::ValueType value,
-                     std::size_t expected_size) {
-  auto p = TInt{value};
-  Omstream os{};
-  p.Serialize(os.stream());
+void test_TwoTier() {
+  TestRoundTripBuffer(T1{249});
+  TestRoundTripBuffer(T1{250});
+  TestRoundTripBuffer(T1{251});
+  TestRoundTripBuffer(T1{1785});
 
-  auto s = (std::stringstream{}
-            << "Test on value " << static_cast<std::uint64_t>(value)
-            << ", serialized as hex_arr:{} " << print(os.data())
-            << " expected size:" << expected_size)
-               .str();
-  UNITY_SET_DETAIL(s.c_str());
+  TestValueToSize<T1>(249, 1);
+  TestValueToSize<T1>(250, 2);
+  TestValueToSize<T1>(251, 2);
+  TestValueToSize<T1>(1785, 2);
 
-  TEST_ASSERT_EQUAL(expected_size, os.data().size());
-  Imstream is{os.data()};
-  auto des_p = TInt{};
-  auto res = des_p.Deserialize(is.stream());
-  TEST_ASSERT_EQUAL(res, TierDeserializeRes::kFinished);
-  TEST_ASSERT_EQUAL(static_cast<typename TInt::ValueType>(p),
-                    static_cast<typename TInt::ValueType>(des_p));
+  TestValueToSizeStream<T1>(249, 1);
+  TestValueToSizeStream<T1>(250, 2);
+  TestValueToSizeStream<T1>(1785, 2);
+
+  std::uint64_t v = 0;
+  { S b{249}; T1 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  TEST_ASSERT_EQUAL(249, v);
+  { S b{250, 0}; T1 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  TEST_ASSERT_EQUAL(250, v);
+  { S b{250, 1}; T1 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  TEST_ASSERT_EQUAL(251, v);
+  { S b{255, 255}; T1 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  TEST_ASSERT_EQUAL(1785, v);
+
+  TEST_ASSERT(T1{249} == T1{249});
+  TEST_ASSERT(T1{250} > T1{249});
+  TEST_ASSERT(std::numeric_limits<T1>::max() == T1::kUpper);
 }
 
-void test_StorePackedInt250() {
-  using P8 = TieredInt<std::uint8_t, std::uint8_t, 250>;
+void test_ThreeTier() {
+  TestRoundTripBuffer(T2{1529});
+  TestRoundTripBuffer(T2{1530});
+  TestRoundTripBuffer(T2{16778745});
 
-  TEST_MESSAGE("one byte packed");
-  TestValueToSize<P8>(0, 1);
-  TestValueToSize<P8>(250, 1);
-  TestRange<P8>();
+  TestValueToSize<T2>(1529, 2);
+  TestValueToSize<T2>(1530, 4);
+  TestValueToSize<T2>(16778745, 4);
 
-  using P16 = TieredInt<std::uint16_t, std::uint8_t, 250>;
-  TEST_MESSAGE("two byte packed");
-  TestValueToSize<P16>(0, 1);
-  TestValueToSize<P16>(250, 1);
-  TestValueToSize<P16>(251, 2);
-  TestValueToSize<P16>(255, 2);
-  TestValueToSize<P16>(1456, 2);
-  TestValueToSize<P16>(1514, 2);
-  TestRange<P16>();
+  TestValueToSizeStream<T2>(1529, 2);
+  TestValueToSizeStream<T2>(1530, 4);
+  TestValueToSizeStream<T2>(16778745, 4);
 
-  using P32 = TieredInt<std::uint32_t, std::uint8_t, 250>;
-  TEST_MESSAGE("four byte packed");
-  TestValueToSize<P32>(251, 2);
-  TestValueToSize<P32>(1500, 2);
-  TestValueToSize<P32>(2000, 4);
-  TestValueToSize<P32>(64512, 4);
-  TestValueToSize<P32>(P32::kUpper - 1, 4);
-  TestRange<P32>();
-
-  using P64 = TieredInt<std::uint64_t, std::uint8_t, 250>;
-  TEST_MESSAGE("eight byte packed");
-  TestValueToSize<P64>(154, 1);
-  TestValueToSize<P64>(64511, 4);
-  TestValueToSize<P64>(P32::kUpper - 1, 4);
-  TestValueToSize<P64>(P32::kUpper + 1, 8);
-  TestValueToSize<P64>(P64::kUpper - 1, 8);
-  TestRange<P64>();
+  std::uint64_t v = 0;
+  { S b{254, 255}; T2 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  TEST_ASSERT_EQUAL(1529, v);
+  { S b{255, 0, 0, 0}; T2 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  TEST_ASSERT_EQUAL(1530, v);
+  { S b{255, 255, 65535}; T2 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  TEST_ASSERT_EQUAL(16778745, v);
 }
 
-void test_StoreOneByteMin() {
-  using P16_128 = TieredInt<std::uint16_t, std::uint8_t, 127>;
-  [[maybe_unused]] constexpr auto upper_128 = P16_128::kUpper;
-  TestValueToSize<P16_128>(0, 1);
-  TestValueToSize<P16_128>(127, 1);
-  TestValueToSize<P16_128>(128, 2);
-  TestValueToSize<P16_128>(128, 2);
-  TestValueToSize<P16_128>(250, 2);
-  TestValueToSize<P16_128>(1200, 2);
-  TestValueToSize<P16_128>(1515, 2);
-  TestValueToSize<P16_128>(20000, 2);
-  TestValueToSize<P16_128>(32879, 2);
-  TestRange<P16_128>();
+void test_FourTier() {
+  TestRoundTripBuffer(T3{16777215});
+  TestRoundTripBuffer(T3{16777216});
+  TestRoundTripBuffer(T3{16777217});
+  TestRoundTripBuffer(T3{6571316740095ull});
 
-  using P16_255 = TieredInt<std::uint16_t, std::uint8_t, 254>;
-  [[maybe_unused]] constexpr auto upper_255 = P16_255::kUpper;
-  TestValueToSize<P16_255>(0, 1);
-  TestValueToSize<P16_255>(127, 1);
-  TestValueToSize<P16_255>(250, 1);
-  TestValueToSize<P16_255>(254, 1);
-  TestValueToSize<P16_255>(255, 2);
-  TestValueToSize<P16_255>(256, 2);
-  TestValueToSize<P16_255>(400, 2);
-  TestValueToSize<P16_255>(494, 2);
-  TestRange<P16_255>();
+  TestValueToSize<T3>(16777215, 4);
+  TestValueToSize<T3>(16777216, 8);
+  TestValueToSize<T3>(16777217, 8);
+  TestValueToSize<T3>(6571316740095ull, 8);
 
-  using P16_2 = TieredInt<std::uint16_t, std::uint8_t, 1>;
-  [[maybe_unused]] constexpr auto upper_2 = P16_2::kUpper;
-  TestValueToSize<P16_2>(0, 1);
-  TestValueToSize<P16_2>(1, 1);
-  TestValueToSize<P16_2>(2, 2);
-  TestValueToSize<P16_2>(20, 2);
-  TestValueToSize<P16_2>(128, 2);
-  TestValueToSize<P16_2>(255, 2);
-  TestValueToSize<P16_2>(1500, 2);
-  TestValueToSize<P16_2>(65009, 2);
-  TestRange<P16_2>();
+  TestValueToSizeStream<T3>(16777215, 4);
+  TestValueToSizeStream<T3>(16777216, 8);
+
+  std::uint64_t v = 0;
+  { S b{255, 255, static_cast<std::uint16_t>(65535 - 1530), 0};
+    T3 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  TEST_ASSERT_EQUAL(16777215, v);
+  { S b{255, 255, static_cast<std::uint16_t>(65535 - 1530 + 1), 0};
+    T3 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  TEST_ASSERT_EQUAL(16777216, v);
+  { S b{255, 255, static_cast<std::uint16_t>(65535 - 1530 + 1), 1};
+    T3 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  TEST_ASSERT_EQUAL(16777217, v);
+  { S b{255, 255, 65535, 0xFFFFFFFF};
+    T3 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  TEST_ASSERT_EQUAL(6571316740095ull, v);
 }
 
-void test_StoreTwoBytesMin() {
-  using P32_32768 = TieredInt<std::uint32_t, std::uint16_t, 32767>;
-  [[maybe_unused]] constexpr auto upper_32768 = P32_32768::kUpper;
-  TestValueToSize<P32_32768>(0, 2);
-  TestValueToSize<P32_32768>(1200, 2);
-  TestValueToSize<P32_32768>(1548, 2);
-  TestValueToSize<P32_32768>(20000, 2);
-  TestValueToSize<P32_32768>(32767, 2);
-  TestValueToSize<P32_32768>(64000, 4);
-  TestValueToSize<P32_32768>(65535, 4);
-  TestValueToSize<P32_32768>(2000000, 4);
-  TestValueToSize<P32_32768>(2100000100, 4);
-  TestRange<P32_32768>();
-
-  using P32_65531 = TieredInt<std::uint32_t, std::uint16_t, 65530>;
-  [[maybe_unused]] constexpr auto upper_65531 = P32_65531::kUpper;
-  TestValueToSize<P32_65531>(0, 2);
-  TestValueToSize<P32_65531>(1598, 2);
-  TestValueToSize<P32_65531>(20000, 2);
-  TestValueToSize<P32_65531>(32767, 2);
-  TestValueToSize<P32_65531>(64000, 2);
-  TestValueToSize<P32_65531>(65530, 2);
-  TestValueToSize<P32_65531>(65535, 4);
-  TestValueToSize<P32_65531>(300000, 4);
-  TestValueToSize<P32_65531>(392954, 4);
-  TestRange<P32_65531>();
+void test_StartSizeTwoAndFour() {
+  // StartSize selects ValueType; the first wire byte is always uint8_t, so tier
+  // max values above 255 only affect range typing, not multi-byte thresholds.
+  TestRoundTripBuffer(T4{255});
+  TestRoundTripBuffer(T5{255});
+  TestRoundTripBuffer(T6{10});
+  TestRoundTripBuffer(T6{11});
+  TestRoundTripBuffer(T6{255});
 }
 
-void test_StoreFourBytesMin() {
-  using P64_0xfffffffb = TieredInt<std::uint64_t, std::uint32_t, 0xfffffffa>;
-  [[maybe_unused]] constexpr auto upper_0xfffffffb = P64_0xfffffffb::kUpper;
-  TestValueToSize<P64_0xfffffffb>(0, 4);
-  TestValueToSize<P64_0xfffffffb>(0xffff, 4);
-  TestValueToSize<P64_0xfffffffb>(0xfffffffa, 4);
-  TestValueToSize<P64_0xfffffffb>(0xfffffffb, 8);
-  TestValueToSize<P64_0xfffffffb>(0xffffffff, 8);
-  TestValueToSize<P64_0xfffffffb>(0x4fffefffa, 8);
-  TestRange<P64_0xfffffffb>();
-
-  using P64_0x10000000 = TieredInt<std::uint64_t, std::uint32_t, 0x0fffffff>;
-  [[maybe_unused]] constexpr auto upper_0x10000000 = P64_0x10000000::kUpper;
-  TestValueToSize<P64_0x10000000>(0, 4);
-  TestValueToSize<P64_0x10000000>(0xffff, 4);
-  TestValueToSize<P64_0x10000000>(0x0fffffff, 4);
-  TestValueToSize<P64_0x10000000>(0x10000000, 8);
-  TestValueToSize<P64_0x10000000>(0xffffffff, 8);
-  TestValueToSize<P64_0x10000000>(0xffffffffff, 8);
-  TestRange<P64_0x10000000>();
+void test_Range() {
+  TestRange<T1>();
+  TestRange<T2>();
 }
+
 }  // namespace ae::test_tiered_int
 
 int test_tiered_int() {
   UNITY_BEGIN();
-  RUN_TEST(ae::test_tiered_int::test_StorePackedInt250);
-  RUN_TEST(ae::test_tiered_int::test_StoreOneByteMin);
-  RUN_TEST(ae::test_tiered_int::test_StoreTwoBytesMin);
-  RUN_TEST(ae::test_tiered_int::test_StoreFourBytesMin);
+  RUN_TEST(ae::test_tiered_int::test_TwoTier);
+  RUN_TEST(ae::test_tiered_int::test_ThreeTier);
+  RUN_TEST(ae::test_tiered_int::test_FourTier);
+  RUN_TEST(ae::test_tiered_int::test_StartSizeTwoAndFour);
+  RUN_TEST(ae::test_tiered_int::test_Range);
   return UNITY_END();
 }

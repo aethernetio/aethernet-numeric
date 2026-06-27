@@ -16,7 +16,6 @@
 
 #include <unity.h>
 
-#include "numeric/tiered_int.h"
 #include "numeric/fixed_point.h"
 
 namespace ae::test_fixed_point {
@@ -130,8 +129,7 @@ void test_FixedPoint() {
 
 void test_Exponent() {
   {
-    using P = TieredInt<std::uint16_t, std::uint8_t, 250>;
-    using E = AE_EXPONENT(P, 0.001, 60.0);
+    using E = AE_EXPONENT(std::uint8_t, 0.001, 60.0);
 
     E e(60.0);
     auto stored = e.Serialize();
