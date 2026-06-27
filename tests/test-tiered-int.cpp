@@ -31,13 +31,20 @@
 
 namespace ae::test_tiered_int {
 
-using T1 = TieredInt<1, 249>;
-using T2 = TieredInt<1, 249, 1529>;
-using T3 = TieredInt<1, 249, 1529, 16777215>;
-using T4 = TieredInt<2, 1000>;
-using T5 = TieredInt<2, 1000, 8000>;
-using T6 = TieredInt<4, 10>;
-using T7 = TieredInt<1, 255>;
+using T1 = TieredInt<std::uint8_t, 249>;
+using T2 = TieredInt<std::uint8_t, 249, 1529>;
+using T3 = TieredInt<std::uint8_t, 249, 1529, 16777215>;
+using T4 = TieredInt<std::uint16_t, 1000>;
+using T5 = TieredInt<std::uint16_t, 1000, 8000>;
+using T6 = TieredInt<std::uint32_t, 10>;
+using T7 = TieredInt<std::uint8_t, 255>;
+
+using S1 = TieredInt<std::int16_t, 1000>;
+
+static_assert(T1::kIsSigned == false);
+static_assert(S1::kIsSigned == true);
+static_assert(std::is_same_v<T1, TieredIntFromStartSize<1, 249>>);
+static_assert(std::is_same_v<T4, TieredIntFromStartSize<2, 1000>>);
 
 static_assert(std::is_same_v<T1::ValueType, std::uint16_t>);
 static_assert(std::is_same_v<T2::ValueType, std::uint32_t>);
@@ -89,6 +96,12 @@ static_assert(T7::kMaxWireBytes == 2);
 static_assert(sizeof(T7::ValueType) == 1);
 static_assert(T7::kUpper == 255);
 static_assert(T7::kUpper <= static_cast<T7::ValueType>(T7::kHeaderMax));
+
+static_assert(S1::kBaseBytes == 2);
+static_assert(S1::kMaxWireBytes == 4);
+static_assert(sizeof(S1::ValueType) == 8);
+static_assert(S1::kLower == -4229366760);
+static_assert(S1::kUpper == 4229366760);
 
 struct ObVector {
   using size_type = std::uint32_t;
@@ -405,6 +418,25 @@ void test_WireSizeTransitions() {
   TestMaxWireSize<T6>();
 }
 
+void test_SignedWireCell() {
+  TestRoundTripBuffer(S1{0});
+  TestRoundTripBuffer(S1{-1000});
+  TestRoundTripBuffer(S1{1000});
+  TestRoundTripBuffer(S1{-1001});
+  TestRoundTripBuffer(S1{1001});
+
+  TestWireSizeTransition<S1>(1000, 1001, 2, 4);
+  TestWireSizeTransition<S1>(-1000, -1001, 2, 4);
+
+  TestValueToSize<S1>(-500, 2);
+  TestValueToSize<S1>(500, 2);
+  TestValueToSizeStream<S1>(-1001, 4);
+
+  TEST_ASSERT(S1{-1000} < S1{1000});
+  TEST_ASSERT(std::numeric_limits<S1>::min() == S1::kLower);
+  TEST_ASSERT(std::numeric_limits<S1>::max() == S1::kUpper);
+}
+
 void test_Range() {
   TestRange<T1>();
   TestRange<T2>();
@@ -422,6 +454,7 @@ int test_tiered_int() {
   RUN_TEST(ae::test_tiered_int::test_StartSizeTwoAndFour);
   RUN_TEST(ae::test_tiered_int::test_MinimalValueType);
   RUN_TEST(ae::test_tiered_int::test_WireSizeTransitions);
+  RUN_TEST(ae::test_tiered_int::test_SignedWireCell);
   RUN_TEST(ae::test_tiered_int::test_Range);
   return UNITY_END();
 }
