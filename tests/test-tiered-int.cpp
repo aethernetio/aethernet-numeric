@@ -37,6 +37,7 @@ using T3 = TieredInt<1, 249, 1529, 16777215>;
 using T4 = TieredInt<2, 1000>;
 using T5 = TieredInt<2, 1000, 8000>;
 using T6 = TieredInt<4, 10>;
+using T7 = TieredInt<1, 255>;
 
 static_assert(std::is_same_v<T1::ValueType, std::uint16_t>);
 static_assert(std::is_same_v<T2::ValueType, std::uint32_t>);
@@ -44,6 +45,12 @@ static_assert(std::is_same_v<T3::ValueType, std::uint64_t>);
 static_assert(std::is_same_v<T4::ValueType, std::uint32_t>);
 static_assert(std::is_same_v<T5::ValueType, std::uint64_t>);
 static_assert(std::is_same_v<T6::ValueType, std::uint64_t>);
+static_assert(std::is_same_v<T7::ValueType, std::uint8_t>);
+static_assert(T7::kUpper == 255);
+static_assert(T1{T1::kUpper}.value_ == T1::kUpper);
+static_assert(T4{1000}.value_ == 1000);
+static_assert(T1::kUpper > std::numeric_limits<std::uint8_t>::max());
+static_assert(T1::kUpper <= std::numeric_limits<std::uint16_t>::max());
 
 struct ObVector {
   using size_type = std::uint32_t;
@@ -225,6 +232,16 @@ void test_TwoTier() {
   TEST_ASSERT(std::numeric_limits<T1>::max() == T1::kUpper);
 }
 
+void test_ConstexprConstruction() {
+  constexpr T1 at_max{T1::kUpper};
+  TEST_ASSERT_EQUAL(T1::kUpper, at_max.value_);
+  constexpr T4 at_tier_boundary{1000};
+  TEST_ASSERT_EQUAL(1000, at_tier_boundary.value_);
+  T1 assigned{};
+  assigned = 1785;
+  TEST_ASSERT_EQUAL(1785, assigned.value_);
+}
+
 void test_ThreeTier() {
   TestRoundTripBuffer(T2{1529});
   TestRoundTripBuffer(T2{1530});
@@ -299,6 +316,13 @@ void test_StartSizeTwoAndFour() {
   TestValueToSizeStream<T6>(11, 8);
 }
 
+void test_MinimalValueType() {
+  TestRoundTripBuffer(T7{255});
+  TestRoundTripBuffer(T7{254});
+  TestValueToSize<T7>(255, 1);
+  TestValueToSize<T7>(254, 1);
+}
+
 void test_Range() {
   TestRange<T1>();
   TestRange<T2>();
@@ -310,9 +334,11 @@ void test_Range() {
 int test_tiered_int() {
   UNITY_BEGIN();
   RUN_TEST(ae::test_tiered_int::test_TwoTier);
+  RUN_TEST(ae::test_tiered_int::test_ConstexprConstruction);
   RUN_TEST(ae::test_tiered_int::test_ThreeTier);
   RUN_TEST(ae::test_tiered_int::test_FourTier);
   RUN_TEST(ae::test_tiered_int::test_StartSizeTwoAndFour);
+  RUN_TEST(ae::test_tiered_int::test_MinimalValueType);
   RUN_TEST(ae::test_tiered_int::test_Range);
   return UNITY_END();
 }

@@ -16,6 +16,8 @@
 
 #include <unity.h>
 
+#include <cmath>
+
 #include "numeric/fixed_point.h"
 
 namespace ae::test_fixed_point {

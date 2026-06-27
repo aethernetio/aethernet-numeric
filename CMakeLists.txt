@@ -27,7 +27,7 @@ endif()
 option(AE_BUILD_TESTS "Build tests" ${IS_ROOT_PROJECT} )
 option(AE_NUMERIC_INSTALL "Install numeric library" ${IS_ROOT_PROJECT} )
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(cmake/CPM.cmake)

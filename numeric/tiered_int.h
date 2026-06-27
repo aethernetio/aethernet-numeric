@@ -18,37 +18,29 @@
 #define NUMERIC_TIERED_INT_H_
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <stdexcept>
 #include <type_traits>
 
 namespace ae {
 
 namespace tiered_int_internal {
 
-template <int StartSize, int NumTiers>
-struct TieredStorageType {
-  static_assert((StartSize == 1 || StartSize == 2 || StartSize == 4),
-                "Unsupported base size");
-
-  using type = std::conditional_t<
-      (StartSize == 1 && NumTiers == 2), std::uint16_t,
-      std::conditional_t<
-          (StartSize == 1 && NumTiers == 3) ||
-              (StartSize == 2 && NumTiers == 2),
-          std::uint32_t, std::uint64_t>>;
-};
-
 template <int StartSize>
 struct StartSizeTraits {
+  static_assert((StartSize == 1 || StartSize == 2 || StartSize == 4),
+                "Unsupported base size");
   static constexpr int kBytes = StartSize;
   static constexpr std::uint64_t kWord =
       StartSize == 1   ? 256ull
       : StartSize == 2 ? 65536ull
                        : 4294967296ull;
   static constexpr std::uint64_t kHeaderMax = kWord - 1;
-  static constexpr std::size_t kMaxWireBytes = static_cast<std::size_t>(StartSize) * 8u;
+  static constexpr std::size_t kMaxWireBytes =
+      static_cast<std::size_t>(StartSize) * 8u;
 };
 
 template <int StartSize>
@@ -60,6 +52,51 @@ constexpr std::uint64_t kWordPow(int tier_idx) {
   const std::uint64_t half = kWordPow<StartSize>(tier_idx - 1);
   return half * half;
 }
+
+template <int StartSize, std::uint32_t... TierMaxVals>
+struct MaxEncodableValue {
+  static constexpr int NumTiers = sizeof...(TierMaxVals) + 1;
+  static constexpr std::uint64_t kWord = StartSizeTraits<StartSize>::kWord;
+  static constexpr std::uint64_t kHeaderMax =
+      StartSizeTraits<StartSize>::kHeaderMax;
+
+  static constexpr std::uint64_t value = []() constexpr {
+    constexpr std::uint32_t tiers[] = {TierMaxVals...};
+    if constexpr (NumTiers == 1) {
+      return tiers[0];
+    } else if constexpr (NumTiers == 2) {
+      return (kHeaderMax - tiers[0] - 1) * kWord + tiers[0] + 1 + kHeaderMax;
+    } else if constexpr (NumTiers == 3) {
+      constexpr auto two_tier_v =
+          (kHeaderMax - tiers[0] - 1) * kWord + tiers[0] + 1 + kHeaderMax;
+      constexpr auto word2 = kWordPow<StartSize>(1);
+      return (two_tier_v - tiers[1] - 1) * word2 + tiers[1] + 1 + (word2 - 1);
+    } else {
+      constexpr auto two_tier_v =
+          (kHeaderMax - tiers[0] - 1) * kWord + tiers[0] + 1 + kHeaderMax;
+      constexpr auto word2 = kWordPow<StartSize>(1);
+      constexpr auto three_tier_v =
+          (two_tier_v - tiers[1] - 1) * word2 + tiers[1] + 1 + (word2 - 1);
+      constexpr auto word4 = kWordPow<StartSize>(2);
+      return (three_tier_v - tiers[2] - 1) * word4 + tiers[2] + 1 + (word4 - 1);
+    }
+  }();
+};
+
+template <std::uint64_t Max>
+struct MinimalUIntFor {
+  using type = std::conditional_t<
+      Max <= static_cast<std::uint64_t>(std::numeric_limits<std::uint8_t>::max()),
+      std::uint8_t,
+      std::conditional_t<
+          Max <= static_cast<std::uint64_t>(
+                     std::numeric_limits<std::uint16_t>::max()),
+          std::uint16_t,
+          std::conditional_t<
+              Max <= static_cast<std::uint64_t>(
+                         std::numeric_limits<std::uint32_t>::max()),
+              std::uint32_t, std::uint64_t>>>;
+};
 
 inline std::uint64_t read_little_endian_u64(const std::uint8_t* p, int bytes) {
   std::uint64_t out = 0;
@@ -121,49 +158,65 @@ struct TieredInt {
   static_assert(tiered_int_internal::FirstOf<TierMaxVals...>::value <= kHeaderMax,
                 "First tier max must fit in the base wire word");
 
+  static constexpr std::uint64_t kMaxEncodable =
+      tiered_int_internal::MaxEncodableValue<StartSize,
+                                             TierMaxVals...>::value;
+
+  static_assert(
+      kMaxEncodable <= std::numeric_limits<std::uint64_t>::max(),
+      "TieredInt configuration exceeds uint64_t encodable range");
+
   using ValueType =
-      typename tiered_int_internal::TieredStorageType<StartSize,
-                                                      NumTiers>::type;
+      typename tiered_int_internal::MinimalUIntFor<kMaxEncodable>::type;
+
+  static_assert(kMaxEncodable <= std::numeric_limits<ValueType>::max(),
+                "ValueType must hold kMaxEncodable");
+
+  static constexpr ValueType kUpper = static_cast<ValueType>(kMaxEncodable);
 
   ValueType value_ = 0;
 
-  static constexpr ValueType kUpper = []() constexpr {
-    constexpr ValueType tiers[] = {TierMaxVals...};
-    if constexpr (NumTiers == 1) {
-      return static_cast<ValueType>(tiers[0]);
-    } else if constexpr (NumTiers == 2) {
-      return static_cast<ValueType>((kHeaderMax - tiers[0] - 1) * kWord +
-                                    tiers[0] + 1 + kHeaderMax);
-    } else if constexpr (NumTiers == 3) {
-      constexpr auto two_tier_v =
-          static_cast<std::uint64_t>((kHeaderMax - tiers[0] - 1) * kWord +
-                                     tiers[0] + 1 + kHeaderMax);
-      constexpr auto word2 =
-          tiered_int_internal::kWordPow<StartSize>(1);
-      return static_cast<ValueType>((two_tier_v - tiers[1] - 1) * word2 +
-                                    tiers[1] + 1 + (word2 - 1));
-    } else {
-      constexpr auto two_tier_v =
-          static_cast<std::uint64_t>((kHeaderMax - tiers[0] - 1) * kWord +
-                                     tiers[0] + 1 + kHeaderMax);
-      constexpr auto word2 =
-          tiered_int_internal::kWordPow<StartSize>(1);
-      constexpr auto three_tier_v =
-          (two_tier_v - tiers[1] - 1) * word2 + tiers[1] + 1 + (word2 - 1);
-      constexpr auto word4 =
-          tiered_int_internal::kWordPow<StartSize>(2);
-      return static_cast<ValueType>((three_tier_v - tiers[2] - 1) * word4 +
-                                    tiers[2] + 1 + (word4 - 1));
-    }
-  }();
-
   constexpr TieredInt() = default;
 
-  template <typename T>
-  constexpr TieredInt(T v) : value_(static_cast<ValueType>(v)) {}
+  template <typename T,
+            std::enable_if_t<std::is_integral_v<T>, int> = 0>
+  constexpr TieredInt(T v) : value_(check_value(v)) {}
+
+  template <typename T,
+            std::enable_if_t<std::is_integral_v<T>, int> = 0>
+  constexpr TieredInt& operator=(T v) {
+    value_ = check_value(v);
+    return *this;
+  }
 
   constexpr operator ValueType() const noexcept { return value_; }
 
+ private:
+  template <typename T>
+  static constexpr ValueType check_value(T v) {
+    using Wide = std::uint64_t;
+    if constexpr (std::is_signed_v<T>) {
+      if (v < 0) {
+        if consteval {
+          throw std::invalid_argument(
+              "TieredInt value must be non-negative");
+        } else {
+          assert(v >= 0);
+        }
+      }
+    }
+    if (static_cast<Wide>(v) > static_cast<Wide>(kUpper)) {
+      if consteval {
+        throw std::out_of_range(
+            "TieredInt value exceeds the maximum encodable value");
+      } else {
+        assert(static_cast<Wide>(v) <= static_cast<Wide>(kUpper));
+      }
+    }
+    return static_cast<ValueType>(v);
+  }
+
+ public:
   std::size_t Serialize(std::uint8_t* out) const {
     constexpr ValueType tiers[] = {TierMaxVals...};
     auto v = static_cast<std::uint64_t>(value_);

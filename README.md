@@ -165,7 +165,7 @@ auto restored = deserialize<Duration>(bytes);
 ## Integration Notes
 
 * **Header-only**, zero external deps (beyond the C++ standard library)
-* C++17 or newer
+* C++23
 * Interoperable with Æthernet message packing
 * Designed for deterministic, low-overhead serialization on MCUs and embedded systems
 * Typical code size per instantiated type is minimal
