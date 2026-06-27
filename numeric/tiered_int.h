@@ -29,6 +29,8 @@ namespace ae {
 
 namespace tiered_int_internal {
 
+inline constexpr std::size_t kAbsoluteMaxWireBytes = 8;
+
 template <int StartSize>
 struct StartSizeTraits {
   static_assert((StartSize == 1 || StartSize == 2 || StartSize == 4),
@@ -39,8 +41,6 @@ struct StartSizeTraits {
       : StartSize == 2 ? 65536ull
                        : 4294967296ull;
   static constexpr std::uint64_t kHeaderMax = kWord - 1;
-  static constexpr std::size_t kMaxWireBytes =
-      static_cast<std::size_t>(StartSize) * 8u;
 };
 
 template <int StartSize>
@@ -148,10 +148,14 @@ struct TieredInt {
   static constexpr std::uint64_t kHeaderMax =
       tiered_int_internal::StartSizeTraits<StartSize>::kHeaderMax;
   static constexpr std::size_t kMaxWireBytes =
-      tiered_int_internal::StartSizeTraits<StartSize>::kMaxWireBytes;
+      static_cast<std::size_t>(StartSize) * (1u << (NumTiers - 1));
 
+  static_assert(NumTiers <= 4, "At most 4 tiers are supported");
   static_assert(sizeof...(TierMaxVals) >= 1,
                 "At least one tier maximum is required");
+  static_assert(
+      kMaxWireBytes <= tiered_int_internal::kAbsoluteMaxWireBytes,
+      "Tier configuration exceeds the 8-byte wire limit");
   static_assert(
       tiered_int_internal::IsStrictlyIncreasing<TierMaxVals...>::value,
       "Tier max values must be strictly increasing");

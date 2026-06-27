@@ -46,11 +46,49 @@ static_assert(std::is_same_v<T4::ValueType, std::uint32_t>);
 static_assert(std::is_same_v<T5::ValueType, std::uint64_t>);
 static_assert(std::is_same_v<T6::ValueType, std::uint64_t>);
 static_assert(std::is_same_v<T7::ValueType, std::uint8_t>);
-static_assert(T7::kUpper == 255);
-static_assert(T1{T1::kUpper}.value_ == T1::kUpper);
-static_assert(T4{1000}.value_ == 1000);
+
+static_assert(T1::kBaseBytes == 1);
+static_assert(T1::kMaxWireBytes == 2);
+static_assert(sizeof(T1::ValueType) == 2);
+static_assert(T1::kMaxWireBytes == sizeof(T1::ValueType));
+static_assert(T1::kUpper == 1785);
 static_assert(T1::kUpper > std::numeric_limits<std::uint8_t>::max());
 static_assert(T1::kUpper <= std::numeric_limits<std::uint16_t>::max());
+static_assert(T1{T1::kUpper}.value_ == T1::kUpper);
+
+static_assert(T2::kBaseBytes == 1);
+static_assert(T2::kMaxWireBytes == 4);
+static_assert(sizeof(T2::ValueType) == 4);
+static_assert(T2::kMaxWireBytes == sizeof(T2::ValueType));
+static_assert(T2::kUpper == 16778745);
+
+static_assert(T3::kBaseBytes == 1);
+static_assert(T3::kMaxWireBytes == 8);
+static_assert(sizeof(T3::ValueType) == 8);
+static_assert(T3::kMaxWireBytes == sizeof(T3::ValueType));
+static_assert(T3::kUpper == 6571316740095ull);
+
+static_assert(T4::kBaseBytes == 2);
+static_assert(T4::kMaxWireBytes == 4);
+static_assert(sizeof(T4::ValueType) == 4);
+static_assert(T4::kMaxWireBytes == sizeof(T4::ValueType));
+static_assert(T4{1000}.value_ == 1000);
+
+static_assert(T5::kBaseBytes == 2);
+static_assert(T5::kMaxWireBytes == 8);
+static_assert(sizeof(T5::ValueType) == 8);
+static_assert(T5::kMaxWireBytes == sizeof(T5::ValueType));
+
+static_assert(T6::kBaseBytes == 4);
+static_assert(T6::kMaxWireBytes == 8);
+static_assert(sizeof(T6::ValueType) == 8);
+static_assert(T6::kMaxWireBytes == sizeof(T6::ValueType));
+
+static_assert(T7::kBaseBytes == 1);
+static_assert(T7::kMaxWireBytes == 2);
+static_assert(sizeof(T7::ValueType) == 1);
+static_assert(T7::kUpper == 255);
+static_assert(T7::kUpper <= static_cast<T7::ValueType>(T7::kHeaderMax));
 
 struct ObVector {
   using size_type = std::uint32_t;
