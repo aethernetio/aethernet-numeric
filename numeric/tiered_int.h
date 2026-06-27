@@ -24,6 +24,7 @@
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 
 namespace ae {
 
@@ -97,6 +98,9 @@ struct MaxEncodableValue {
   static constexpr std::uint64_t value = []() constexpr {
     constexpr std::uint32_t tiers[] = {
         WireTierThreshold<WireCell, TierMaxVals>()...};
+    if constexpr (tiers[0] >= kHeaderMax) {
+      return kHeaderMax;
+    }
     if constexpr (NumTiers == 1) {
       return tiers[0];
     } else if constexpr (NumTiers == 2) {
@@ -221,8 +225,14 @@ struct TieredInt {
       tiered_int_internal::WireCellTraits<WireCell>::kWord;
   static constexpr std::uint64_t kHeaderMax =
       tiered_int_internal::WireCellTraits<WireCell>::kHeaderMax;
+  static constexpr std::uint32_t kWireTier0 =
+      tiered_int_internal::WireTierThreshold<
+          WireCell, tiered_int_internal::FirstOf<TierMaxVals...>::value>();
+  static constexpr bool kSaturatedSingleCell = (kWireTier0 == kHeaderMax);
   static constexpr std::size_t kMaxWireBytes =
-      static_cast<std::size_t>(kBaseBytes) * (1u << (NumTiers - 1));
+      kSaturatedSingleCell
+          ? static_cast<std::size_t>(kBaseBytes)
+          : static_cast<std::size_t>(kBaseBytes) * (1u << (NumTiers - 1));
 
   static_assert(NumTiers <= 4, "At most 4 tiers are supported");
   static_assert(sizeof...(TierMaxVals) >= 1,
@@ -235,6 +245,10 @@ struct TieredInt {
       "Tier max values must be strictly increasing");
   static_assert(tiered_int_internal::FirstOf<TierMaxVals...>::value <= kHeaderMax,
                 "First tier max must fit in the base wire word");
+  static_assert(
+      kSaturatedSingleCell ||
+          (kWireTier0 < kHeaderMax),
+      "First wire tier must be below header max unless using saturated single-cell mode");
   static_assert(
       !kIsSigned ||
           (tiered_int_internal::WireTierThreshold<
@@ -377,6 +391,12 @@ struct TieredInt {
 
   static std::size_t wire_bytes_needed(const std::uint8_t* in,
                                        std::size_t available) {
+    if constexpr (kSaturatedSingleCell) {
+      return available >= static_cast<std::size_t>(kBaseBytes)
+                 ? static_cast<std::size_t>(kBaseBytes)
+                 : 0;
+    }
+
     if (available < static_cast<std::size_t>(kBaseBytes)) {
       return 0;
     }
@@ -467,6 +487,11 @@ struct TieredInt {
 
   std::size_t serialize_unsigned_magnitude(std::uint64_t v,
                                            std::uint8_t* out) const {
+    if constexpr (kSaturatedSingleCell) {
+      tiered_int_internal::write_little_endian_u64(out, v, kBaseBytes);
+      return static_cast<std::size_t>(kBaseBytes);
+    }
+
     constexpr std::uint32_t tiers[] = {
         tiered_int_internal::WireTierThreshold<WireCell, TierMaxVals>()...};
     std::size_t ret = 0;
@@ -586,10 +611,16 @@ template <typename WireCell1, std::uint32_t... TierMaxVals1,
 int TieredIntCompare(
     TieredInt<WireCell1, TierMaxVals1...> const& left,
     TieredInt<WireCell2, TierMaxVals2...> const& right) {
-  if (left.value_ < right.value_) {
+  using LeftValue =
+      typename TieredInt<WireCell1, TierMaxVals1...>::ValueType;
+  using RightValue =
+      typename TieredInt<WireCell2, TierMaxVals2...>::ValueType;
+  const LeftValue& l = left.value_;
+  const RightValue& r = right.value_;
+  if (std::cmp_less(l, r)) {
     return -1;
   }
-  if (left.value_ > right.value_) {
+  if (std::cmp_greater(l, r)) {
     return 1;
   }
   return 0;

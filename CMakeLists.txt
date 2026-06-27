@@ -34,6 +34,7 @@ include(cmake/CPM.cmake)
 CPMAddPackage(URI "https://github.com/aethernetio/gcem.git#master" EXCLUDE_FROM_ALL FALSE)
 
 add_library(${PROJECT_NAME} INTERFACE)
+target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_23)
 target_link_libraries(${PROJECT_NAME} INTERFACE gcem)
 
 target_include_directories(${PROJECT_NAME} INTERFACE

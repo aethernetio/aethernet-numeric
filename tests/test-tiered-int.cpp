@@ -101,10 +101,13 @@ static_assert(T6::kUpper >
 static_assert(T6{T6::kUpper}.value_ == T6::kUpper);
 
 static_assert(T7::kBaseBytes == 1);
-static_assert(T7::kMaxWireBytes == 2);
+static_assert(T7::kMaxWireBytes == 1);
+static_assert(T7::kSaturatedSingleCell == true);
 static_assert(sizeof(T7::ValueType) == 1);
 static_assert(T7::kUpper == 255);
 static_assert(T7::kUpper <= static_cast<T7::ValueType>(T7::kHeaderMax));
+static_assert(T1::kSaturatedSingleCell == false);
+static_assert(T1::kMaxWireBytes == 2);
 
 static_assert(S1::kBaseBytes == 2);
 static_assert(S1::kMaxWireBytes == 4);
@@ -432,6 +435,10 @@ void test_MinimalValueType() {
   TestRoundTripBuffer(T7{254});
   TestValueToSize<T7>(255, 1);
   TestValueToSize<T7>(254, 1);
+  TestMaxWireSize<T7>();
+
+  TEST_ASSERT(T7::kMaxEncodable == 255);
+  TEST_ASSERT(T7::kMaxWireBytes == T7::kBaseBytes);
 }
 
 void test_WireSizeTransitions() {
@@ -566,6 +573,18 @@ void test_SignedFourTier() {
   TEST_ASSERT(std::numeric_limits<S4>::max() == S4::kUpper);
 }
 
+void test_CrossSignedUnsignedCompare() {
+  TEST_ASSERT(S1{-1} < T1{1});
+  TEST_ASSERT(T1{1} > S1{-1});
+  TEST_ASSERT(S1{-1} < T4{100});
+  TEST_ASSERT(S1{0} == T1{0});
+  TEST_ASSERT(S1{100} == T4{100});
+  TEST_ASSERT(S1{100} < T4{101});
+  TEST_ASSERT(S4{-1} < T6{1});
+  TEST_ASSERT(T6{1} > S4{-1});
+  TEST_ASSERT(S4{-1} < T6{1000});
+}
+
 void test_Range() {
   TestRange<T1>();
   TestRange<T2>();
@@ -587,6 +606,7 @@ int test_tiered_int() {
   RUN_TEST(ae::test_tiered_int::test_SignedThreeTier);
   RUN_TEST(ae::test_tiered_int::test_SignedNearInt32Limit);
   RUN_TEST(ae::test_tiered_int::test_SignedFourTier);
+  RUN_TEST(ae::test_tiered_int::test_CrossSignedUnsignedCompare);
   RUN_TEST(ae::test_tiered_int::test_Range);
   return UNITY_END();
 }

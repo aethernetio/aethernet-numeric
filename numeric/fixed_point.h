@@ -81,12 +81,9 @@ struct FixedPoint {
   }
 
   template <typename ST, ST mv, int nb>
-  constexpr FixedPoint<Type, kMaxValue, kIntBits>& Cast(
-      const FixedPoint<ST, mv, nb>& f) {
+  static constexpr FixedPoint Cast(const FixedPoint<ST, mv, nb>& f) {
     static_assert(kIntBits >= nb, "Assignment may cause overflow");
-
-    using ThisType = FixedPoint<Type, kMaxValue, kIntBits>;
-    return ThisType(f.value_);
+    return FixedPoint(f.value_);
   }
 };
 
