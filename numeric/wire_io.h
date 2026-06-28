@@ -147,6 +147,14 @@ DeserializeResult<T> Deserialize(const std::uint8_t* in, std::size_t len) {
   return wire_traits<T>::Deserialize(in, len);
 }
 
+// Returns the number of bytes the next serialized T occupies at the start of
+// the buffer, without requiring an external length. This relies on T being
+// self-delimiting on the wire (the same property that lets it be skipped).
+template <WireSerializable T>
+std::size_t SerializedSizeAt(const std::uint8_t* in, std::size_t len) {
+  return wire_traits<T>::Deserialize(in, len).bytes_read;
+}
+
 }  // namespace ae
 
 #endif  // NUMERIC_WIRE_IO_H_

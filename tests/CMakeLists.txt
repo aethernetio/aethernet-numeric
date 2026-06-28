@@ -39,6 +39,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-text-io.cpp
   test-ostream-io.cpp
   test-wire-io.cpp
+  test-packed-ring.cpp
   test-type-size.cpp
 )
 
