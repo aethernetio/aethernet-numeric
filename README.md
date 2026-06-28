@@ -12,10 +12,11 @@ Used across the Æthernet C++ client to efficiently represent durations, fixed-p
 3. [Fixed](#fixed)
 4. [Exponent](#exponent)
 5. [Text IO](#text-io)
-6. [Combined Types](#combined-types)
-7. [Usage Examples](#usage-examples)
-8. [Integration Notes](#integration-notes)
-9. [Running Tests](#running-tests)
+6. [Wire IO](#wire-io)
+7. [Combined Types](#combined-types)
+8. [Usage Examples](#usage-examples)
+9. [Integration Notes](#integration-notes)
+10. [Running Tests](#running-tests)
 
 ---
 
@@ -149,6 +150,29 @@ Core APIs:
 * `ae::from_chars(first, last, value)` — non-allocating parse
 
 `Exponential` text IO encodes/decodes through `to_runtime()` / `from_runtime()`. JSON or logging layers can call `ToString` / `FromString` without pulling a JSON dependency into the numeric core.
+
+---
+
+## Wire IO
+
+`numeric/wire_io.h` provides a uniform wire serialization API for all numeric types via `wire_traits<T>` and convenience functions `MaxWireBytes`, `Serialize`, and `Deserialize`.
+
+* **Built-in integers** — fixed-width little-endian (`sizeof(T)` bytes); signed types use two's-complement (not ZigZag).
+* **TieredInt** — existing compact variable-length encoding (delegates to `TieredInt::Serialize` / `Deserialize`).
+* **FixedPoint** — serializes only the raw `Rep` storage.
+* **Exponential** — serializes only the `WireT` code (no runtime decode).
+
+Short buffers throw `std::out_of_range` on deserialize.
+
+```cpp
+#include "numeric/wire_io.h"
+
+using F = ae::FixedPoint<ae::TieredInt<std::uint8_t, 254>, 60.0>;
+
+std::uint8_t buf[ae::MaxWireBytes<F>()];
+auto n = ae::Serialize(F::FromInteger(30), buf);
+auto restored = ae::Deserialize<F>(buf, n).value;
+```
 
 ---
 

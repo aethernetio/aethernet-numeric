@@ -36,6 +36,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-fixed-point.cpp
   test-exponential.cpp
   test-text-io.cpp
+  test-wire-io.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE numeric unity)
