@@ -34,6 +34,8 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-tiered-int.cpp
   test-tiered-int-view.cpp
   test-fixed-point.cpp
+  test-exponential.cpp
+  test-text-io.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE numeric unity)

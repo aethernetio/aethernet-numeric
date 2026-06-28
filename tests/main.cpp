@@ -22,11 +22,15 @@ void tearDown() {};
 extern int test_tiered_int();
 extern int test_tiered_int_view();
 extern int test_fixed_point();
+extern int test_exponential();
+extern int test_text_io();
 
 int main() {
   int res = 0;
   res += test_tiered_int();
   res += test_tiered_int_view();
   res += test_fixed_point();
+  res += test_exponential();
+  res += test_text_io();
   return res;
 }

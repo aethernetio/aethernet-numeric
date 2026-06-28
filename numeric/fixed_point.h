@@ -432,6 +432,22 @@ class FixedPoint {
     return !(*this == other);
   }
 
+  constexpr bool operator<(const FixedPoint& other) const {
+    return raw_value() < other.raw_value();
+  }
+
+  constexpr bool operator>(const FixedPoint& other) const {
+    return other < *this;
+  }
+
+  constexpr bool operator<=(const FixedPoint& other) const {
+    return !(other < *this);
+  }
+
+  constexpr bool operator>=(const FixedPoint& other) const {
+    return !(*this < other);
+  }
+
   constexpr FixedPoint operator+(const FixedPoint& other) const {
     return FromRaw(fixed_point_internal::RepFromRawValue<Rep>(
         fixed_point_internal::SaturatedAddRaw(raw_value(), other.raw_value(),

@@ -11,10 +11,11 @@ Used across the Æthernet C++ client to efficiently represent durations, fixed-p
 2. [TieredInt](#tieredint)
 3. [Fixed](#fixed)
 4. [Exponent](#exponent)
-5. [Combined Types](#combined-types)
-6. [Usage Examples](#usage-examples)
-7. [Integration Notes](#integration-notes)
-8. [Running Tests](#running-tests)
+5. [Text IO](#text-io)
+6. [Combined Types](#combined-types)
+7. [Usage Examples](#usage-examples)
+8. [Integration Notes](#integration-notes)
+9. [Running Tests](#running-tests)
 
 ---
 
@@ -98,20 +99,56 @@ cmake -S . -B build-dev \
 
 When values span several orders of magnitude, **relative precision** is often more meaningful than absolute precision (e.g., function durations from microseconds to seconds).
 
-`AE_EXPONENT_FIXED` provides a compact exponential encoding with deterministic resolution. The type exposes a `Fixed`-like interface at runtime and uses a compact serialized form.
+`Exponential` stores only a compact **wire code** (`WireT`); the decoded runtime value lives in `RuntimeT` (typically `FixedPoint`). Code `0` is zero. For unsigned runtime types, code `1` is `MinMagnitude` and code `BoundaryCode` is `BoundaryMagnitude`. For signed runtime types, even codes are positive magnitudes and odd codes are negative magnitudes (`code 2` → `+MinMagnitude`, `code 1` → `-MinMagnitude`).
+
+Comparisons, `abs`, `min`, `max`, and `clamp` operate on wire codes directly without decoding. Arithmetic operators are intentionally not implemented yet.
 
 **Example — store values from `0.001` to `60.0` in one byte:**
 
 ```cpp
-using E = AE_EXPONENT_FIXED(uint16_t, uint8_t, 0.001, 60.0);
+using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
+using Wire = ae::TieredInt<std::uint8_t, 254>;
+
+using E = ae::Exponential<Runtime, Wire, 0.001, 60.0, 254>;
+
+constexpr auto encoded = E::from_double(1.0);
+constexpr auto decoded = encoded.to_runtime();
 ```
 
 Here:
 
-* `Fixed<uint16_t, 60>` — runtime type
-* `uint8_t` — serialization type
+* `Runtime` — decoded runtime type (`FixedPoint` semantics, precision, signedness)
+* `Wire` — compact serialized code type
+* `0.001` — smallest non-zero magnitude
+* `60.0` — magnitude at the boundary code
+* `254` — largest useful positive wire code
 
 Ideal for durations between **1 ms** and **60 s**.
+
+---
+
+## Text IO
+
+`numeric/text_io.h` provides integer-only decimal conversion for `TieredInt`, `FixedPoint`, and `Exponential`. No runtime floating-point is used; `FixedPoint` formatting derives the logical value from `raw * 2^kScaleExp` using shifts and exact rational fraction expansion.
+
+```cpp
+#include "numeric/text_io.h"
+
+using F = ae::FixedPoint<std::uint8_t, 100.0>; // Q7.1
+auto s = ae::ToString(F::FromRaw(1));          // "0.5"
+
+F parsed;
+ae::FromString("10.5", parsed);
+```
+
+Core APIs:
+
+* `ae::ToString(value)` — allocates a `std::string`
+* `ae::FromString(text, value)` — returns `false` on malformed or out-of-range input
+* `ae::to_chars(first, last, value)` — non-allocating buffer write via `<charconv>`
+* `ae::from_chars(first, last, value)` — non-allocating parse
+
+`Exponential` text IO encodes/decodes through `to_runtime()` / `from_runtime()`. JSON or logging layers can call `ToString` / `FromString` without pulling a JSON dependency into the numeric core.
 
 ---
 
