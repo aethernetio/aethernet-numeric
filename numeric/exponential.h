@@ -25,6 +25,7 @@
 #include <gcem.hpp>
 
 #include "numeric/numeric_traits.h"
+#include "numeric/runtime_numeric_traits.h"
 
 namespace ae {
 namespace exponential_internal {
@@ -61,16 +62,18 @@ constexpr WireValue ClampCode(WireValue code, WireValue boundary_code) {
 template <typename RuntimeT, auto MinMagnitude, auto BoundaryMagnitude,
           std::size_t Index, std::size_t MaxIndex>
 consteval RuntimeT MagnitudeAtIndex() {
+  using RuntimeTraits = runtime_numeric_traits<RuntimeT>;
+
   if constexpr (Index == 0) {
-    return RuntimeT::FromInteger(0);
+    return RuntimeTraits::FromInteger(0);
   } else if constexpr (MaxIndex <= 1) {
-    return RuntimeT::FromDouble(static_cast<double>(MinMagnitude));
+    return RuntimeTraits::FromDouble(static_cast<double>(MinMagnitude));
   } else {
     const double min_mag = static_cast<double>(MinMagnitude);
     const double bound_mag = static_cast<double>(BoundaryMagnitude);
     const double ratio = gcem::pow(
         bound_mag / min_mag, 1.0 / static_cast<double>(MaxIndex - 1));
-    return RuntimeT::FromDouble(
+    return RuntimeTraits::FromDouble(
         min_mag * gcem::pow(ratio, static_cast<double>(Index - 1)));
   }
 }
@@ -94,8 +97,10 @@ consteval auto BuildMagnitudeTable() {
 
 template <typename RuntimeT, bool kIsSigned>
 constexpr RuntimeT AbsRuntime(RuntimeT value) {
+  using RuntimeTraits = runtime_numeric_traits<RuntimeT>;
+
   if constexpr (kIsSigned) {
-    const RuntimeT zero = RuntimeT::FromInteger(0);
+    const RuntimeT zero = RuntimeTraits::FromInteger(0);
     if (value < zero) {
       return zero - value;
     }
@@ -107,7 +112,9 @@ template <typename RuntimeT, typename WireValue, WireValue MaxIndex,
           const std::array<RuntimeT, static_cast<std::size_t>(MaxIndex) + 1>&
               Table>
 constexpr WireValue NearestMagnitudeIndex(RuntimeT abs_value) {
-  if (abs_value == RuntimeT::FromInteger(0)) {
+  using RuntimeTraits = runtime_numeric_traits<RuntimeT>;
+
+  if (abs_value == RuntimeTraits::FromInteger(0)) {
     return WireValue{0};
   }
 
@@ -154,21 +161,25 @@ class Exponential {
   using runtime_type = RuntimeT;
   using wire_type = WireT;
   using wire_value_type = typename numeric_traits<WireT>::rep_value_type;
+  using RuntimeTraits = runtime_numeric_traits<RuntimeT>;
 
-  static constexpr bool kIsSigned = numeric_traits<RuntimeT>::kIsSigned;
+  static constexpr bool kIsSigned = RuntimeTraits::kIsSigned;
   static constexpr auto kMinMagnitude = MinMagnitude;
   static constexpr auto kBoundaryMagnitude = BoundaryMagnitude;
   static constexpr wire_value_type kBoundaryCode = BoundaryCode;
 
-  static_assert(numeric_traits<RuntimeT>::kIsFixedPoint ||
-                    numeric_traits<RuntimeT>::kIsIntegerLike,
-                "Exponential RuntimeT must be FixedPoint or integer-like");
+  static_assert(RuntimeTraits::kIsSupported,
+                "Exponential RuntimeT is not supported. "
+                "Use FixedPoint/integer runtime, or include "
+                "numeric/exponential_floating_runtime.h for float/double.");
   static_assert(numeric_traits<WireT>::kIsIntegerLike,
                 "Exponential WireT must be integer-like");
   static_assert(!numeric_traits<WireT>::kIsSigned,
                 "Exponential WireT must be unsigned for now");
-  static_assert(kBoundaryCode > wire_value_type{0},
+  static_assert(BoundaryCode > 0,
                 "Exponential BoundaryCode must be positive");
+  static_assert(BoundaryCode <= numeric_traits<WireT>::kRawMax,
+                "Exponential BoundaryCode must fit in WireT range");
 
   static constexpr wire_value_type kPositiveBoundaryCode =
       kBoundaryCode - (kBoundaryCode % wire_value_type{2});
@@ -198,7 +209,7 @@ class Exponential {
   }
 
   static constexpr Exponential from_runtime(RuntimeT value) {
-    const RuntimeT zero = RuntimeT::FromInteger(0);
+    const RuntimeT zero = RuntimeTraits::FromInteger(0);
     if (value == zero) {
       return from_code(exponential_internal::WireFromValue<WireT>(
           wire_value_type{0}));
@@ -305,7 +316,7 @@ class Exponential {
       }
     }
 
-    return from_runtime(RuntimeT::FromDouble(value));
+    return from_runtime(RuntimeTraits::FromDouble(value));
   }
 
   constexpr Exponential() = default;
@@ -353,11 +364,11 @@ class Exponential {
   constexpr RuntimeT to_runtime() const {
     const auto index = magnitude_index();
     if (index == wire_value_type{0}) {
-      return RuntimeT::FromInteger(0);
+      return RuntimeTraits::FromInteger(0);
     }
     const RuntimeT magnitude = MagnitudeAt(index);
     if (is_negative()) {
-      return RuntimeT::FromInteger(0) - magnitude;
+      return RuntimeTraits::FromInteger(0) - magnitude;
     }
     return magnitude;
   }

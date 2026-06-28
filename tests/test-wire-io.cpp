@@ -20,13 +20,23 @@
 #include <stdexcept>
 
 #include "numeric/exponential.h"
+#include "numeric/exponential_wire_io.h"
 #include "numeric/fixed_point.h"
 #include "numeric/tiered_int.h"
 #include "numeric/wire_io.h"
 
 namespace ae::test_wire_io {
 
-void test_BuiltinInteger() {
+bool ExpectOutOfRange(const auto& fn) {
+  try {
+    fn();
+    return false;
+  } catch (const std::out_of_range&) {
+    return true;
+  }
+}
+
+void test_BuiltinIntegerUnsigned() {
   std::uint8_t buf[8] = {};
 
   const auto n = Serialize<std::uint16_t>(0x1234, buf);
@@ -37,6 +47,45 @@ void test_BuiltinInteger() {
   const auto r = Deserialize<std::uint16_t>(buf, n);
   TEST_ASSERT_EQUAL(0x1234, r.value);
   TEST_ASSERT_EQUAL(2, r.bytes_read);
+}
+
+void test_BuiltinIntegerSigned() {
+  {
+    std::uint8_t buf[1] = {};
+    const auto n = Serialize<std::int8_t>(-1, buf);
+    TEST_ASSERT_EQUAL(1, n);
+    TEST_ASSERT_EQUAL_HEX8(0xFF, buf[0]);
+
+    const auto r = Deserialize<std::int8_t>(buf, n);
+    TEST_ASSERT_EQUAL(-1, r.value);
+    TEST_ASSERT_EQUAL(1, r.bytes_read);
+  }
+
+  {
+    std::uint8_t buf[2] = {};
+    const auto n = Serialize<std::int16_t>(-2, buf);
+    TEST_ASSERT_EQUAL(2, n);
+    TEST_ASSERT_EQUAL_HEX8(0xFE, buf[0]);
+    TEST_ASSERT_EQUAL_HEX8(0xFF, buf[1]);
+
+    const auto r = Deserialize<std::int16_t>(buf, n);
+    TEST_ASSERT_EQUAL(-2, r.value);
+    TEST_ASSERT_EQUAL(2, r.bytes_read);
+  }
+
+  {
+    std::uint8_t buf[4] = {};
+    const auto n = Serialize<std::int32_t>(-123456, buf);
+    TEST_ASSERT_EQUAL(4, n);
+    TEST_ASSERT_EQUAL_HEX8(0xC0, buf[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x1D, buf[1]);
+    TEST_ASSERT_EQUAL_HEX8(0xFE, buf[2]);
+    TEST_ASSERT_EQUAL_HEX8(0xFF, buf[3]);
+
+    const auto r = Deserialize<std::int32_t>(buf, n);
+    TEST_ASSERT_EQUAL(-123456, r.value);
+    TEST_ASSERT_EQUAL(4, r.bytes_read);
+  }
 }
 
 void test_TieredInt() {
@@ -85,7 +134,7 @@ void test_FixedPointTieredIntRep() {
 void test_Exponential() {
   using Runtime = FixedPoint<std::uint32_t, 60.0>;
   using Wire = TieredInt<std::uint8_t, 254>;
-  using E = Exponential<Runtime, Wire, 0.001, 60.0, 254>;
+  using E = Exponential<Runtime, Wire, 0.001, 60.0>;
 
   const auto value = E::from_double(1.0);
   std::uint8_t buf[MaxWireBytes<E>()] = {};
@@ -98,28 +147,62 @@ void test_Exponential() {
   TEST_ASSERT_EQUAL(value.code_value(), r.value.code_value());
 }
 
-void test_ShortBuffer() {
+void test_ShortBufferFixedWidth() {
   using U32 = std::uint32_t;
   const std::uint8_t one_byte[1] = {0};
 
-  bool threw = false;
-  try {
-    (void)Deserialize<U32>(one_byte, 1);
-  } catch (const std::out_of_range&) {
-    threw = true;
-  }
-  TEST_ASSERT(threw);
+  TEST_ASSERT(ExpectOutOfRange([&] { (void)Deserialize<U32>(one_byte, 1); }));
+}
+
+void test_ShortBufferTieredInt() {
+  using T = TieredInt<std::uint8_t, 254>;
+  const T value{300};
+
+  std::uint8_t buf[T::kMaxWireBytes] = {};
+  const auto n = Serialize(value, buf);
+  TEST_ASSERT(n > 1);
+
+  TEST_ASSERT(ExpectOutOfRange([&] { (void)Deserialize<T>(buf, 1); }));
+}
+
+void test_ShortBufferFixedPointTieredIntRep() {
+  using Raw = TieredInt<std::uint8_t, 254>;
+  using F = FixedPoint<Raw, 60.0>;
+
+  const auto value = F::FromInteger(300);
+  std::uint8_t buf[MaxWireBytes<F>()] = {};
+  const auto n = Serialize(value, buf);
+  TEST_ASSERT(n > 1);
+
+  TEST_ASSERT(ExpectOutOfRange([&] { (void)Deserialize<F>(buf, 1); }));
+}
+
+void test_ShortBufferExponential() {
+  using Runtime = FixedPoint<std::uint32_t, 60.0>;
+  using Wire = TieredInt<std::uint8_t, 254>;
+  using E = Exponential<Runtime, Wire, 0.001, 60.0>;
+
+  const auto value = E::from_double(60.0);
+  std::uint8_t buf[MaxWireBytes<E>()] = {};
+  const auto n = Serialize(value, buf);
+  TEST_ASSERT(n > 1);
+
+  TEST_ASSERT(ExpectOutOfRange([&] { (void)Deserialize<E>(buf, 1); }));
 }
 
 }  // namespace ae::test_wire_io
 
 int test_wire_io() {
   UNITY_BEGIN();
-  RUN_TEST(ae::test_wire_io::test_BuiltinInteger);
+  RUN_TEST(ae::test_wire_io::test_BuiltinIntegerUnsigned);
+  RUN_TEST(ae::test_wire_io::test_BuiltinIntegerSigned);
   RUN_TEST(ae::test_wire_io::test_TieredInt);
   RUN_TEST(ae::test_wire_io::test_FixedPointBuiltinRep);
   RUN_TEST(ae::test_wire_io::test_FixedPointTieredIntRep);
   RUN_TEST(ae::test_wire_io::test_Exponential);
-  RUN_TEST(ae::test_wire_io::test_ShortBuffer);
+  RUN_TEST(ae::test_wire_io::test_ShortBufferFixedWidth);
+  RUN_TEST(ae::test_wire_io::test_ShortBufferTieredInt);
+  RUN_TEST(ae::test_wire_io::test_ShortBufferFixedPointTieredIntRep);
+  RUN_TEST(ae::test_wire_io::test_ShortBufferExponential);
   return UNITY_END();
 }

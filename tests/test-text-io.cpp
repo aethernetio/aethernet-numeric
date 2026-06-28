@@ -82,7 +82,7 @@ void test_LargePositiveScale() {
 void test_Exponential() {
   using Runtime = FixedPoint<std::uint32_t, 60.0>;
   using Wire = TieredInt<std::uint8_t, 254>;
-  using E = Exponential<Runtime, Wire, 0.001, 60.0, 254>;
+  using E = Exponential<Runtime, Wire, 0.001, 60.0>;
 
   constexpr auto e = E::from_double(1.0);
   const auto text = ToString(e);

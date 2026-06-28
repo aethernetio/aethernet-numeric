@@ -24,6 +24,7 @@
 
 #include "numeric/decimal.h"
 #include "numeric/numeric_traits.h"
+#include "numeric/runtime_numeric_traits.h"
 
 namespace ae {
 namespace fixed_point_internal {
@@ -242,16 +243,45 @@ constexpr RepValue RoundShiftRight(RepValue raw, unsigned bits) {
   if (bits == 0) {
     return raw;
   }
-  const RepValue divisor = static_cast<RepValue>(RepValue{1} << bits);
-  const RepValue bias = static_cast<RepValue>(divisor / RepValue{2});
-  if constexpr (std::is_signed_v<RepValue>) {
-    if (raw >= 0) {
-      return static_cast<RepValue>((raw + bias) / divisor);
+
+  using Unsigned = std::make_unsigned_t<RepValue>;
+  constexpr unsigned kWidth = sizeof(RepValue) * 8;
+
+  if (bits >= kWidth) {
+    if (raw == RepValue{0}) {
+      return RepValue{0};
     }
-    return static_cast<RepValue>((raw - bias) / divisor);
-  } else {
-    return static_cast<RepValue>((raw + bias) / divisor);
+    if (bits > kWidth) {
+      return RepValue{0};
+    }
+    const Unsigned threshold = Unsigned{1} << (kWidth - 1);
+    if constexpr (std::is_signed_v<RepValue>) {
+      const Unsigned magnitude =
+          raw >= RepValue{0}
+              ? static_cast<Unsigned>(raw)
+              : static_cast<Unsigned>(static_cast<RepValue>(-raw));
+      if (magnitude >= threshold) {
+        return raw >= RepValue{0} ? RepValue{1} : RepValue{-1};
+      }
+      return RepValue{0};
+    }
+    const Unsigned magnitude = static_cast<Unsigned>(raw);
+    return magnitude >= threshold ? RepValue{1} : RepValue{0};
   }
+
+  const Unsigned divisor = Unsigned{1} << bits;
+  const Unsigned bias = divisor / Unsigned{2};
+  if constexpr (std::is_signed_v<RepValue>) {
+    if (raw >= RepValue{0}) {
+      return static_cast<RepValue>(
+          (static_cast<Unsigned>(raw) + bias) / divisor);
+    }
+    const Unsigned magnitude =
+        static_cast<Unsigned>(static_cast<RepValue>(-raw));
+    return static_cast<RepValue>(-static_cast<RepValue>(
+        (magnitude + bias) / divisor));
+  }
+  return static_cast<RepValue>((static_cast<Unsigned>(raw) + bias) / divisor);
 }
 
 template <typename RepValue>
@@ -489,6 +519,9 @@ constexpr FixedPoint<Rep, MaxA + MaxB> operator+(FixedPoint<Rep, MaxA> lhs,
       lhs_raw, rhs_raw, Result::kRawMin, Result::kRawMax));
 }
 
+// Explicit division-to-target slow path. Uses std::int64_t intermediates and is
+// not intended for MCU hot loops.
+// TODO: replace with range-aware minimal accumulators and shift-based scaling.
 template <typename Target, typename L, typename R>
 constexpr Target div_to(L lhs, R rhs) {
   const auto lhs_raw = lhs.raw_value();
@@ -524,6 +557,22 @@ constexpr Target div_to(L lhs, R rhs) {
                          typename Target::rep_type>(
       Target::ClampRaw(static_cast<typename Target::rep_value_type>(quotient))));
 }
+
+template <typename Rep, auto Max>
+struct runtime_numeric_traits<FixedPoint<Rep, Max>> {
+  using value_type = FixedPoint<Rep, Max>;
+
+  static constexpr bool kIsSupported = true;
+  static constexpr bool kIsSigned = FixedPoint<Rep, Max>::kIsSigned;
+
+  static constexpr value_type FromInteger(std::int64_t value) {
+    return value_type::FromInteger(value);
+  }
+
+  static consteval value_type FromDouble(double value) {
+    return value_type::FromDouble(value);
+  }
+};
 
 template <typename Rep, auto Max>
 struct numeric_traits<FixedPoint<Rep, Max>> {

@@ -23,8 +23,10 @@ extern int test_tiered_int();
 extern int test_tiered_int_view();
 extern int test_fixed_point();
 extern int test_exponential();
+extern int test_exponential_floating_runtime();
 extern int test_text_io();
 extern int test_wire_io();
+extern int test_type_size();
 
 int main() {
   int res = 0;
@@ -32,7 +34,9 @@ int main() {
   res += test_tiered_int_view();
   res += test_fixed_point();
   res += test_exponential();
+  res += test_exponential_floating_runtime();
   res += test_text_io();
   res += test_wire_io();
+  res += test_type_size();
   return res;
 }

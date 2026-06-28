@@ -20,13 +20,26 @@
 
 #include "numeric/exponential.h"
 #include "numeric/fixed_point.h"
+#include "numeric/runtime_numeric_traits.h"
 #include "numeric/tiered_int.h"
 
 namespace ae::test_exponential {
 
+static_assert(runtime_numeric_traits<std::int32_t>::kIsSupported);
+static_assert(runtime_numeric_traits<std::int32_t>::kIsSigned);
+
+using F = FixedPoint<std::uint8_t, 100.0>;
+static_assert(runtime_numeric_traits<F>::kIsSupported);
+static_assert(!runtime_numeric_traits<F>::kIsSigned);
+
 using Runtime = FixedPoint<std::uint32_t, 60.0>;
 using Wire = TieredInt<std::uint8_t, 254>;
-using E = Exponential<Runtime, Wire, 0.001, 60.0, 254>;
+using E = Exponential<Runtime, Wire, 0.001, 60.0>;
+
+static_assert(E::kBoundaryCode == numeric_traits<Wire>::kRawMax);
+
+using Partial = Exponential<Runtime, Wire, 0.001, 60.0, 200>;
+static_assert(Partial::kBoundaryCode == 200);
 
 static_assert(numeric_traits<E>::kIsExponential);
 static_assert(!numeric_traits<E>::kIsSigned);
@@ -37,7 +50,7 @@ constexpr auto one_ms = E::from_double(0.001);
 static_assert(one_ms.code_value() == 1);
 
 constexpr auto max_v = E::from_double(60.0);
-static_assert(max_v.code_value() == 254);
+static_assert(max_v.code_value() == E::kBoundaryCode);
 
 static_assert(E::from_double(0.001) < E::from_double(0.01));
 static_assert(E::from_double(1.0) < E::from_double(60.0));
@@ -48,10 +61,10 @@ constexpr auto r1 = e1.to_runtime();
 static_assert(r1 > Runtime::FromDouble(0.9));
 static_assert(r1 < Runtime::FromDouble(1.1));
 
-static_assert(E::from_double(1000.0).code_value() == 254);
+static_assert(E::from_double(1000.0).code_value() == E::kBoundaryCode);
 
 using SRuntime = FixedPoint<std::int32_t, 60.0>;
-using SE = Exponential<SRuntime, Wire, 0.001, 60.0, 254>;
+using SE = Exponential<SRuntime, Wire, 0.001, 60.0>;
 
 static_assert(numeric_traits<SE>::kIsSigned);
 
@@ -91,7 +104,7 @@ void test_RuntimeRoundTrip() {
   TEST_ASSERT(decoded < Runtime::FromDouble(1.1));
 
   const auto saturated = E::from_double(1000.0);
-  TEST_ASSERT_EQUAL(254, saturated.code_value());
+  TEST_ASSERT_EQUAL(E::kBoundaryCode, saturated.code_value());
 
   const auto signed_neg = SE::from_double(-1.0);
   TEST_ASSERT(signed_neg.is_negative());

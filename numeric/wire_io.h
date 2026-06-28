@@ -17,15 +17,13 @@
 #ifndef NUMERIC_WIRE_IO_H_
 #define NUMERIC_WIRE_IO_H_
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <stdexcept>
 #include <type_traits>
 
-#include "numeric/exponential.h"
 #include "numeric/fixed_point.h"
-#include "numeric/tiered_int.h"
 
 namespace ae {
 
@@ -131,27 +129,6 @@ struct wire_traits<FixedPoint<Rep, Max>> {
                                             std::size_t len) {
     const auto rep_result = RepTraits::Deserialize(in, len);
     return {T::FromRaw(rep_result.value), rep_result.bytes_read};
-  }
-};
-
-template <typename RuntimeT, typename WireT, auto MinMagnitude,
-          auto BoundaryMagnitude, auto BoundaryCode>
-struct wire_traits<Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                               BoundaryCode>> {
-  using T = Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                        BoundaryCode>;
-  using WireTraits = wire_traits<WireT>;
-
-  static constexpr std::size_t kMaxWireBytes = WireTraits::kMaxWireBytes;
-
-  static std::size_t Serialize(const T& value, std::uint8_t* out) {
-    return WireTraits::Serialize(value.code(), out);
-  }
-
-  static DeserializeResult<T> Deserialize(const std::uint8_t* in,
-                                            std::size_t len) {
-    const auto wire_result = WireTraits::Deserialize(in, len);
-    return {T::from_code(wire_result.value), wire_result.bytes_read};
   }
 };
 

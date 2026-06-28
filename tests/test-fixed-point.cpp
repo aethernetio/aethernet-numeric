@@ -75,6 +75,16 @@ using Compact = FixedPoint<Raw, 60.0>;
 static_assert(numeric_traits<Compact>::kIsFixedPoint);
 static_assert(Compact::FromInteger(60).raw_value() <= Raw::kUpper);
 
+using Small = FixedPoint<std::uint8_t, 0.0000000001>;
+using Large = FixedPoint<std::uint8_t, 1000000000.0>;
+
+constexpr auto s = Small::FromRaw(255);
+constexpr auto l = Small::Cast<Large>(s);
+static_assert(l.raw_value() >= 0);
+
+constexpr auto cast_back = Large::Cast<Small>(l);
+static_assert(cast_back.raw_value() <= Small::kRawMax);
+
 void test_RuntimeRoundTrip() {
   const auto sum = A::FromInteger(10) + B::FromInteger(20);
   TEST_ASSERT((sum == FixedPoint<std::uint8_t, 130.0>::FromInteger(30)));
