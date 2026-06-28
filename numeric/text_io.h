@@ -338,7 +338,7 @@ inline std::to_chars_result FormatFixedPointScaled(char* first, char* last,
   const std::uint64_t integer_part = magnitude / denominator;
   std::uint64_t fraction_part = magnitude % denominator;
 
-  char fraction_digits[64];
+  char fraction_digits[64]{};
   std::size_t fraction_len = 0;
   constexpr std::size_t kMaxFractionDigits = 18;
   while (fraction_part != 0 && fraction_len < kMaxFractionDigits &&
