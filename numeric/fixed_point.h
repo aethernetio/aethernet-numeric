@@ -17,282 +17,372 @@
 #ifndef NUMERIC_FIXED_POINT_H_
 #define NUMERIC_FIXED_POINT_H_
 
-#include <limits>
 #include <cstdint>
-#include <algorithm>
+#include <limits>
 #include <type_traits>
+#include <utility>
 
-#include <gcem.hpp>
+#include "numeric/numeric_traits.h"
 
 namespace ae {
-// Compile-time fixed point number representation.
-// A number is stored as floating point value multiplied by scale.
-// A point position meaning:
-//   0 - range represented [0..1). For example, for std::uint8_t 1.0 would be
-//   encoded as 256,
-//       so the maximum value encoded is 1.0 - 1/256. Rounding is performed as
-//       truncating. min value is 1/256
-//   1 - a single bit represents the integer part of the number. range is
-//   [0..2). min = 1/127 8 - float is just truncated to integer [0..255], min =
-//   1 9 - floating point is multiplied by 0.5 and truncated. range = [0..510],
-//   min = 2 -1 - range = [0..0.5), min value is 1/510
+namespace fixed_point_internal {
 
-template <typename T, T max_value, int int_bits>
-struct FixedPoint {
-  using Type = T;
-  static constexpr Type kMaxValue = max_value;
-  static constexpr int kIntBits = int_bits;
-  static constexpr int kTotalBits = sizeof(Type) * 8;
-
-  static constexpr double kMinValue =
-      kIntBits < kTotalBits
-          ? 1.0 / gcem::pow(2.0, static_cast<double>(kTotalBits - kIntBits))
-          : gcem::pow(2.0, static_cast<double>(kIntBits - kTotalBits));
-  static constexpr double kMinValueInv = 1 / kMinValue;
-  Type value_;
-
-  constexpr FixedPoint() = default;
-
-  constexpr explicit FixedPoint(Type value) : value_(value) {}
-
-  template <typename ST, ST mv, int nb>
-  constexpr FixedPoint(const FixedPoint<ST, mv, nb>& f) {
-    value_ = Cast(f).value_;
-  }
-
-  constexpr FixedPoint(double value) : value_(Value(value)) {}
-
-  constexpr operator double() const { return value_ * kMinValue; }
-
-  auto& operator=(double value) {
-    value_ = Value(value);
-    return *this;
-  }
-
-  template <typename ST, ST mv, int nb>
-  auto& operator=(const FixedPoint<ST, mv, nb>& s) {
-    value_ = Cast(s).value_;
-    return *this;
-  }
-
-  // TODO: force compile-time only.
-  static constexpr Type Value(double f) {
-    return static_cast<Type>(f * kMinValueInv);
-  }
-
-  template <typename ST, ST mv, int nb>
-  static constexpr FixedPoint Cast(const FixedPoint<ST, mv, nb>& f) {
-    static_assert(kIntBits >= nb, "Assignment may cause overflow");
-    return FixedPoint(f.value_);
-  }
+struct Rational {
+  std::int64_t num = 0;
+  std::int64_t den = 1;
 };
 
-template <typename Type>
-constexpr int CalculateIntegerBits(double v) {
-  constexpr double rr = gcem::pow(2.0, (8.0 * sizeof(Type)));
-  constexpr double c = 1.0 - 1.0 / rr;
-  if (v > c) {
-    return static_cast<int>(gcem::ceil(gcem::log2(v))) +
-           (v > c * (1ul << static_cast<int>(gcem::ceil(gcem::log2(v)))) ? 1
-                                                                         : 0);
-  } else if (v >= c / 2) {
-    return 0;
+constexpr std::int64_t Gcd(std::int64_t a, std::int64_t b) {
+  a = a < 0 ? -a : a;
+  b = b < 0 ? -b : b;
+  while (b != 0) {
+    const auto t = a % b;
+    a = b;
+    b = t;
+  }
+  return a;
+}
+
+constexpr Rational Normalize(Rational r) {
+  if (r.den < 0) {
+    r.num = -r.num;
+    r.den = -r.den;
+  }
+  if (r.num == 0) {
+    return {0, 1};
+  }
+  const auto g = Gcd(r.num, r.den);
+  return {r.num / g, r.den / g};
+}
+
+constexpr Rational MakeRational(std::int64_t num, std::int64_t den) {
+  return Normalize({num, den});
+}
+
+consteval Rational DoubleToRational(double value) {
+  if (value == 0.0) {
+    return {0, 1};
+  }
+
+  bool negative = value < 0.0;
+  double abs_value = negative ? -value : value;
+
+  for (unsigned scale = 0; scale <= 18; ++scale) {
+    std::uint64_t pow10 = 1;
+    for (unsigned i = 0; i < scale; ++i) {
+      pow10 *= 10;
+    }
+
+    const double scaled = abs_value * static_cast<double>(pow10);
+    const auto rounded = static_cast<std::int64_t>(scaled + 0.5);
+
+    if (rounded != 0 || abs_value == 0.0) {
+      const double reconstructed =
+          static_cast<double>(rounded) / static_cast<double>(pow10);
+      const double abs_error = reconstructed > abs_value
+                                   ? reconstructed - abs_value
+                                   : abs_value - reconstructed;
+      if (abs_error < 0.000000001) {
+        Rational r{negative ? -rounded : rounded,
+                   static_cast<std::int64_t>(pow10)};
+        return Normalize(r);
+      }
+    }
+  }
+
+  return {negative ? -1 : 1, 1};
+}
+
+template <auto Max>
+consteval Rational MaxAsRational() {
+  using MaxType = decltype(Max);
+  if constexpr (std::is_integral_v<MaxType>) {
+    return {static_cast<std::int64_t>(Max), 1};
   } else {
-    return -static_cast<int>(gcem::floor(gcem::log2(1 / v))) -
-           (v > c / (1ul << static_cast<int>(gcem::floor(gcem::log2(1 / v))))
-                ? 1
-                : 0);
+    return DoubleToRational(Max);
   }
 }
 
-template <typename T>
-constexpr bool CompareDoubles(const double v1, const double v2) {
-  return gcem::abs(v1 - v2) / gcem::max(v1, v2) <
-         1.0 / gcem::pow(2.0, static_cast<double>(8 * sizeof(T)));
-}
-
-template <int n>
-struct TypeSelector1 {
-  using type = std::conditional_t<
-      (n > 32), std::uint64_t,
-      std::conditional_t<
-          (n > 16), std::uint32_t,
-          std::conditional_t<(n > 8), std::uint16_t, std::uint8_t>>>;
-};
-
-template <typename T, int n>
-struct TypeSelector {
-  using type =
-      typename TypeSelector1<(n < static_cast<int>(sizeof(T) * 8)
-                                  ? static_cast<int>(sizeof(T) * 8) - n
-                                  : n - static_cast<int>(sizeof(T) * 8))>::type;
-};
-
-template <typename R, typename F1, typename F2>
-constexpr auto Add(const F1& v1, const F2& v2) {
-  constexpr double max = static_cast<double>(F1::kMaxValue) * F1::kMinValue +
-                         static_cast<double>(F2::kMaxValue) * F2::kMinValue;
-  constexpr auto ib = CalculateIntegerBits<R>(max);
-  constexpr auto i = FixedPoint<R, 0, ib>::Value(max);
-  double r = static_cast<double>(v1) + static_cast<double>(v2);
-  using RT = FixedPoint<R, i, ib>;
-  return RT(RT::Value(r));
-}
-
-template <typename T1, T1 max_value1, int ib1, typename T2, T2 max_value2,
-          int ib2>
-constexpr auto operator+(const FixedPoint<T1, max_value1, ib1>& v1,
-                         const FixedPoint<T2, max_value2, ib2>& v2) {
-  return Add<typename TypeSelector1<gcem::max(
-      FixedPoint<T1, max_value1, ib1>::kTotalBits,
-      FixedPoint<T2, max_value2, ib2>::kTotalBits)>::type>(v1, v2);
-}
-
-template <typename R, typename F1, typename F2>
-constexpr auto Sub(const F1& v1, const F2& v2) {
-  double r = static_cast<double>(v1) - static_cast<double>(v2);
-  using RT = FixedPoint<R, F1::kMaxValue, F1::kIntBits>;
-  return RT(RT::Value(r));
-}
-
-template <typename T1, T1 max_value1, int ib1, typename T2, T2 max_value2,
-          int ib2>
-constexpr auto operator-(const FixedPoint<T1, max_value1, ib1>& v1,
-                         const FixedPoint<T2, max_value2, ib2>& v2) {
-  return Sub<typename FixedPoint<T1, max_value1, ib1>::Type>(v1, v2);
-}
-
-template <typename R, typename F1, typename F2>
-constexpr auto Mul(const F1& v1, const F2& v2) {
-  constexpr double max = static_cast<double>(F1::kMaxValue) * F1::kMinValue *
-                         static_cast<double>(F2::kMaxValue) * F2::kMinValue;
-  constexpr auto ib = CalculateIntegerBits<R>(max);
-  constexpr auto i = FixedPoint<R, 0, ib>::Value(max);
-  double r = static_cast<double>(v1) * static_cast<double>(v2);
-  using RT = FixedPoint<R, i, ib>;
-  return RT(RT::Value(r));
-}
-
-template <typename T1, T1 max_value1, int ib1, typename T2, T2 max_value2,
-          int ib2>
-constexpr auto operator*(const FixedPoint<T1, max_value1, ib1>& v1,
-                         const FixedPoint<T2, max_value2, ib2>& v2) {
-  return Mul<typename TypeSelector1<gcem::max(
-      FixedPoint<T1, max_value1, ib1>::kTotalBits,
-      FixedPoint<T2, max_value2, ib2>::kTotalBits)>::type>(v1, v2);
-}
-
-template <typename R, R min_value, typename F1, typename F2>
-constexpr auto Div(const F1& v1, const F2& v2) {
-  constexpr double max = static_cast<double>(F1::kMaxValue) * F1::kMinValue /
-                         static_cast<double>(min_value * F2::kMinValue);
-  constexpr auto ib = CalculateIntegerBits<R>(max);
-  constexpr auto i = FixedPoint<R, 0, ib>::Value(max);
-  double r = static_cast<double>(v1) / static_cast<double>(v2);
-  using RT = FixedPoint<R, i, ib>;
-  return RT(RT::Value(r));
-}
-
-template <typename T1, T1 max_value1, int ib1, typename T2, T2 max_value2,
-          int ib2>
-constexpr auto operator/(const FixedPoint<T1, max_value1, ib1>& v1,
-                         const FixedPoint<T2, max_value2, ib2>& v2) {
-  return Div<typename TypeSelector1<gcem::max(
-                 FixedPoint<T1, max_value1, ib1>::kTotalBits,
-                 FixedPoint<T2, max_value2, ib2>::kTotalBits)>::type,
-             FixedPoint<T2, max_value2, ib2>::Value(
-                 FixedPoint<T2, max_value2, ib2>::kMinValue)>(v1, v2);
-}
-
-template <typename Exp, typename T, T max_value, int int_bits, T base, T scale>
-struct Exponent : public FixedPoint<T, max_value, int_bits> {
-  using Fix = FixedPoint<T, max_value, int_bits>;
-
-  static constexpr auto kBase = base;
-  static constexpr auto kScale = scale;
-
-  // inherit all constructors from Fix
-  using Fix::Fix;
-
-  constexpr Exp Serialize() const {
-    constexpr double lb = 1.0 / gcem::log2(kBase * Fix::kMinValue);
-    constexpr double s = gcem::log2(1.0 / kScale) * lb;
-    double p = gcem::log2(Fix::value_) * lb + s;
-    return static_cast<Exp>(p);
+template <auto Max>
+consteval bool MaxIsPositive() {
+  using MaxType = decltype(Max);
+  if constexpr (std::is_integral_v<MaxType>) {
+    return Max > MaxType{0};
+  } else {
+    return Max > MaxType{0};
   }
+}
 
-  void Deserialize(Exp stored) {
-    constexpr double b = kBase * Fix::kMinValue;
-    // convert stored to common type
-    double e = gcem::pow(b, static_cast<std::uint64_t>(stored)) * kScale;
-    Fix::value_ = static_cast<T>(e);
+#ifdef __SIZEOF_INT128__
+using Wide = __int128_t;
+#else
+using Wide = std::int64_t;
+#endif
+
+constexpr Wide ToWide(std::int64_t value) { return static_cast<Wide>(value); }
+
+constexpr Wide RoundDiv(Wide num, Wide den) {
+  if (den == 0) {
+    return 0;
   }
-};
+  if (den < 0) {
+    num = -num;
+    den = -den;
+  }
+  if (num >= 0) {
+    return (num + den / 2) / den;
+  }
+  return (num - den / 2) / den;
+}
 
-// Options for an exponent type definition
-template <typename T>
-struct ExponentOptions {
-  double base_;
-  int total_bits_;
-  int int_bits_;
+template <typename RepValue>
+constexpr RepValue SaturateRaw(std::int64_t raw, RepValue raw_min,
+                               RepValue raw_max) {
+  if (raw < static_cast<std::int64_t>(raw_min)) {
+    return raw_min;
+  }
+  if (raw > static_cast<std::int64_t>(raw_max)) {
+    return raw_max;
+  }
+  return static_cast<RepValue>(raw);
+}
 
-  constexpr ExponentOptions(double min, double max)
-      : base_{CalcBase(min, max)},
-        total_bits_{
-            static_cast<int>(gcem::ceil(gcem::log2(CalcRange(min, max))))},
-        int_bits_{static_cast<int>(gcem::ceil(gcem::log2(max)))} {}
+template <typename Rep>
+constexpr auto RepRawValue(const Rep& rep) {
+  if constexpr (requires { rep.value_; }) {
+    return rep.value_;
+  } else {
+    return rep;
+  }
+}
+
+template <typename Rep, typename RepValue>
+constexpr Rep RepFromRawValue(RepValue raw) {
+  if constexpr (std::same_as<Rep, RepValue>) {
+    return raw;
+  } else {
+    return Rep{raw};
+  }
+}
+
+template <typename RepValue, bool kIsSigned>
+constexpr RepValue SaturatedAdd(RepValue lhs, RepValue rhs, RepValue raw_min,
+                                RepValue raw_max) {
+#ifdef __SIZEOF_INT128__
+  const Wide sum = ToWide(static_cast<std::int64_t>(lhs)) +
+                   ToWide(static_cast<std::int64_t>(rhs));
+  if constexpr (kIsSigned) {
+    if (sum < ToWide(static_cast<std::int64_t>(raw_min))) {
+      return raw_min;
+    }
+    if (sum > ToWide(static_cast<std::int64_t>(raw_max))) {
+      return raw_max;
+    }
+    return static_cast<RepValue>(sum);
+  } else {
+    if (sum < 0) {
+      return raw_min;
+    }
+    if (sum > ToWide(static_cast<std::int64_t>(raw_max))) {
+      return raw_max;
+    }
+    return static_cast<RepValue>(sum);
+  }
+#else
+  if constexpr (kIsSigned) {
+    const Wide sum = ToWide(lhs) + ToWide(rhs);
+    return SaturateRaw(static_cast<RepValue>(sum), raw_min, raw_max);
+  } else {
+    using UnsignedWide = std::make_unsigned_t<RepValue>;
+    const auto sum = static_cast<UnsignedWide>(lhs) +
+                     static_cast<UnsignedWide>(rhs);
+    if (sum > static_cast<UnsignedWide>(raw_max)) {
+      return raw_max;
+    }
+    return static_cast<RepValue>(sum);
+  }
+#endif
+}
+
+template <typename RepValue, bool kIsSigned>
+constexpr RepValue SaturatedSub(RepValue lhs, RepValue rhs, RepValue raw_min,
+                                RepValue raw_max) {
+#ifdef __SIZEOF_INT128__
+  const Wide diff = ToWide(static_cast<std::int64_t>(lhs)) -
+                    ToWide(static_cast<std::int64_t>(rhs));
+  if constexpr (kIsSigned) {
+    if (diff < ToWide(static_cast<std::int64_t>(raw_min))) {
+      return raw_min;
+    }
+    if (diff > ToWide(static_cast<std::int64_t>(raw_max))) {
+      return raw_max;
+    }
+    return static_cast<RepValue>(diff);
+  } else {
+    if (diff < 0) {
+      return raw_min;
+    }
+    if (diff > ToWide(static_cast<std::int64_t>(raw_max))) {
+      return raw_max;
+    }
+    return static_cast<RepValue>(diff);
+  }
+#else
+  if constexpr (kIsSigned) {
+    const Wide diff = ToWide(lhs) - ToWide(rhs);
+    return SaturateRaw(static_cast<RepValue>(diff), raw_min, raw_max);
+  } else {
+    if (rhs > lhs) {
+      return raw_min;
+    }
+    return static_cast<RepValue>(lhs - rhs);
+  }
+#endif
+}
+
+template <typename RepValue, bool kIsSigned>
+constexpr RepValue SaturatedNegate(RepValue raw, RepValue raw_min,
+                                 RepValue raw_max) {
+  if constexpr (!kIsSigned) {
+    return raw_min;
+  }
+  if (raw == raw_min) {
+    return raw_max;
+  }
+  return SaturateRaw(static_cast<RepValue>(-raw), raw_min, raw_max);
+}
+
+}  // namespace fixed_point_internal
+
+template <typename Rep, auto Max>
+  requires IntegralStorage<Rep>
+class FixedPoint {
+ public:
+  using rep_type = Rep;
+  using rep_traits = numeric_traits<Rep>;
+  using rep_value_type = typename rep_traits::rep_value_type;
+
+  static constexpr bool kIsSigned = rep_traits::kIsSigned;
+  static constexpr rep_value_type kRawMax = rep_traits::kRawMax;
+  static constexpr rep_value_type kRawMin = rep_traits::kRawMin;
+
+  static_assert(fixed_point_internal::MaxIsPositive<Max>(),
+                "FixedPoint Max must be positive");
 
  private:
-  static constexpr auto CalcBase(double min, double max) {
-    auto v_ = max / min;
-    auto n_ = static_cast<double>(gcem::pow(2ul, sizeof(T) * 8) - 1);
-    return gcem::pow(v_, 1 / n_);
+  static constexpr fixed_point_internal::Rational kMaxRational =
+      fixed_point_internal::MaxAsRational<Max>();
+  static constexpr std::int64_t kMaxNum = kMaxRational.num;
+  static constexpr std::int64_t kMaxDen = kMaxRational.den;
+
+  static constexpr rep_value_type RawFromRatio(std::int64_t num,
+                                               std::int64_t den) {
+    if (den == 0) {
+      return kRawMin;
+    }
+
+    const fixed_point_internal::Wide numerator =
+        fixed_point_internal::ToWide(num) *
+        fixed_point_internal::ToWide(kMaxDen) *
+        fixed_point_internal::ToWide(static_cast<std::int64_t>(kRawMax));
+    const fixed_point_internal::Wide denominator =
+        fixed_point_internal::ToWide(den) *
+        fixed_point_internal::ToWide(kMaxNum);
+
+    const auto rounded = static_cast<std::int64_t>(
+        fixed_point_internal::RoundDiv(numerator, denominator));
+
+    return fixed_point_internal::SaturateRaw<rep_value_type>(rounded, kRawMin,
+                                                               kRawMax);
   }
 
-  static constexpr auto CalcRange(double min, double max) {
-    auto v_ = max / min;
-    auto n_ = static_cast<double>(gcem::pow(2ul, sizeof(T) * 8) - 1);
-    auto base = static_cast<double>(gcem::pow(v_, 1 / n_));
-    auto step_ = min * base - min;
-    return v_ / step_;
-  }
-};
-
-template <typename T>
-constexpr ExponentOptions<T> make_exponent_options(double min, double max) {
-  return ExponentOptions<T>(min, max);
-}
-}  // namespace ae
-
-namespace std {
-template <typename T, T max_value, int position>
-class numeric_limits<ae::FixedPoint<T, max_value, position>> {
  public:
-  static constexpr double lowest() { return 0.0; }
-  static constexpr double min() {
-    return ae::FixedPoint<T, max_value, position>::kMinValue;
+  constexpr FixedPoint() = default;
+
+  static constexpr FixedPoint FromRaw(Rep raw) { return FixedPoint(raw); }
+
+  static constexpr FixedPoint FromRatio(std::int64_t num, std::int64_t den) {
+    return FromRaw(
+        fixed_point_internal::RepFromRawValue<Rep>(RawFromRatio(num, den)));
   }
-  static constexpr double max() {
-    return ae::FixedPoint<T, max_value, position>::kMaxValue;
+
+  static constexpr FixedPoint FromInteger(std::int64_t value) {
+    return FromRatio(value, 1);
   }
+
+  static consteval FixedPoint FromDouble(double value) {
+    const auto rational = fixed_point_internal::DoubleToRational(value);
+    return FromRatio(rational.num, rational.den);
+  }
+
+  constexpr Rep raw() const { return raw_; }
+
+  constexpr rep_value_type raw_value() const {
+    return fixed_point_internal::RepRawValue(raw_);
+  }
+
+  constexpr bool operator==(const FixedPoint& other) const {
+    return raw_value() == other.raw_value();
+  }
+
+  constexpr bool operator!=(const FixedPoint& other) const {
+    return !(*this == other);
+  }
+
+  constexpr bool operator<(const FixedPoint& other) const {
+    return raw_value() < other.raw_value();
+  }
+
+  constexpr bool operator<=(const FixedPoint& other) const {
+    return raw_value() <= other.raw_value();
+  }
+
+  constexpr bool operator>(const FixedPoint& other) const {
+    return raw_value() > other.raw_value();
+  }
+
+  constexpr bool operator>=(const FixedPoint& other) const {
+    return raw_value() >= other.raw_value();
+  }
+
+  constexpr FixedPoint operator+(const FixedPoint& other) const {
+    return FromRaw(fixed_point_internal::RepFromRawValue<Rep>(
+        fixed_point_internal::SaturatedAdd<rep_value_type, kIsSigned>(
+            raw_value(), other.raw_value(), kRawMin, kRawMax)));
+  }
+
+  constexpr FixedPoint operator-(const FixedPoint& other) const {
+    return FromRaw(fixed_point_internal::RepFromRawValue<Rep>(
+        fixed_point_internal::SaturatedSub<rep_value_type, kIsSigned>(
+            raw_value(), other.raw_value(), kRawMin, kRawMax)));
+  }
+
+  constexpr FixedPoint operator-() const
+      requires kIsSigned
+  {
+    return FromRaw(fixed_point_internal::RepFromRawValue<Rep>(
+        fixed_point_internal::SaturatedNegate<rep_value_type, kIsSigned>(
+            raw_value(), kRawMin, kRawMax)));
+  }
+
+ private:
+  constexpr explicit FixedPoint(Rep raw) : raw_(raw) {}
+
+  Rep raw_{};
 };
-}  // namespace std
 
-#define AE_FIXED(T, M)                                                   \
-  ae::FixedPoint<                                                        \
-      T, ae::FixedPoint<T, 0, ae::CalculateIntegerBits<T>(M)>::Value(M), \
-      ae::CalculateIntegerBits<T>(M)>
+template <typename Rep, auto Max>
+struct numeric_traits<FixedPoint<Rep, Max>> {
+  using rep_type = Rep;
+  using rep_value_type = typename FixedPoint<Rep, Max>::rep_value_type;
+  using value_type = FixedPoint<Rep, Max>;
 
-#define _EXP_OPT_(T, MIN, MAX) ae::make_exponent_options<T>(MIN, MAX)
+  static constexpr bool kIsIntegerLike = false;
+  static constexpr bool kIsFixedPoint = true;
+  static constexpr bool kIsExponential = false;
+  static constexpr bool kIsSigned = FixedPoint<Rep, Max>::kIsSigned;
+};
 
-#define _FIXED_OPT_(T, MIN, MAX) \
-  AE_FIXED(ae::TypeSelector1<_EXP_OPT_(T, MIN, MAX).total_bits_>::type, MAX)
-
-#define AE_EXPONENT(T, MIN, MAX)                                              \
-  ae::Exponent<T, _FIXED_OPT_(T, MIN, MAX)::Type,                             \
-               _FIXED_OPT_(T, MIN, MAX)::kMaxValue,                           \
-               _EXP_OPT_(T, MIN, MAX).int_bits_,                              \
-               _FIXED_OPT_(T, MIN, MAX)::Value(_EXP_OPT_(T, MIN, MAX).base_), \
-               _FIXED_OPT_(T, MIN, MAX)::Value(MIN)>
+}  // namespace ae
 
 #endif  // NUMERIC_FIXED_POINT_H_

@@ -70,32 +70,16 @@ All standard C++ numeric limits and type traits are supported.
 ## Fixed
 
 Microcontrollers often lack an **FPU** or have limited floating-point performance.
-Æthernet provides a **fixed-point module** that behaves like a floating-point type but is deterministic and overflow-safe.
-
-Unlike many libraries, you do **not** need to manually define integer/fraction bit widths — they’re automatically derived from a **range** at compile time.
+Æthernet provides a **range-scaled fixed-point** type that maps a raw integer storage value linearly to `[0, Max]` (unsigned) or `[-Max, +Max]` (signed). It is **not** Q-format fixed point.
 
 ```cpp
-AE_FIXED(uint8_t, 123.5) f(3.14f);
+using F = ae::FixedPoint<std::uint8_t, 123.5>;
+static_assert(F::FromDouble(123.5).raw_value() == 255);
 ```
 
-Values can also be initialized directly from floating-point literals:
+Canonical syntax is `FixedPoint<Rep, Max>` where `Rep` is a built-in integral or `TieredInt` storage type and `Max` is a positive compile-time value (integral or floating NTTP). Signed storage uses a **symmetric** raw range around zero (e.g. `int8_t` uses `-127..+127`, not `INT_MIN`).
 
-```cpp
-AE_FIXED(uint8_t, 10.0) f1(3.14f);
-AE_FIXED(uint8_t, 10.0) f2(9.0f);
-auto f3 = f1 + f2;  // inferred result range [0..20]
-```
-
-The library infers result types for arithmetic to prevent overflow.
-
-It also supports **out-of-range fixed-point positioning**, e.g.:
-
-```cpp
-AE_FIXED(uint8_t, 60000.0) big(3000.0f);
-AE_FIXED(uint8_t, 0.0001) tiny(0.00001f);
-```
-
-While other libraries often restrict fractional bits to [0..8], this approach enables **natural semantics** (e.g., expressing time directly in seconds rather than milliseconds).
+Runtime arithmetic is **integer-only** on the raw representation; floating-point is used only at compile time (e.g. `FromDouble`).
 
 ---
 
