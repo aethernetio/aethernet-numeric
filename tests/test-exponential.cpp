@@ -95,6 +95,66 @@ static_assert(clamp(v, low, high) == high);
 static_assert(min(low, high) == low);
 static_assert(max(low, high) == high);
 
+// ---- Final logical-value construction semantics ----
+
+// Logical-value construction (consteval): E{1}, E{10}, E{0.001}.
+constexpr E el1{1};
+constexpr E el10{10};
+constexpr E el_min{0.001};
+static_assert(el1.code_value() == E::FromRuntimeInteger(1).code_value());
+static_assert(el10.code_value() == E::FromRuntimeInteger(10).code_value());
+static_assert(el1.code_value() != 0);
+static_assert(el10.code_value() != 0);
+static_assert(el_min.code_value() != 0);
+static_assert(el1.code_value() < el10.code_value());
+
+// Raw-code construction: E::Code(10) / E::FromCode(10).
+static_assert(E::Code(10).code_value() == 10);
+static_assert(E::FromCode(10).code_value() == 10);
+
+// Accessors: code() returns stored code, value() decodes to RuntimeT.
+static_assert(E::FromCode(0).code_value() == 0);
+static_assert(E::FromCode(0).value() == Runtime::FromInteger(0));
+static_assert(el1.value() > Runtime::FromDouble(0.9));
+static_assert(el1.value() < Runtime::FromDouble(1.1));
+
+// Runtime conversion APIs: clamp / checked.
+static_assert(E::FromRuntimeInteger(123).code_value() == E::kBoundaryCode);
+static_assert(E::Saturating(123).code_value() == E::kBoundaryCode);
+static_assert(E::TryFromRuntimeInteger(10).has_value());
+static_assert(!E::TryFromRuntimeInteger(123).has_value());
+
+// Signed logical-value construction.
+constexpr SE sel_neg{-1};
+static_assert(sel_neg.is_negative());
+
+void test_LogicalConstruction() {
+  TEST_ASSERT(el1.code_value() != 0);
+  TEST_ASSERT_EQUAL(10, E::Code(10).code_value());
+  TEST_ASSERT_EQUAL(10, E::FromCode(10).code_value());
+
+  const auto decoded = el1.value();
+  TEST_ASSERT(decoded > Runtime::FromDouble(0.9));
+  TEST_ASSERT(decoded < Runtime::FromDouble(1.1));
+}
+
+void test_RuntimeIntegerApis() {
+  std::int64_t in_range = 10;
+  std::int64_t out_of_range = 123;
+
+  TEST_ASSERT_EQUAL(E::kBoundaryCode,
+                    E::FromRuntimeInteger(out_of_range).code_value());
+  TEST_ASSERT_EQUAL(E::kBoundaryCode,
+                    E::Saturating(out_of_range).code_value());
+
+  const auto ok = E::TryFromRuntimeInteger(in_range);
+  TEST_ASSERT(ok.has_value());
+  TEST_ASSERT(ok->code_value() != 0);
+
+  const auto bad = E::TryFromRuntimeInteger(out_of_range);
+  TEST_ASSERT_FALSE(bad.has_value());
+}
+
 void test_RuntimeRoundTrip() {
   const auto encoded = E::from_runtime(Runtime::FromInteger(0));
   TEST_ASSERT_EQUAL(0, encoded.code_value());
@@ -115,6 +175,8 @@ void test_RuntimeRoundTrip() {
 
 int test_exponential() {
   UNITY_BEGIN();
+  RUN_TEST(ae::test_exponential::test_LogicalConstruction);
+  RUN_TEST(ae::test_exponential::test_RuntimeIntegerApis);
   RUN_TEST(ae::test_exponential::test_RuntimeRoundTrip);
   return UNITY_END();
 }

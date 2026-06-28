@@ -19,16 +19,23 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
 #include <gcem.hpp>
 
+#include "numeric/fixed_point.h"
 #include "numeric/numeric_traits.h"
 #include "numeric/runtime_numeric_traits.h"
 
 namespace ae {
 namespace exponential_internal {
+
+// Intentionally non-constexpr: naming this on a branch reached during constant
+// evaluation makes the enclosing consteval construction ill-formed, turning an
+// out-of-range logical constant into a compile error instead of a silent clamp.
+inline void ExponentialConstantExceedsRange() {}
 
 template <typename WireT>
 constexpr auto WireRawValue(const WireT& wire) {
@@ -95,6 +102,17 @@ consteval auto BuildMagnitudeTable() {
       std::make_index_sequence<kMaxIndex + 1>{});
 }
 
+template <typename RuntimeT>
+constexpr RuntimeT RuntimeSub(const RuntimeT& lhs, const RuntimeT& rhs) {
+  if constexpr (std::is_floating_point_v<RuntimeT>) {
+    return lhs - rhs;
+  } else if constexpr (numeric_traits<RuntimeT>::kIsFixedPoint) {
+    return sub_to<RuntimeT>(lhs, rhs);
+  } else {
+    return lhs - rhs;
+  }
+}
+
 template <typename RuntimeT, bool kIsSigned>
 constexpr RuntimeT AbsRuntime(RuntimeT value) {
   using RuntimeTraits = runtime_numeric_traits<RuntimeT>;
@@ -102,7 +120,7 @@ constexpr RuntimeT AbsRuntime(RuntimeT value) {
   if constexpr (kIsSigned) {
     const RuntimeT zero = RuntimeTraits::FromInteger(0);
     if (value < zero) {
-      return zero - value;
+      return RuntimeSub(zero, value);
     }
   }
   return value;
@@ -142,9 +160,10 @@ constexpr WireValue NearestMagnitudeIndex(RuntimeT abs_value) {
     return MaxIndex;
   }
 
-  const RuntimeT diff_lo = abs_value - Table[static_cast<std::size_t>(lo)];
-  const RuntimeT diff_hi =
-      Table[static_cast<std::size_t>(lo + WireValue{1})] - abs_value;
+  const RuntimeT diff_lo =
+      RuntimeSub(abs_value, Table[static_cast<std::size_t>(lo)]);
+  const RuntimeT diff_hi = RuntimeSub(
+      Table[static_cast<std::size_t>(lo + WireValue{1})], abs_value);
   if (diff_hi < diff_lo) {
     return static_cast<WireValue>(lo + WireValue{1});
   }
@@ -206,6 +225,41 @@ class Exponential {
     return Exponential(exponential_internal::WireFromValue<WireT>(
         exponential_internal::ClampCode(
             exponential_internal::WireRawValue(code), kBoundaryCode)));
+  }
+
+  // Explicit raw-code construction.
+  static constexpr Exponential FromCode(WireT code) { return from_code(code); }
+  static constexpr Exponential Code(WireT code) { return from_code(code); }
+
+  // Whether an integer logical value fits within the declared magnitude range.
+  static constexpr bool LogicalIntegerInRange(std::int64_t value) {
+    if constexpr (!kIsSigned) {
+      if (value < 0) {
+        return false;
+      }
+    }
+    const double magnitude =
+        value < 0 ? -static_cast<double>(value) : static_cast<double>(value);
+    return magnitude <= static_cast<double>(BoundaryMagnitude);
+  }
+
+  // Explicit runtime conversion: encodes a logical integer, clamping to range.
+  static constexpr Exponential FromRuntimeInteger(std::int64_t value) {
+    return from_runtime(RuntimeTraits::FromInteger(value));
+  }
+
+  // Explicit saturating runtime conversion: clamps to the declared range.
+  static constexpr Exponential Saturating(std::int64_t value) {
+    return from_runtime(RuntimeTraits::FromInteger(value));
+  }
+
+  // Checked runtime conversion: nullopt when value exceeds the declared range.
+  static constexpr std::optional<Exponential> TryFromRuntimeInteger(
+      std::int64_t value) {
+    if (!LogicalIntegerInRange(value)) {
+      return std::nullopt;
+    }
+    return from_runtime(RuntimeTraits::FromInteger(value));
   }
 
   static constexpr Exponential from_runtime(RuntimeT value) {
@@ -319,9 +373,34 @@ class Exponential {
     return from_runtime(RuntimeTraits::FromDouble(value));
   }
 
+  // Encodes a logical integer with compile-time range checking.
+  static consteval Exponential EncodeCheckedInteger(std::int64_t value) {
+    if (!LogicalIntegerInRange(value)) {
+      exponential_internal::ExponentialConstantExceedsRange();
+    }
+    return from_runtime(RuntimeTraits::FromInteger(value));
+  }
+
   constexpr Exponential() = default;
 
+  // Ordinary numeric construction uses logical values and is consteval:
+  // integer constants are range-checked at compile time and runtime values are
+  // rejected, so there is no silent clamp through the normal constructor.
+  template <std::integral T>
+  consteval Exponential(T logical_value)
+      : Exponential(EncodeCheckedInteger(static_cast<std::int64_t>(
+            logical_value))) {}
+
+  // Floating logical construction is consteval-only (no runtime float/double).
+  consteval Exponential(double logical_value)
+      : Exponential(from_double(logical_value)) {}
+
+  consteval Exponential(float logical_value)
+      : Exponential(from_double(static_cast<double>(logical_value))) {}
+
   constexpr WireT code() const { return code_; }
+
+  constexpr RuntimeT value() const { return to_runtime(); }
 
   constexpr wire_value_type code_value() const {
     return exponential_internal::WireRawValue(code_);
@@ -368,7 +447,8 @@ class Exponential {
     }
     const RuntimeT magnitude = MagnitudeAt(index);
     if (is_negative()) {
-      return RuntimeTraits::FromInteger(0) - magnitude;
+      return exponential_internal::RuntimeSub(RuntimeTraits::FromInteger(0),
+                                            magnitude);
     }
     return magnitude;
   }

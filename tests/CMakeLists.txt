@@ -52,3 +52,20 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 )
 
 add_test(NAME ${PROJECT_NAME} COMMAND $<TARGET_FILE:${PROJECT_NAME}>)
+
+# Compile-fail tests: each target must fail to compile. They are excluded from
+# the default build; ctest builds them on demand and treats a build failure as
+# success (WILL_FAIL).
+foreach(fail_case
+    construct_out_of_range
+    add_out_of_range
+    exp_construct_out_of_range
+    exp_float_runtime)
+  add_executable(fail-${fail_case} EXCLUDE_FROM_ALL
+    compile-fail/${fail_case}.cpp)
+  target_link_libraries(fail-${fail_case} PRIVATE numeric)
+  add_test(NAME fail-${fail_case}
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
+      --target fail-${fail_case} --config $<CONFIG>)
+  set_tests_properties(fail-${fail_case} PROPERTIES WILL_FAIL TRUE)
+endforeach()
