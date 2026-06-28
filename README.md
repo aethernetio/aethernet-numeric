@@ -40,12 +40,34 @@ Although other variable-length encoding methods exist (e.g., Google-optimized va
 **Examples**
 
 ```cpp
+using T1 = ae::TieredInt<std::uint8_t, 249>;
+using T2 = ae::TieredInt<std::uint16_t, 1000>;
+using T4 = ae::TieredInt<std::uint32_t, 10>;
 using U8 = ae::TieredInt<std::uint8_t, 254>;
 using U16 = ae::TieredInt<std::uint8_t, 249, 1529>;
 using S8 = ae::TieredInt<std::int8_t, 10, 20>;
 ```
 
-The first template parameter is the wire cell type (`std::uint8_t`, `std::uint16_t`, or `std::uint32_t`). Subsequent parameters are per-tier maximum values.
+The first template parameter is the wire cell type (`std::uint8_t`, `std::uint16_t`, or `std::uint32_t`). Subsequent parameters are per-tier maximum **logical** values:
+
+* `249` — maximum value encoded in 1 byte
+* `1529` — maximum value encoded in 2 bytes (must fit in the 2-byte format created by the first boundary)
+* `16777215` — maximum value encoded in 4 bytes (must fit in the 4-byte format created by earlier boundaries)
+
+For signed `TieredInt`, tier boundaries are validated in wire space after ZigZag encoding.
+
+`TieredInt` always requires extension header space: the first tier max must be **strictly below** the wire cell's header maximum (e.g. `254`, not `255`, for `std::uint8_t`). If you need a full fixed-width integer, use the built-in type directly (`std::uint8_t`, etc.).
+
+Invalid examples:
+
+```cpp
+// Invalid: no extension header left.
+using Bad1 = ae::TieredInt<std::uint8_t, 255>;
+
+// Invalid: second boundary does not fit in the two-byte format
+// created by first boundary 249.
+using Bad2 = ae::TieredInt<std::uint8_t, 249, 1000000>;
+```
 
 All standard C++ numeric limits and type traits are supported.
 
@@ -160,6 +182,23 @@ Core APIs:
 * `ae::from_chars(first, last, value)` — non-allocating parse
 
 `Exponential` text IO encodes/decodes through `to_runtime()` / `from_runtime()`. JSON or logging layers can call `ToString` / `FromString` without pulling a JSON dependency into the numeric core.
+
+---
+
+## Ostream IO
+
+`numeric/ostream_io.h` provides optional `operator<<` for `TieredInt` and `FixedPoint`. Include it only when you need stream output; core numeric headers do not pull in `<ostream>`.
+
+Formatting uses the same integer-only text IO backend (`to_chars` / stack buffer, no runtime floating-point):
+
+```cpp
+#include "numeric/ostream_io.h"
+
+using F = ae::FixedPoint<std::uint8_t, 100.0>;
+
+std::cout << ae::TieredInt<std::uint8_t, 254>{123}; // 123
+std::cout << F::FromRaw(1);                         // 0.5
+```
 
 ---
 

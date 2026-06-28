@@ -37,6 +37,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-exponential.cpp
   test-exponential-floating-runtime.cpp
   test-text-io.cpp
+  test-ostream-io.cpp
   test-wire-io.cpp
   test-type-size.cpp
 )

@@ -542,23 +542,6 @@ struct TextIO<Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
   }
 };
 
-#ifdef AE_NUMERIC_ENABLE_IOSTREAM
-
-#include <ostream>
-
-template <typename TStream, typename T>
-  requires requires(TStream& os, T value) { ae::to_chars(nullptr, nullptr, value); }
-TStream& operator<<(TStream& os, T value) {
-  char buffer[MaxTextSize<T>()];
-  const auto result = to_chars(buffer, buffer + sizeof(buffer), value);
-  if (result.ec == std::errc{}) {
-    os.write(buffer, result.ptr - buffer);
-  }
-  return os;
-}
-
-#endif  // AE_NUMERIC_ENABLE_IOSTREAM
-
 }  // namespace ae
 
 #endif  // NUMERIC_TEXT_IO_H_

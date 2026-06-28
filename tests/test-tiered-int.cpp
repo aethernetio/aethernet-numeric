@@ -37,20 +37,34 @@ using T3 = TieredInt<std::uint8_t, 249, 1529, 16777215>;
 using T4 = TieredInt<std::uint16_t, 1000>;
 using T5 = TieredInt<std::uint16_t, 1000, 8000>;
 using T6 = TieredInt<std::uint32_t, 10>;
-using T7 = TieredInt<std::uint8_t, 255>;
+using T254 = TieredInt<std::uint8_t, 254>;
 
 using S1 = TieredInt<std::int16_t, 1000>;
 using S2 = TieredInt<std::int8_t, 10, 20>;
 using S3 = TieredInt<std::int16_t, 100>;
 using S4 = TieredInt<std::int8_t, 124, 125, 126>;
 
+static_assert(tiered_int_internal::kIsValidTierConfig<std::uint8_t, 254>);
+static_assert(tiered_int_internal::kIsValidTierConfig<std::uint8_t, 249>);
+static_assert(tiered_int_internal::kIsValidTierConfig<std::uint8_t, 249, 1529>);
+static_assert(tiered_int_internal::kIsValidTierConfig<
+              std::uint8_t, 249, 1529, 16777215>);
+static_assert(!tiered_int_internal::kIsValidTierConfig<std::uint8_t, 255>);
+static_assert(!tiered_int_internal::kIsValidTierConfig<
+              std::uint8_t, 249, 1000000>);
+static_assert(tiered_int_internal::kIsValidTierConfig<std::int8_t, 10, 20>);
+static_assert(tiered_int_internal::kIsValidTierConfig<std::int16_t, 1000>);
+
 static_assert(T1::kIsSigned == false);
 static_assert(S1::kIsSigned == true);
 static_assert(S2::kIsSigned == true);
 static_assert(S3::kIsSigned == true);
 static_assert(S4::kIsSigned == true);
-static_assert(std::is_same_v<T1, TieredIntFromStartSize<1, 249>>);
-static_assert(std::is_same_v<T4, TieredIntFromStartSize<2, 1000>>);
+
+static_assert(std::is_same_v<T254::ValueType, std::uint16_t>);
+static_assert(T254::kBaseBytes == 1);
+static_assert(T254::kMaxWireBytes == 2);
+static_assert(T254::kUpper == 510);
 
 static_assert(std::is_same_v<T1::ValueType, std::uint16_t>);
 static_assert(std::is_same_v<T2::ValueType, std::uint32_t>);
@@ -58,7 +72,6 @@ static_assert(std::is_same_v<T3::ValueType, std::uint64_t>);
 static_assert(std::is_same_v<T4::ValueType, std::uint32_t>);
 static_assert(std::is_same_v<T5::ValueType, std::uint64_t>);
 static_assert(std::is_same_v<T6::ValueType, std::uint64_t>);
-static_assert(std::is_same_v<T7::ValueType, std::uint8_t>);
 
 static_assert(T1::kBaseBytes == 1);
 static_assert(T1::kMaxWireBytes == 2);
@@ -99,15 +112,6 @@ static_assert(T6::kMaxWireBytes == sizeof(T6::ValueType));
 static_assert(T6::kUpper >
               static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()));
 static_assert(T6{T6::kUpper}.value_ == T6::kUpper);
-
-static_assert(T7::kBaseBytes == 1);
-static_assert(T7::kMaxWireBytes == 1);
-static_assert(T7::kSaturatedSingleCell == true);
-static_assert(sizeof(T7::ValueType) == 1);
-static_assert(T7::kUpper == 255);
-static_assert(T7::kUpper <= static_cast<T7::ValueType>(T7::kHeaderMax));
-static_assert(T1::kSaturatedSingleCell == false);
-static_assert(T1::kMaxWireBytes == 2);
 
 static_assert(S1::kBaseBytes == 2);
 static_assert(S1::kMaxWireBytes == 4);
@@ -251,6 +255,20 @@ void TestValueToSize(typename TInt::ValueType value,
   TEST_ASSERT_EQUAL(expected_size, read_size);
   TEST_ASSERT_EQUAL(static_cast<typename TInt::ValueType>(p),
                     static_cast<typename TInt::ValueType>(des_p));
+}
+
+template <typename TInt>
+void TestExactSerializedBytes(typename TInt::ValueType value,
+                              std::initializer_list<std::uint8_t> expected) {
+  const auto p = TInt{value};
+  std::uint8_t buf[TInt::kMaxWireBytes] = {};
+  const auto size = p.Serialize(buf);
+
+  TEST_ASSERT_EQUAL(expected.size(), size);
+  std::size_t i = 0;
+  for (const auto byte : expected) {
+    TEST_ASSERT_EQUAL_HEX8(byte, buf[i++]);
+  }
 }
 
 template <typename TInt>
@@ -407,7 +425,7 @@ void test_FourTier() {
   TEST_ASSERT_EQUAL(6571316740095ull, v);
 }
 
-void test_StartSizeTwoAndFour() {
+void test_WireCellTwoAndFour() {
   TestRoundTripBuffer(T4{500});
   TestRoundTripBuffer(T4{1000});
   TestRoundTripBuffer(T4{1001});
@@ -430,15 +448,25 @@ void test_StartSizeTwoAndFour() {
   TestValueToSizeStream<T6>(11, 8);
 }
 
-void test_MinimalValueType() {
-  TestRoundTripBuffer(T7{255});
-  TestRoundTripBuffer(T7{254});
-  TestValueToSize<T7>(255, 1);
-  TestValueToSize<T7>(254, 1);
-  TestMaxWireSize<T7>();
+void test_ExtensionHeaderTier() {
+  TestExactSerializedBytes<T254>(254, {0xFE});
+  TestExactSerializedBytes<T254>(255, {0xFF, 0x00});
+  TestExactSerializedBytes<T254>(510, {0xFF, 0xFF});
 
-  TEST_ASSERT(T7::kMaxEncodable == 255);
-  TEST_ASSERT(T7::kMaxWireBytes == T7::kBaseBytes);
+  TestRoundTripBuffer(T254{254});
+  TestRoundTripBuffer(T254{255});
+  TestRoundTripBuffer(T254{510});
+  TestValueToSize<T254>(254, 1);
+  TestValueToSize<T254>(255, 2);
+  TestValueToSize<T254>(510, 2);
+  TestMaxWireSize<T254>();
+}
+
+void test_RepresentativeWireEncoding() {
+  TestExactSerializedBytes<T2>(249, {0xF9});
+  TestExactSerializedBytes<T2>(250, {0xFA, 0x00});
+  TestExactSerializedBytes<T2>(1529, {0xFE, 0xFF});
+  TestExactSerializedBytes<T2>(1530, {0xFF, 0x00, 0x00, 0x00});
 }
 
 void test_WireSizeTransitions() {
@@ -599,8 +627,9 @@ int test_tiered_int() {
   RUN_TEST(ae::test_tiered_int::test_ConstexprConstruction);
   RUN_TEST(ae::test_tiered_int::test_ThreeTier);
   RUN_TEST(ae::test_tiered_int::test_FourTier);
-  RUN_TEST(ae::test_tiered_int::test_StartSizeTwoAndFour);
-  RUN_TEST(ae::test_tiered_int::test_MinimalValueType);
+  RUN_TEST(ae::test_tiered_int::test_WireCellTwoAndFour);
+  RUN_TEST(ae::test_tiered_int::test_ExtensionHeaderTier);
+  RUN_TEST(ae::test_tiered_int::test_RepresentativeWireEncoding);
   RUN_TEST(ae::test_tiered_int::test_WireSizeTransitions);
   RUN_TEST(ae::test_tiered_int::test_SignedWireCell);
   RUN_TEST(ae::test_tiered_int::test_SignedThreeTier);
