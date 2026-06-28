@@ -14,6 +14,10 @@
 
 cmake_minimum_required(VERSION 3.16)
 
+if(NOT DEFINED CMAKE_CXX_COMPILER AND EXISTS "/opt/local/bin/clang++-mp-20")
+  set(CMAKE_CXX_COMPILER "/opt/local/bin/clang++-mp-20")
+endif()
+
 project(numeric CXX)
 
 # define is the project is the current root project

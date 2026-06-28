@@ -77,9 +77,11 @@ using F = ae::FixedPoint<std::uint8_t, 123.5>;
 static_assert(F::FromDouble(123.5).raw_value() == 255);
 ```
 
-Canonical syntax is `FixedPoint<Rep, Max>` where `Rep` is a built-in integral or `TieredInt` storage type and `Max` is a positive compile-time value (integral or floating NTTP). Signed storage uses a **symmetric** raw range around zero (e.g. `int8_t` uses `-127..+127`, not `INT_MIN`).
+Canonical syntax is `FixedPoint<Rep, Max>` where `Rep` is a built-in integral or `TieredInt` storage type and `Max` is a positive C++23 NTTP (integral or floating-point). Signed storage uses a **symmetric** raw range around zero (e.g. `int8_t` uses `-127..+127`, not `INT_MIN`).
 
-Runtime arithmetic is **integer-only** on the raw representation; floating-point is used only at compile time (e.g. `FromDouble`).
+Runtime arithmetic is **integer-only** on the raw representation; floating-point is used only at compile time (e.g. `FromDouble`). Build with a C++23 compiler that supports floating-point NTTP (e.g. MacPorts Clang 20).
+
+`FixedPoint` values can be converted between different ranges and storage types with `Cast<To>(value)`. Same-type `+`, `-`, `*`, and `/` behave like floating-point math but stay in integer raw space; overflow and division by zero saturate to the type's raw limits.
 
 ---
 
