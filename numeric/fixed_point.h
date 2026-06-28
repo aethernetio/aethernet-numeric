@@ -796,13 +796,13 @@ operator*(FixedPoint<RepA, MaxA> lhs, FixedPoint<RepB, MaxB> rhs) {
 }
 
 template <typename Rep, auto Max, std::integral T>
-constexpr FixedPoint<Rep, Max + Max> operator+(FixedPoint<Rep, Max> lhs,
+consteval FixedPoint<Rep, Max + Max> operator+(FixedPoint<Rep, Max> lhs,
                                                T rhs) {
   return lhs + FixedPoint<Rep, Max>{rhs};
 }
 
 template <typename Rep, auto Max, std::integral T>
-constexpr FixedPoint<Rep, Max + Max> operator+(T lhs, FixedPoint<Rep, Max> rhs) {
+consteval FixedPoint<Rep, Max + Max> operator+(T lhs, FixedPoint<Rep, Max> rhs) {
   return FixedPoint<Rep, Max>{lhs} + rhs;
 }
 

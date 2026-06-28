@@ -118,10 +118,10 @@ using Large = FixedPoint<std::uint8_t, 1000000000.0>;
 
 constexpr auto s = Small::FromRaw(255);
 constexpr auto l = Small::Cast<Large>(s);
-static_assert(l.raw_value() >= 0);
+static_assert(l.raw_value() == Large::kRawMin);
 
 constexpr auto cast_back = Large::Cast<Small>(l);
-static_assert(cast_back.raw_value() <= Small::kRawMax);
+static_assert(cast_back.raw_value() == Small::kRawMin);
 
 // PromoteRep same-rep
 static_assert(std::is_same_v<PromoteRep<std::uint8_t, std::uint8_t>::type,
