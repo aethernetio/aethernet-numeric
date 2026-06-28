@@ -53,7 +53,7 @@ struct numeric_traits<TieredInt<WireCell, TierMaxVals...>> {
   using rep_value_type = typename Rep::ValueType;
   using value_type = Rep;
 
-  static constexpr bool kIsIntegerLike = false;
+  static constexpr bool kIsIntegerLike = true;
   static constexpr bool kIsFixedPoint = false;
   static constexpr bool kIsExponential = false;
   static constexpr bool kIsSigned = Rep::kIsSigned;

@@ -70,18 +70,27 @@ All standard C++ numeric limits and type traits are supported.
 ## Fixed
 
 Microcontrollers often lack an **FPU** or have limited floating-point performance.
-Æthernet provides a **range-scaled fixed-point** type that maps a raw integer storage value linearly to `[0, Max]` (unsigned) or `[-Max, +Max]` (signed). It is **not** Q-format fixed point.
+Æthernet provides a **binary-scaled inferred-point** fixed type. `Max` is a required logical bound — the storage raw range is **not** mapped exactly to `Max`. The implementation chooses a binary point so the type can represent at least `Max` with the highest precision that fits in `Rep`.
 
 ```cpp
-using F = ae::FixedPoint<std::uint8_t, 123.5>;
-static_assert(F::FromDouble(123.5).raw_value() == 255);
+using Q53 = ae::FixedPoint<std::uint8_t, 30.0>;   // Q5.3, step 1/8, max ~31.875
+using Q71 = ae::FixedPoint<std::uint8_t, 100.0>;  // Q7.1, step 1/2, max ~127.5
+using Q80 = ae::FixedPoint<std::uint8_t, 130.0>;  // Q8.0, step 1, max 255
 ```
 
-Canonical syntax is `FixedPoint<Rep, Max>` where `Rep` is a built-in integral or `TieredInt` storage type and `Max` is a positive C++23 NTTP (integral or floating-point). Signed storage uses a **symmetric** raw range around zero (e.g. `int8_t` uses `-127..+127`, not `INT_MIN`).
+Canonical syntax is `FixedPoint<Rep, Max>` where `Rep` is a built-in integral or `TieredInt` storage type and `Max` is a positive C++23 NTTP (integral or floating-point). Logical value is `raw * 2^kScaleExp`. Signed storage uses a **symmetric** raw range around zero (e.g. `int8_t` uses `-127..+127`, not `INT_MIN`).
 
-Runtime arithmetic is **integer-only** on the raw representation; floating-point is used only at compile time (e.g. `FromDouble`). Build with a C++23 compiler that supports floating-point NTTP (e.g. MacPorts Clang 20).
+Runtime arithmetic is **integer-only** (shifts and saturated raw add/sub); floating-point is used only at compile time (e.g. `FromDouble`, scale selection). Mixed addition infers `FixedPoint<Rep, MaxA + MaxB>`. Scale conversion uses `Cast<To>()`. Explicit division uses `div_to<Target>(lhs, rhs)`.
 
-`FixedPoint` values can be converted between different ranges and storage types with `Cast<To>(value)`. Same-type `+`, `-`, `*`, and `/` behave like floating-point math but stay in integer raw space; overflow and division by zero saturate to the type's raw limits.
+Configure the compiler explicitly when building (C++23 with floating-point NTTP), for example MacPorts Clang 20:
+
+```bash
+cmake -S . -B build-dev \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_C_COMPILER=/opt/local/bin/clang-mp-20 \
+  -DCMAKE_CXX_COMPILER=/opt/local/bin/clang++-mp-20 \
+  -DCMAKE_CXX_STANDARD=23
+```
 
 ---
 
@@ -160,7 +169,7 @@ auto restored = deserialize<Duration>(bytes);
 
 ## Running Tests
 
-Build and run the unit tests with CMake.
+Build and run the unit tests with CMake. Select the compiler explicitly on the command line:
 
 ```bash
 # 1) Clone the repository
@@ -170,16 +179,17 @@ git clone https://github.com/aethernetio/aethernet-numeric.git
 cd aethernet-numeric
 git submodule update --init --recursive
 
-# 3) Create a build directory
-mkdir build
-cd build
+# 3) Configure with tests enabled (example: MacPorts Clang 20)
+cmake -S . -B build-dev \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_C_COMPILER=/opt/local/bin/clang-mp-20 \
+  -DCMAKE_CXX_COMPILER=/opt/local/bin/clang++-mp-20 \
+  -DCMAKE_CXX_STANDARD=23 \
+  -DAE_BUILD_TESTS=ON
 
-# 4) Generate build files with tests enabled
-cmake -DAE_BUILD_TESTS=On ..
-
-# 5) Build the project and run tests
-cmake --build .
-ctest .
+# 4) Build and run tests
+cmake --build build-dev
+ctest --test-dir build-dev --output-on-failure
 ```
 
 ---
