@@ -55,7 +55,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE numeric unity)
 target_compile_options(${PROJECT_NAME} PRIVATE
   $<$<CXX_COMPILER_ID:Clang>: -Wall -Wextra -Werror>
   $<$<CXX_COMPILER_ID:GNU>: -Wall -Wextra -Werror>
-  $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /MP /constexpr:steps16777216 /wd4530 /wd4702>
+  $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /MP /constexpr:steps16777216 /wd4530 /wd4702 /wd4127>
 )
 
 add_test(NAME ${PROJECT_NAME} COMMAND $<TARGET_FILE:${PROJECT_NAME}>)

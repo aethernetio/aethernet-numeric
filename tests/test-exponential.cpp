@@ -228,9 +228,10 @@ void test_NoHugeTableCompile() {
 }
 
 void test_EncodeDecodeBudget() {
-  const Runtime values[] = {
+  constexpr Runtime values[] = {
       Runtime::FromDouble(0.001), Runtime::FromDouble(0.01),
-      Runtime::FromDouble(0.1), Runtime{1}, Runtime{10}, Runtime{60}};
+      Runtime::FromDouble(0.1), Runtime::FromDouble(1.0),
+      Runtime::FromDouble(10.0), Runtime::FromDouble(60.0)};
   int prev_code = 0;
   for (const Runtime v : values) {
     const E encoded = E::FromRuntime(v);
