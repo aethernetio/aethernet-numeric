@@ -82,7 +82,7 @@ constexpr std::int64_t SignedUpperFromWireMax() {
 
 template <std::uint64_t MaxZigZag>
 constexpr std::int64_t SignedLowerFromWireMax() {
-  if (MaxZigZag == 0) {
+  if constexpr (MaxZigZag == 0) {
     return 0;
   }
   return -static_cast<std::int64_t>((MaxZigZag + 1) / 2);
