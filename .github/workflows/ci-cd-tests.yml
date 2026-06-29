@@ -28,7 +28,7 @@ jobs:
               os: windows-latest,
               platform: "msvc64",
               shell: "powershell",
-              generator: "Visual Studio 17 2022",
+              generator: "Visual Studio 18 2026",
               cc: "cl",
               cxx: "cl",
               build_type: Release,
@@ -67,6 +67,8 @@ jobs:
       - name: Set Windows environment
         if: ${{ (matrix.config.platform == 'msvc64') }}
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          vsversion: "2026"
 
       - name: Set MinGW environment
         if: ${{ (matrix.config.platform == 'mingw64_gcc') }}
