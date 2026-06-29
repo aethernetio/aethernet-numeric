@@ -131,11 +131,11 @@ constexpr std::int64_t FloorLogical(Log y) {
   std::int64_t num = static_cast<std::int64_t>(y.raw_value());
   std::int64_t den = 1;
   const int scale = Log::kScaleExp;
-  if (scale > 0) {
+  if constexpr (scale > 0) {
     for (int i = 0; i < scale; ++i) {
       num *= 2;
     }
-  } else if (scale < 0) {
+  } else if constexpr (scale < 0) {
     for (int i = 0; i < -scale; ++i) {
       den *= 2;
     }
