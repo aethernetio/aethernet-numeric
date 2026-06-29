@@ -25,7 +25,7 @@ jobs:
         config:
           - {
               name: "Windows MSVC",
-              os: windows-latest,
+              os: windows-2022,
               platform: "msvc64",
               shell: "powershell",
               generator: "Ninja",
