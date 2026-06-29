@@ -98,6 +98,14 @@ void test_SmallRuntimeRoundTrip() {
   TEST_ASSERT(NearRaw(y, SmallRuntime{10}, 32));
 }
 
+void test_FromClampedRawClampsLargeValue() {
+  using Target = FixedPoint<std::uint16_t, 60.0>;
+  constexpr auto clamped =
+      fixed_math::internal::from_clamped_raw<Target>(std::int64_t{1} << 40);
+  TEST_ASSERT_EQUAL(static_cast<std::int64_t>(Target::kRawMax),
+                    static_cast<std::int64_t>(clamped.raw_value()));
+}
+
 }  // namespace ae::test_fixed_math
 
 int test_fixed_math() {
@@ -108,5 +116,6 @@ int test_fixed_math() {
   RUN_TEST(ae::test_fixed_math::test_Exp2FractionalValues);
   RUN_TEST(ae::test_fixed_math::test_RoundTrip);
   RUN_TEST(ae::test_fixed_math::test_SmallRuntimeRoundTrip);
+  RUN_TEST(ae::test_fixed_math::test_FromClampedRawClampsLargeValue);
   return UNITY_END();
 }

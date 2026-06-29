@@ -187,15 +187,36 @@ constexpr std::int64_t align_raw_to_target(Source x) {
       static_cast<std::int64_t>(Target::kRawMax));
 }
 
+template <typename Intermediate>
+constexpr std::int64_t RoundDivNearestWide(Intermediate num, Intermediate den) {
+  if (den == Intermediate{0}) {
+    return static_cast<std::int64_t>(num);
+  }
+
+  if constexpr (std::is_signed_v<Intermediate>) {
+    if (num >= 0 && den > 0) {
+      return static_cast<std::int64_t>((num + den / 2) / den);
+    }
+    if (num < 0 && den > 0) {
+      return static_cast<std::int64_t>((num - den / 2) / den);
+    }
+    if (num >= 0 && den < 0) {
+      return static_cast<std::int64_t>((num - den / 2) / den);
+    }
+    return static_cast<std::int64_t>((num + den / 2) / den);
+  } else {
+    return static_cast<std::int64_t>((num + den / 2) / den);
+  }
+}
+
 template <typename Target, typename Policy>
   requires is_fixed_point_v<Target>
 constexpr std::int64_t mul_raw_fixed(std::int64_t acc, std::int64_t factor) {
   using Intermediate = typename Policy::mul_intermediate_type;
   const Intermediate product =
       static_cast<Intermediate>(acc) * static_cast<Intermediate>(factor);
-  const std::int64_t one = raw_one<Target>();
-  return fixed_point_internal::RoundDivNearest(
-      static_cast<std::int64_t>(product), one);
+  const Intermediate one = static_cast<Intermediate>(raw_one<Target>());
+  return RoundDivNearestWide(product, one);
 }
 
 template <typename Target>
@@ -223,12 +244,19 @@ constexpr std::int64_t apply_pow2_int_raw(std::int64_t acc,
 template <typename Target>
   requires is_fixed_point_v<Target>
 constexpr Target from_clamped_raw(std::int64_t raw) {
-  const auto clamped = fixed_point_internal::ClampRaw(
-      static_cast<typename Target::rep_value_type>(raw), Target::kRawMin,
-      Target::kRawMax);
+  const std::int64_t min_raw = static_cast<std::int64_t>(Target::kRawMin);
+  const std::int64_t max_raw = static_cast<std::int64_t>(Target::kRawMax);
+
+  if (raw < min_raw) {
+    raw = min_raw;
+  }
+  if (raw > max_raw) {
+    raw = max_raw;
+  }
+
   return Target::FromRaw(
       fixed_point_internal::RepFromRawValue<typename Target::rep_type>(
-          clamped));
+          static_cast<typename Target::rep_value_type>(raw)));
 }
 
 // Precondition: x > 0.

@@ -136,6 +136,11 @@ struct PickWorkType {
                  MinQuantum>>::type;
 };
 
+// TODO: The codec mapping is unit-stable, but `log_type` selection still uses
+// absolute log extent to support the current absolute-log implementation.
+// A future cleanup should switch interpolation to relative log delta:
+//   log_delta = log2(value) - log2(MinMagnitude)
+// so log_type depends only on log_span = log2(BoundaryMagnitude / MinMagnitude).
 template <double LogSpan, double AbsLogExtent>
 struct PickLogType {
   using type = std::conditional_t<

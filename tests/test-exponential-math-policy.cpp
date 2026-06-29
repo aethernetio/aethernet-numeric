@@ -55,18 +55,18 @@ using SmallPolicy = SmallE::math_policy;
 
 static_assert(sizeof(SmallPolicy::work_type::rep_value_type) <=
               sizeof(std::uint16_t));
-static_assert(sizeof(SmallPolicy::mul_intermediate_type) <=
-              sizeof(std::int32_t));
+static_assert(std::is_same_v<SmallPolicy::mul_intermediate_type, std::int32_t>);
 static_assert(SmallPolicy::kLogIterations <= 10);
 
-RuntimeSeconds RuntimeMidpoint(const RuntimeSeconds& a,
-                               const RuntimeSeconds& b) {
-  const std::int64_t mid =
-      (static_cast<std::int64_t>(a.raw_value()) +
-       static_cast<std::int64_t>(b.raw_value())) /
-      2;
-  return RuntimeSeconds::FromRaw(
-      static_cast<typename RuntimeSeconds::rep_type>(mid));
+template <typename RuntimeT>
+RuntimeT RuntimeFromRaw(std::int64_t raw) {
+  return RuntimeT::FromRaw(
+      static_cast<typename RuntimeT::rep_type>(raw));
+}
+
+template <typename RuntimeT>
+RuntimeT RuntimeRawMidpoint(std::int64_t raw_a, std::int64_t raw_b) {
+  return RuntimeFromRaw<RuntimeT>((raw_a + raw_b) / 2);
 }
 
 void test_LatencyPolicyDerivation() {
@@ -105,17 +105,37 @@ void test_MidpointBoundaryNoUpwardBias() {
     const int hi = pair[1];
     const RuntimeSeconds v_lo = E::Code(lo).value();
     const RuntimeSeconds v_hi = E::Code(hi).value();
+    const std::int64_t raw_lo = static_cast<std::int64_t>(v_lo.raw_value());
+    const std::int64_t raw_hi = static_cast<std::int64_t>(v_hi.raw_value());
+    const std::int64_t mid = (raw_lo + raw_hi) / 2;
     const RuntimeSeconds below =
-        RuntimeMidpoint(v_lo, RuntimeMidpoint(v_lo, v_hi));
+        RuntimeRawMidpoint<RuntimeSeconds>(raw_lo, mid);
     const RuntimeSeconds above =
-        RuntimeMidpoint(RuntimeMidpoint(v_lo, v_hi), v_hi);
+        RuntimeRawMidpoint<RuntimeSeconds>(mid, raw_hi);
     const int code_below =
         static_cast<int>(E::FromRuntime(below).code_value());
     const int code_above =
         static_cast<int>(E::FromRuntime(above).code_value());
-    TEST_ASSERT(code_below <= hi);
-    TEST_ASSERT(code_above >= lo);
+    TEST_ASSERT(code_below <= lo + 1);
+    TEST_ASSERT(code_above >= hi - 1);
     TEST_ASSERT(code_below <= code_above);
+  }
+}
+
+void test_CodeRangeMonotonicity() {
+  using E = LatencyE;
+  static constexpr int kRoundtripBudget = 3;
+  std::int64_t prev_raw = -1;
+  for (int code = 1; code <= 510; code += 17) {
+    const RuntimeSeconds decoded = E::Code(code).value();
+    const std::int64_t raw = static_cast<std::int64_t>(decoded.raw_value());
+    TEST_ASSERT(raw >= prev_raw);
+    prev_raw = raw;
+
+    const int roundtrip_code =
+        static_cast<int>(E::FromRuntime(decoded).code_value());
+    TEST_ASSERT(roundtrip_code - code <= kRoundtripBudget);
+    TEST_ASSERT(roundtrip_code - code >= -kRoundtripBudget);
   }
 }
 
@@ -147,6 +167,7 @@ int test_exponential_math_policy() {
   RUN_TEST(ae::test_exponential_math_policy::test_PolicyLogTypeUsedByExp2);
   RUN_TEST(ae::test_exponential_math_policy::test_RuntimeMatchedWorkType);
   RUN_TEST(ae::test_exponential_math_policy::test_MidpointBoundaryNoUpwardBias);
+  RUN_TEST(ae::test_exponential_math_policy::test_CodeRangeMonotonicity);
   RUN_TEST(ae::test_exponential_math_policy::test_SmallRuntimeLowCostPath);
   RUN_TEST(ae::test_exponential_math_policy::test_UnitScalingCodeMapping);
   return UNITY_END();
