@@ -34,7 +34,7 @@ void test_TieredInt() {
   T parsed{};
   TEST_ASSERT(FromString("123", parsed));
   TEST_ASSERT_EQUAL(123, parsed.value_);
-  TEST_ASSERT_FALSE(FromString("999999999999999999999", parsed));
+  TEST_ASSERT_FALSE(FromString("152915291529152915299", parsed));
 }
 
 void test_FixedPointQ71() {
@@ -81,8 +81,8 @@ void test_LargePositiveScale() {
 
 void test_Exponential() {
   using Runtime = FixedPoint<std::uint32_t, 60.0>;
-  using Wire = TieredInt<std::uint8_t, 254>;
-  using E = Exponential<Runtime, Wire, 0.001, 60.0>;
+  using Wire = TieredInt<std::uint8_t, 249, 1529>;
+  using E = Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
 
   constexpr auto e = E::from_double(1.0);
   const auto text = ToString(e);

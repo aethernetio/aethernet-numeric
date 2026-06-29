@@ -43,6 +43,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-composed-types.cpp
   test-composed-exponential.cpp
   test-composed-exponential-tiered.cpp
+  test-fixed-math.cpp
   test-type-size.cpp
 )
 

@@ -94,20 +94,19 @@ void test_FixedPointLogicalValues() {
 
 void test_ExponentialCodes() {
   using Runtime = FixedPoint<std::uint32_t, 60.0>;
-  using Wire = TieredInt<std::uint8_t, 254>;
-  using E = Exponential<Runtime, Wire, 0.001, 60.0>;
+  using Wire = TieredInt<std::uint8_t, 249, 1529>;
+  using E = Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
   PackedRing<E, 64> ring;
 
-  TEST_ASSERT_TRUE(ring.push(E::Code(10)));
-  TEST_ASSERT_TRUE(ring.push(E::Code(254)));
-  TEST_ASSERT_TRUE(ring.push(E::Code(255)));
-  TEST_ASSERT_TRUE(ring.push(E::Code(510)));
+  TEST_ASSERT_TRUE(ring.push(E::Code(Wire{10})));
+  TEST_ASSERT_TRUE(ring.push(E::Code(Wire{249})));
+  TEST_ASSERT_TRUE(ring.push(E::Code(Wire{250})));
+  TEST_ASSERT_TRUE(ring.push(E::Code(Wire{1529})));
 
-  // Serialization stores code(); 1 + 1 + 2 + 2 bytes.
   TEST_ASSERT_EQUAL(6, ring.used_bytes());
   TEST_ASSERT_EQUAL(4, ring.size());
 
-  const int expected[] = {10, 254, 255, 510};
+  const int expected[] = {10, 249, 250, 1529};
   int i = 0;
   for (const E value : ring) {
     TEST_ASSERT_EQUAL(expected[i], static_cast<int>(value.code_value()));

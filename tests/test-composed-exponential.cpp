@@ -51,17 +51,13 @@ bool ExponentialCodeWireRoundTrip(const E& value) {
 }
 
 using IntRuntime = FixedPoint<std::uint32_t, 60.0>;
-using Code = TieredInt<std::uint8_t, 254>;
-using E = Exponential<IntRuntime, Code, 0.001, 60.0>;
+using Code = TieredInt<std::uint8_t, 249, 1529>;
+using E = Exponential<IntRuntime, Code, 0.001, 60.0, 1529>;
 
 static_assert(MaxWireBytes<E>() == MaxWireBytes<Code>());
 static_assert(sizeof(E) == sizeof(Code));
 static_assert(E::Code(10).code_value() == 10);
 static_assert(E::FromCode(10).code_value() == 10);
-
-// ---------------------------------------------------------------------------
-// 2. Exponential with integer FixedPoint runtime and TieredInt code
-// ---------------------------------------------------------------------------
 
 void test_ExponentialIntegerFixedPointRuntime() {
   const E e_min = E::from_double(0.001);
@@ -82,12 +78,19 @@ void test_ExponentialIntegerFixedPointRuntime() {
   TEST_ASSERT(ExponentialCodeWireRoundTrip(e1));
 }
 
-// ---------------------------------------------------------------------------
-// 4. Signed Exponential runtime
-// ---------------------------------------------------------------------------
+void test_TwoByteBoundaryCode() {
+  TEST_ASSERT_EQUAL(1, WireSize(E::Code(Code{10})));
+  TEST_ASSERT_EQUAL(1, WireSize(E::Code(Code{249})));
+  TEST_ASSERT_EQUAL(2, WireSize(E::Code(Code{250})));
+  TEST_ASSERT_EQUAL(2, WireSize(E::Code(Code{1529})));
+
+  TEST_ASSERT(ExponentialCodeWireRoundTrip(E::Code(Code{10})));
+  TEST_ASSERT(ExponentialCodeWireRoundTrip(E::Code(Code{250})));
+  TEST_ASSERT(ExponentialCodeWireRoundTrip(E::Code(Code{1529})));
+}
 
 using SignedRuntime = FixedPoint<std::int32_t, 60.0>;
-using SE = Exponential<SignedRuntime, Code, 0.001, 60.0>;
+using SE = Exponential<SignedRuntime, Code, 0.001, 60.0, 1529>;
 
 void test_SignedExponentialRuntime() {
   const SE se_neg = SE::from_double(-1.0);
@@ -105,22 +108,18 @@ void test_SignedExponentialRuntime() {
   TEST_ASSERT(ExponentialCodeWireRoundTrip(se_pos));
 }
 
-// ---------------------------------------------------------------------------
-// 8. PackedRing<Exponential<FixedPoint<integer>, TieredInt>>
-// ---------------------------------------------------------------------------
-
 void test_PackedRingExponentialIntegerFixedPoint() {
   PackedRing<E, 64> ring;
 
-  TEST_ASSERT_TRUE(ring.push(E::Code(10)));
-  TEST_ASSERT_TRUE(ring.push(E::Code(254)));
-  TEST_ASSERT_TRUE(ring.push(E::Code(255)));
-  TEST_ASSERT_TRUE(ring.push(E::Code(510)));
+  TEST_ASSERT_TRUE(ring.push(E::Code(Code{10})));
+  TEST_ASSERT_TRUE(ring.push(E::Code(Code{249})));
+  TEST_ASSERT_TRUE(ring.push(E::Code(Code{250})));
+  TEST_ASSERT_TRUE(ring.push(E::Code(Code{1529})));
 
   TEST_ASSERT_EQUAL(6, ring.used_bytes());
   TEST_ASSERT_EQUAL(4, ring.size());
 
-  const int expected[] = {10, 254, 255, 510};
+  const int expected[] = {10, 249, 250, 1529};
   int i = 0;
   for (const E value : ring) {
     TEST_ASSERT_EQUAL(expected[i], static_cast<int>(value.code_value()));
@@ -134,6 +133,7 @@ void test_PackedRingExponentialIntegerFixedPoint() {
 int test_composed_exponential() {
   UNITY_BEGIN();
   RUN_TEST(ae::test_composed_exponential::test_ExponentialIntegerFixedPointRuntime);
+  RUN_TEST(ae::test_composed_exponential::test_TwoByteBoundaryCode);
   RUN_TEST(ae::test_composed_exponential::test_SignedExponentialRuntime);
   RUN_TEST(ae::test_composed_exponential::test_PackedRingExponentialIntegerFixedPoint);
   return UNITY_END();

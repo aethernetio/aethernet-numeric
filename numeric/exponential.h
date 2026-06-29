@@ -17,14 +17,13 @@
 #ifndef NUMERIC_EXPONENTIAL_H_
 #define NUMERIC_EXPONENTIAL_H_
 
-#include <array>
+#include <bit>
 #include <cstdint>
 #include <optional>
 #include <type_traits>
 #include <utility>
 
-#include <gcem.hpp>
-
+#include "numeric/fixed_math.h"
 #include "numeric/fixed_point.h"
 #include "numeric/numeric_traits.h"
 #include "numeric/runtime_numeric_traits.h"
@@ -36,6 +35,16 @@ namespace exponential_internal {
 // evaluation makes the enclosing consteval construction ill-formed, turning an
 // out-of-range logical constant into a compile error instead of a silent clamp.
 inline void ExponentialConstantExceedsRange() {}
+
+template <typename WireT>
+constexpr auto DefaultBoundaryCode() {
+  using WireValue = typename numeric_traits<WireT>::rep_value_type;
+  constexpr WireValue kRawMax = numeric_traits<WireT>::kRawMax;
+  if constexpr (kRawMax > WireValue{255}) {
+    return WireValue{255};
+  }
+  return kRawMax;
+}
 
 template <typename WireT>
 constexpr auto WireRawValue(const WireT& wire) {
@@ -66,40 +75,15 @@ constexpr WireValue ClampCode(WireValue code, WireValue boundary_code) {
   return code;
 }
 
-template <typename RuntimeT, auto MinMagnitude, auto BoundaryMagnitude,
-          std::size_t Index, std::size_t MaxIndex>
-consteval RuntimeT MagnitudeAtIndex() {
-  using RuntimeTraits = runtime_numeric_traits<RuntimeT>;
-
-  if constexpr (Index == 0) {
-    return RuntimeTraits::FromInteger(0);
-  } else if constexpr (MaxIndex <= 1) {
-    return RuntimeTraits::FromDouble(static_cast<double>(MinMagnitude));
-  } else {
-    const double min_mag = static_cast<double>(MinMagnitude);
-    const double bound_mag = static_cast<double>(BoundaryMagnitude);
-    const double ratio = gcem::pow(
-        bound_mag / min_mag, 1.0 / static_cast<double>(MaxIndex - 1));
-    return RuntimeTraits::FromDouble(
-        min_mag * gcem::pow(ratio, static_cast<double>(Index - 1)));
+template <typename WireValue>
+constexpr WireValue ClampIndex(WireValue index, WireValue max_index) {
+  if (index < WireValue{1}) {
+    return WireValue{1};
   }
-}
-
-template <typename RuntimeT, auto MinMagnitude, auto BoundaryMagnitude,
-          std::size_t MaxIndex, std::size_t... Is>
-consteval std::array<RuntimeT, MaxIndex + 1> BuildMagnitudeTableFromSequence(
-    std::index_sequence<Is...>) {
-  return {MagnitudeAtIndex<RuntimeT, MinMagnitude, BoundaryMagnitude, Is,
-                           MaxIndex>()...};
-}
-
-template <typename RuntimeT, auto MinMagnitude, auto BoundaryMagnitude,
-          typename WireValue, WireValue MaxIndex>
-consteval auto BuildMagnitudeTable() {
-  constexpr std::size_t kMaxIndex = static_cast<std::size_t>(MaxIndex);
-  return BuildMagnitudeTableFromSequence<RuntimeT, MinMagnitude,
-                                         BoundaryMagnitude, kMaxIndex>(
-      std::make_index_sequence<kMaxIndex + 1>{});
+  if (index > max_index) {
+    return max_index;
+  }
+  return index;
 }
 
 template <typename RuntimeT>
@@ -126,59 +110,220 @@ constexpr RuntimeT AbsRuntime(RuntimeT value) {
   return value;
 }
 
-template <typename RuntimeT, typename WireValue, WireValue MaxIndex,
-          const std::array<RuntimeT, static_cast<std::size_t>(MaxIndex) + 1>&
-              Table>
-constexpr WireValue NearestMagnitudeIndex(RuntimeT abs_value) {
-  using RuntimeTraits = runtime_numeric_traits<RuntimeT>;
-
-  if (abs_value == RuntimeTraits::FromInteger(0)) {
-    return WireValue{0};
+template <typename LogT, typename WireValue>
+constexpr LogT LogAtIndexRaw(WireValue index, LogT log_min, std::int64_t log_span_raw,
+                               WireValue max_index) {
+  if (index <= WireValue{1}) {
+    return log_min;
   }
+  const std::int64_t num =
+      log_span_raw * (static_cast<std::int64_t>(index) - 1);
+  const std::int64_t den = static_cast<std::int64_t>(max_index) - 1;
+  const std::int64_t offset_raw =
+      fixed_point_internal::RoundDivNearest(num, den);
+  const std::int64_t raw =
+      static_cast<std::int64_t>(log_min.raw_value()) + offset_raw;
+  return LogT::FromRaw(fixed_point_internal::RepFromRawValue<
+                       typename LogT::rep_type>(
+      static_cast<typename LogT::rep_value_type>(raw)));
+}
 
-  if (abs_value <= Table[1]) {
+template <typename LogT, typename WireValue>
+constexpr WireValue EncodeMagnitudeIndexRaw(LogT log_min, std::int64_t log_span_raw,
+                                              WireValue max_index, LogT log_value) {
+  if (max_index <= WireValue{1}) {
+    return WireValue{1};
+  }
+  if (log_span_raw == 0) {
     return WireValue{1};
   }
 
-  if (abs_value >= Table[static_cast<std::size_t>(MaxIndex)]) {
-    return MaxIndex;
+  const std::int64_t pos_raw =
+      static_cast<std::int64_t>(log_value.raw_value()) -
+      static_cast<std::int64_t>(log_min.raw_value());
+  const std::int64_t den = static_cast<std::int64_t>(max_index) - 1;
+  const std::int64_t adjusted =
+      pos_raw * den + log_span_raw / std::int64_t{2};
+  const std::int64_t index_offset =
+      fixed_point_internal::RoundDivNearest(adjusted, log_span_raw);
+  return ClampIndex(static_cast<WireValue>(index_offset + 1), max_index);
+}
+
+using WorkFixed = FixedPoint<std::uint32_t, 60.0>;
+
+constexpr WorkFixed FloatToWork(float value) {
+  const auto bits = std::bit_cast<std::uint32_t>(value);
+  if (bits == 0U) {
+    return WorkFixed::FromInteger(0);
   }
 
-  WireValue lo = WireValue{1};
-  WireValue hi = MaxIndex;
-  while (lo < hi) {
-    const WireValue mid = static_cast<WireValue>(lo + (hi - lo + WireValue{1}) /
-                                                           WireValue{2});
-    if (Table[static_cast<std::size_t>(mid)] <= abs_value) {
-      lo = mid;
-    } else {
-      hi = static_cast<WireValue>(mid - WireValue{1});
+  const int exponent =
+      static_cast<int>((bits >> 23U) & 0xFFU) - 127;
+  std::uint64_t mantissa = (static_cast<std::uint64_t>(bits & 0x7FFFFFU) |
+                            std::uint64_t{0x800000U});
+  const int shift =
+      exponent + (WorkFixed::kScaleExp < 0 ? -WorkFixed::kScaleExp : 0) - 23;
+
+  if (shift >= 0) {
+    for (int i = 0; i < shift && i < 62; ++i) {
+      mantissa <<= 1U;
+    }
+  } else {
+    for (int i = 0; i < -shift && i < 62; ++i) {
+      mantissa = static_cast<std::uint64_t>(fixed_point_internal::RoundDivNearest(
+          static_cast<std::int64_t>(mantissa), std::int64_t{2}));
     }
   }
 
-  if (lo >= MaxIndex) {
-    return MaxIndex;
+  return WorkFixed::FromRaw(fixed_point_internal::RepFromRawValue<
+                            typename WorkFixed::rep_type>(
+      WorkFixed::ClampRaw(static_cast<typename WorkFixed::rep_value_type>(
+          mantissa))));
+}
+
+constexpr WorkFixed DoubleToWork(double value) {
+  const auto bits = std::bit_cast<std::uint64_t>(value);
+  if (bits == 0ULL) {
+    return WorkFixed::FromInteger(0);
+  }
+  const int exponent =
+      static_cast<int>((bits >> 52U) & 0x7FFU) - 1023;
+  std::uint64_t mantissa =
+      (bits & 0xFFFFFFFFFFFFFULL) | (std::uint64_t{1} << 52U);
+  const int shift =
+      exponent + (WorkFixed::kScaleExp < 0 ? -WorkFixed::kScaleExp : 0) - 52;
+  if (shift >= 0) {
+    for (int i = 0; i < shift && i < 62; ++i) {
+      mantissa <<= 1U;
+    }
+  } else {
+    for (int i = 0; i < -shift && i < 62; ++i) {
+      mantissa = static_cast<std::uint64_t>(fixed_point_internal::RoundDivNearest(
+          static_cast<std::int64_t>(mantissa), std::int64_t{2}));
+    }
+  }
+  return WorkFixed::FromRaw(fixed_point_internal::RepFromRawValue<
+                            typename WorkFixed::rep_type>(
+      WorkFixed::ClampRaw(static_cast<typename WorkFixed::rep_value_type>(
+          mantissa))));
+}
+
+constexpr int HighestSetBit(std::uint64_t value) {
+  int bit = -1;
+  for (int i = 63; i >= 0; --i) {
+    if ((value >> static_cast<unsigned>(i)) & 1U) {
+      bit = i;
+      break;
+    }
+  }
+  return bit;
+}
+
+constexpr float WorkToFloat(WorkFixed value) {
+  if (value.raw_value() == typename WorkFixed::rep_value_type{0}) {
+    return 0.0f;
   }
 
-  const RuntimeT diff_lo =
-      RuntimeSub(abs_value, Table[static_cast<std::size_t>(lo)]);
-  const RuntimeT diff_hi = RuntimeSub(
-      Table[static_cast<std::size_t>(lo + WireValue{1})], abs_value);
-  if (diff_hi < diff_lo) {
-    return static_cast<WireValue>(lo + WireValue{1});
+  std::uint64_t mantissa = value.raw_value();
+  const int msb = HighestSetBit(mantissa);
+  const int scale_bits =
+      WorkFixed::kScaleExp < 0 ? -WorkFixed::kScaleExp : 0;
+  const int exponent = msb - scale_bits + 127;
+  const int shift = msb - 23;
+  if (shift >= 0) {
+    mantissa >>= static_cast<unsigned>(shift);
+  } else {
+    mantissa <<= static_cast<unsigned>(-shift);
   }
-  return lo;
+  const std::uint32_t bits =
+      (static_cast<std::uint32_t>(exponent) << 23U) |
+      (static_cast<std::uint32_t>(mantissa) & 0x7FFFFFU);
+  return std::bit_cast<float>(bits);
+}
+
+constexpr double WorkToDouble(WorkFixed value) {
+  if (value.raw_value() == typename WorkFixed::rep_value_type{0}) {
+    return 0.0;
+  }
+
+  std::uint64_t mantissa = value.raw_value();
+  const int msb = HighestSetBit(mantissa);
+  const int scale_bits =
+      WorkFixed::kScaleExp < 0 ? -WorkFixed::kScaleExp : 0;
+  const int exponent = msb - scale_bits + 1023;
+  const int shift = msb - 52;
+  if (shift >= 0) {
+    mantissa >>= static_cast<unsigned>(shift);
+  } else {
+    mantissa <<= static_cast<unsigned>(-shift);
+  }
+  const std::uint64_t bits =
+      (static_cast<std::uint64_t>(exponent) << 52U) |
+      (mantissa & 0xFFFFFFFFFFFFFULL);
+  return std::bit_cast<double>(bits);
+}
+
+template <typename FloatT>
+  requires std::is_floating_point_v<FloatT>
+constexpr WorkFixed PositiveFloatToWork(FloatT value) {
+  if constexpr (std::same_as<FloatT, double>) {
+    return DoubleToWork(value);
+  } else {
+    return FloatToWork(static_cast<float>(value));
+  }
+}
+
+template <typename FloatT>
+  requires std::is_floating_point_v<FloatT>
+constexpr FloatT WorkToPositiveFloat(WorkFixed value) {
+  if constexpr (std::same_as<FloatT, double>) {
+    return WorkToDouble(value);
+  } else {
+    return WorkToFloat(value);
+  }
+}
+
+template <typename RuntimeT>
+constexpr auto ToWorkRuntime(RuntimeT value) {
+  if constexpr (std::is_floating_point_v<RuntimeT>) {
+    return PositiveFloatToWork(value);
+  } else if constexpr (numeric_traits<RuntimeT>::kIsFixedPoint) {
+    return fixed_math::internal::cast_fixed<WorkFixed>(value);
+  } else {
+    return WorkFixed::FromInteger(static_cast<std::int64_t>(value));
+  }
+}
+
+template <typename RuntimeT>
+constexpr RuntimeT FromWorkRuntime(WorkFixed value) {
+  if constexpr (std::is_floating_point_v<RuntimeT>) {
+    return WorkToPositiveFloat<RuntimeT>(value);
+  } else if constexpr (numeric_traits<RuntimeT>::kIsFixedPoint) {
+    return fixed_math::internal::cast_fixed<RuntimeT>(value);
+  } else {
+    return runtime_numeric_traits<RuntimeT>::FromInteger(
+        static_cast<std::int64_t>(value.raw_value()));
+  }
+}
+
+template <typename RuntimeT, typename LogT>
+constexpr RuntimeT LogExp2(LogT log_value) {
+  const WorkFixed work = fixed_math::exp2_to<WorkFixed>(log_value);
+  return FromWorkRuntime<RuntimeT>(work);
 }
 
 }  // namespace exponential_internal
 
 template <typename RuntimeT, typename WireT, auto MinMagnitude,
           auto BoundaryMagnitude,
-          auto BoundaryCode = numeric_traits<WireT>::kRawMax>
+          auto BoundaryCode =
+              exponential_internal::DefaultBoundaryCode<WireT>(),
+          typename LogT = FixedPoint<std::int16_t, 16.0>>
 class Exponential {
  public:
   using runtime_type = RuntimeT;
   using wire_type = WireT;
+  using log_type = LogT;
   using wire_value_type = typename numeric_traits<WireT>::rep_value_type;
   using RuntimeTraits = runtime_numeric_traits<RuntimeT>;
 
@@ -199,6 +344,9 @@ class Exponential {
                 "Exponential BoundaryCode must be positive");
   static_assert(BoundaryCode <= numeric_traits<WireT>::kRawMax,
                 "Exponential BoundaryCode must fit in WireT range");
+  static_assert(
+      RuntimeTraits::FromDouble(MinMagnitude) > RuntimeTraits::FromInteger(0),
+      "Exponential MinMagnitude is below RuntimeT precision");
 
   static constexpr wire_value_type kPositiveBoundaryCode =
       kBoundaryCode - (kBoundaryCode % wire_value_type{2});
@@ -211,14 +359,40 @@ class Exponential {
                                                wire_value_type{2})
                 : kBoundaryCode;
 
-  static constexpr auto kMagnitudeTable =
-      exponential_internal::BuildMagnitudeTable<RuntimeT, MinMagnitude,
-                                                BoundaryMagnitude,
-                                                wire_value_type,
-                                                kMaxMagnitudeIndex>();
+  static constexpr LogT kLogMin =
+      fixed_math::log2_to<LogT>(exponential_internal::WorkFixed::FromDouble(
+          static_cast<double>(MinMagnitude)));
+  static constexpr LogT kLogBoundary =
+      fixed_math::log2_to<LogT>(exponential_internal::WorkFixed::FromDouble(
+          static_cast<double>(BoundaryMagnitude)));
+  static constexpr std::int64_t kLogSpanRaw =
+      static_cast<std::int64_t>(kLogBoundary.raw_value()) -
+      static_cast<std::int64_t>(kLogMin.raw_value());
 
   static constexpr RuntimeT MagnitudeAt(wire_value_type magnitude_index) {
-    return kMagnitudeTable[static_cast<std::size_t>(magnitude_index)];
+    if (magnitude_index == wire_value_type{0}) {
+      return RuntimeTraits::FromInteger(0);
+    }
+    const LogT log_value = exponential_internal::LogAtIndexRaw(
+        magnitude_index, kLogMin, kLogSpanRaw, kMaxMagnitudeIndex);
+    return exponential_internal::LogExp2<RuntimeT, LogT>(log_value);
+  }
+
+  static constexpr wire_value_type MagnitudeIndexFor(RuntimeT abs_value) {
+    const RuntimeT min_mag = RuntimeTraits::FromDouble(MinMagnitude);
+    const RuntimeT bound_mag = RuntimeTraits::FromDouble(BoundaryMagnitude);
+
+    if (abs_value <= min_mag) {
+      return wire_value_type{1};
+    }
+    if (abs_value >= bound_mag) {
+      return kMaxMagnitudeIndex;
+    }
+
+    const LogT log_value = fixed_math::log2_to<LogT>(
+        exponential_internal::ToWorkRuntime(abs_value));
+    return exponential_internal::EncodeMagnitudeIndexRaw(
+        kLogMin, kLogSpanRaw, kMaxMagnitudeIndex, log_value);
   }
 
   static constexpr Exponential from_code(WireT code) {
@@ -227,11 +401,9 @@ class Exponential {
             exponential_internal::WireRawValue(code), kBoundaryCode)));
   }
 
-  // Explicit raw-code construction.
   static constexpr Exponential FromCode(WireT code) { return from_code(code); }
   static constexpr Exponential Code(WireT code) { return from_code(code); }
 
-  // Whether an integer logical value fits within the declared magnitude range.
   static constexpr bool LogicalIntegerInRange(std::int64_t value) {
     if constexpr (!kIsSigned) {
       if (value < 0) {
@@ -243,23 +415,35 @@ class Exponential {
     return magnitude <= static_cast<double>(BoundaryMagnitude);
   }
 
-  // Explicit runtime conversion: encodes a logical integer, clamping to range.
   static constexpr Exponential FromRuntimeInteger(std::int64_t value) {
     return from_runtime(RuntimeTraits::FromInteger(value));
   }
 
-  // Explicit saturating runtime conversion: clamps to the declared range.
   static constexpr Exponential Saturating(std::int64_t value) {
     return from_runtime(RuntimeTraits::FromInteger(value));
   }
 
-  // Checked runtime conversion: nullopt when value exceeds the declared range.
   static constexpr std::optional<Exponential> TryFromRuntimeInteger(
       std::int64_t value) {
     if (!LogicalIntegerInRange(value)) {
       return std::nullopt;
     }
     return from_runtime(RuntimeTraits::FromInteger(value));
+  }
+
+  static constexpr Exponential FromRuntime(RuntimeT value) {
+    return from_runtime(value);
+  }
+
+  static constexpr std::optional<Exponential> TryFromRuntime(RuntimeT value) {
+    const RuntimeT zero = RuntimeTraits::FromInteger(0);
+    const RuntimeT bound = RuntimeTraits::FromDouble(BoundaryMagnitude);
+    const RuntimeT abs_value =
+        exponential_internal::AbsRuntime<RuntimeT, kIsSigned>(value);
+    if (abs_value > bound) {
+      return std::nullopt;
+    }
+    return from_runtime(value);
   }
 
   static constexpr Exponential from_runtime(RuntimeT value) {
@@ -286,25 +470,15 @@ class Exponential {
           exponential_internal::WireFromValue<WireT>(kBoundaryCode));
     }
 
+    const auto index = MagnitudeIndexFor(abs_value);
+
     if constexpr (kIsSigned) {
       if (value < zero) {
-        const auto index =
-            exponential_internal::NearestMagnitudeIndex<
-                RuntimeT, wire_value_type, kMaxMagnitudeIndex, kMagnitudeTable>(
-                abs_value);
         const wire_value_type code =
             static_cast<wire_value_type>(index * wire_value_type{2} -
                                          wire_value_type{1});
         return from_code(exponential_internal::WireFromValue<WireT>(code));
       }
-    }
-
-    const auto index =
-        exponential_internal::NearestMagnitudeIndex<
-            RuntimeT, wire_value_type, kMaxMagnitudeIndex, kMagnitudeTable>(
-            abs_value);
-
-    if constexpr (kIsSigned) {
       const wire_value_type code =
           static_cast<wire_value_type>(index * wire_value_type{2});
       return from_code(exponential_internal::WireFromValue<WireT>(code));
@@ -373,7 +547,6 @@ class Exponential {
     return from_runtime(RuntimeTraits::FromDouble(value));
   }
 
-  // Encodes a logical integer with compile-time range checking.
   static consteval Exponential EncodeCheckedInteger(std::int64_t value) {
     if (!LogicalIntegerInRange(value)) {
       exponential_internal::ExponentialConstantExceedsRange();
@@ -383,15 +556,11 @@ class Exponential {
 
   constexpr Exponential() = default;
 
-  // Ordinary numeric construction uses logical values and is consteval:
-  // integer constants are range-checked at compile time and runtime values are
-  // rejected, so there is no silent clamp through the normal constructor.
   template <std::integral T>
   consteval Exponential(T logical_value)
       : Exponential(EncodeCheckedInteger(static_cast<std::int64_t>(
             logical_value))) {}
 
-  // Floating logical construction is consteval-only (no runtime float/double).
   consteval Exponential(double logical_value)
       : Exponential(from_double(logical_value)) {}
 
@@ -527,57 +696,57 @@ class Exponential {
 };
 
 template <typename RuntimeT, typename WireT, auto MinMagnitude,
-          auto BoundaryMagnitude, auto BoundaryCode>
+          auto BoundaryMagnitude, auto BoundaryCode, typename LogT>
 constexpr Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                      BoundaryCode>
+                      BoundaryCode, LogT>
 min(Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                BoundaryCode>
+                BoundaryCode, LogT>
         a,
     Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                BoundaryCode>
+                BoundaryCode, LogT>
         b) {
   return a < b ? a : b;
 }
 
 template <typename RuntimeT, typename WireT, auto MinMagnitude,
-          auto BoundaryMagnitude, auto BoundaryCode>
+          auto BoundaryMagnitude, auto BoundaryCode, typename LogT>
 constexpr Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                      BoundaryCode>
+                      BoundaryCode, LogT>
 max(Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                BoundaryCode>
+                BoundaryCode, LogT>
         a,
     Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                BoundaryCode>
+                BoundaryCode, LogT>
         b) {
   return a < b ? b : a;
 }
 
 template <typename RuntimeT, typename WireT, auto MinMagnitude,
-          auto BoundaryMagnitude, auto BoundaryCode>
+          auto BoundaryMagnitude, auto BoundaryCode, typename LogT>
 constexpr Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                      BoundaryCode>
+                      BoundaryCode, LogT>
 clamp(Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                  BoundaryCode>
+                  BoundaryCode, LogT>
           value,
       Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                    BoundaryCode>
+                    BoundaryCode, LogT>
           low,
       Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                    BoundaryCode>
+                    BoundaryCode, LogT>
           high) {
   return min(max(value, low), high);
 }
 
 template <typename RuntimeT, typename WireT, auto MinMagnitude,
-          auto BoundaryMagnitude, auto BoundaryCode>
+          auto BoundaryMagnitude, auto BoundaryCode, typename LogT>
 struct numeric_traits<
-    Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                BoundaryCode>> {
+    Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude, BoundaryCode,
+                LogT>> {
   using rep_type = WireT;
   using rep_value_type = typename numeric_traits<WireT>::rep_value_type;
   using value_type =
       Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
-                  BoundaryCode>;
+                  BoundaryCode, LogT>;
 
   static constexpr bool kIsIntegerLike = false;
   static constexpr bool kIsFixedPoint = false;

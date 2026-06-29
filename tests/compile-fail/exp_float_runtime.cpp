@@ -24,8 +24,8 @@
 #include "numeric/tiered_int.h"
 
 using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
-using Wire = ae::TieredInt<std::uint8_t, 254>;
-using E = ae::Exponential<Runtime, Wire, 0.001, 60.0>;
+using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
+using E = ae::Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
 
 E make(double runtime_value) {
   return E{runtime_value};
