@@ -28,9 +28,7 @@ jobs:
               os: windows-latest,
               platform: "msvc64",
               shell: "powershell",
-              generator: "Visual Studio 18 2026",
-              cc: "cl",
-              cxx: "cl",
+              generator: "Ninja",
               build_type: Release,
             }
           - {
@@ -68,7 +66,8 @@ jobs:
         if: ${{ (matrix.config.platform == 'msvc64') }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          vsversion: "2026"
+          arch: x64
+          vsversion: 2022
 
       - name: Set MinGW environment
         if: ${{ (matrix.config.platform == 'mingw64_gcc') }}
@@ -86,6 +85,15 @@ jobs:
           submodules: recursive
 
       - name: Configure CMake
+        if: ${{ matrix.config.platform == 'msvc64' }}
+        run: >
+          cmake -S . -B build-numerics
+          -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }}
+          -DAE_BUILD_TESTS=ON
+
+      - name: Configure CMake
+        if: ${{ matrix.config.platform != 'msvc64' }}
         run: >
           cmake -B build-numerics
           -G "${{ matrix.config.generator }}"
@@ -96,9 +104,19 @@ jobs:
           -S ./
 
       - name: Build
+        if: ${{ matrix.config.platform == 'msvc64' }}
+        run: cmake --build build-numerics --target test-numeric --parallel
+
+      - name: Build
+        if: ${{ matrix.config.platform != 'msvc64' }}
         run: cmake --build build-numerics --config ${{ matrix.config.build_type }} --parallel
 
       - name: Test
+        if: ${{ matrix.config.platform == 'msvc64' }}
+        run: ctest --test-dir build-numerics --output-on-failure
+
+      - name: Test
+        if: ${{ matrix.config.platform != 'msvc64' }}
         run: ctest --test-dir build-numerics --build-config ${{ matrix.config.build_type }} --output-on-failure
 
   cpplint:
