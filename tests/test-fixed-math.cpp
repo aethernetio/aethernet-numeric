@@ -80,8 +80,8 @@ void test_Exp2FractionalValues() {
 }
 
 void test_RoundTrip() {
-  const Runtime values[] = {Runtime{1}, Runtime{2}, Runtime{3}, Runtime{5},
-                            Runtime{10}, Runtime{30}, Runtime{60}};
+  constexpr Runtime values[] = {Runtime{1}, Runtime{2}, Runtime{3}, Runtime{5},
+                                  Runtime{10}, Runtime{30}, Runtime{60}};
   const std::int64_t tolerances[] = {2, 2, 150000, 100000, 200000, 2500000,
                                      5000000};
   for (std::size_t i = 0; i < sizeof(values) / sizeof(values[0]); ++i) {
