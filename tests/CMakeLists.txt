@@ -40,6 +40,9 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-ostream-io.cpp
   test-wire-io.cpp
   test-packed-ring.cpp
+  test-composed-types.cpp
+  test-composed-exponential.cpp
+  test-composed-exponential-tiered.cpp
   test-type-size.cpp
 )
 

@@ -28,6 +28,9 @@ extern int test_text_io();
 extern int test_ostream_io();
 extern int test_wire_io();
 extern int test_packed_ring();
+extern int test_composed_types();
+extern int test_composed_exponential();
+extern int test_composed_exponential_tiered();
 extern int test_type_size();
 
 int main() {
@@ -41,6 +44,9 @@ int main() {
   res += test_ostream_io();
   res += test_wire_io();
   res += test_packed_ring();
+  res += test_composed_types();
+  res += test_composed_exponential();
+  res += test_composed_exponential_tiered();
   res += test_type_size();
   return res;
 }
