@@ -35,6 +35,8 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-tiered-int-view.cpp
   test-fixed-point.cpp
   test-exponential.cpp
+  test-exponential-arithmetic.cpp
+  test-exponential-math-policy.cpp
   test-exponential-floating-runtime.cpp
   test-text-io.cpp
   test-ostream-io.cpp

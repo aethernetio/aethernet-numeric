@@ -105,17 +105,25 @@ cmake -S . -B build-dev \
 
 When values span several orders of magnitude, **relative precision** is often more meaningful than absolute precision (e.g., function durations from microseconds to seconds).
 
-`Exponential` stores only a compact **wire code** (`WireT`); the decoded runtime value lives in `RuntimeT` (typically `FixedPoint`). Code `0` is zero. For unsigned runtime types, code `1` is `MinMagnitude` and code `BoundaryCode` is `BoundaryMagnitude`. For signed runtime types, even codes are positive magnitudes and odd codes are negative magnitudes (`code 2` → `+MinMagnitude`, `code 1` → `-MinMagnitude`).
+`Exponential` is an **approximate logical codec**: it stores only a compact **wire code** (`WireT`); the decoded runtime value lives in `RuntimeT` (typically `FixedPoint`). Magnitude mapping uses compile-time fixed-point `log2` / `exp2` (`numeric/fixed_math.h`), so encode/decode through runtime values is approximate.
 
-Comparisons, `abs`, `min`, `max`, and `clamp` operate on wire codes directly without decoding. Arithmetic operators are intentionally not implemented yet.
+**API semantics:**
 
-**Example — store values from `0.001` to `60.0` in one byte:**
+* **Exact raw-code APIs** — `Code()` / `FromCode()` / `from_code()` construct from a wire code without magnitude approximation.
+* **Approximate arithmetic APIs** — `value()` decodes a code to runtime; `FromRuntime()` / `from_runtime()` / `from_double()` encode a runtime value to a code. Round-trip tolerance depends on code tier (typically ±1 for single-byte codes, ±3 near the boundary).
+* **Comparisons** — `abs`, `min`, `max`, and `clamp` operate on wire codes directly without decoding. Arithmetic operators are intentionally not implemented yet.
+
+Code `0` is zero. For unsigned runtime types, code `1` is `MinMagnitude` and code `BoundaryCode` is `BoundaryMagnitude`. For signed runtime types, even codes are positive magnitudes and odd codes are negative magnitudes (`code 2` → `+MinMagnitude`, `code 1` → `-MinMagnitude`).
+
+`MinMagnitude` must be representable in `RuntimeT` (a compile-time check rejects values that round to zero).
+
+**Example — store values from `0.001` to `60.0` with a two-byte wire tier:**
 
 ```cpp
 using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
-using Wire = ae::TieredInt<std::uint8_t, 254>;
+using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
 
-using E = ae::Exponential<Runtime, Wire, 0.001, 60.0>;
+using E = ae::Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
 
 constexpr auto encoded = E::from_double(1.0);
 constexpr auto decoded = encoded.to_runtime();
@@ -124,11 +132,12 @@ constexpr auto decoded = encoded.to_runtime();
 Here:
 
 * `Runtime` — decoded runtime type (`FixedPoint` semantics, precision, signedness)
-* `Wire` — compact serialized code type
+* `Wire` — compact serialized code type (1 byte for codes ≤249; larger codes add extension bytes)
 * `0.001` — smallest non-zero magnitude
 * `60.0` — magnitude at the boundary code
+* `1529` — highest code used by the magnitude mapping
 
-`BoundaryCode` defaults to `numeric_traits<Wire>::kRawMax` (full wire range). Pass an explicit fifth template argument only when you need a smaller boundary, e.g. `Exponential<Runtime, Wire, 0.001, 60.0, 200>`.
+`BoundaryCode` is the **used code range**, not necessarily `numeric_traits<Wire>::kRawMax`. When omitted, the default is `min(255, kRawMax)` (`DefaultBoundaryCode<Wire>()`). Pass an explicit fifth template argument when you need a smaller boundary, e.g. `Exponential<Runtime, Wire, 0.001, 60.0, 200>`.
 
 Ideal for durations between **1 ms** and **60 s**.
 
@@ -137,10 +146,10 @@ Ideal for durations between **1 ms** and **60 s**.
 Use `FixedPoint` or integral runtime types. No floating-point runtime is pulled in automatically:
 
 ```cpp
-using Wire = ae::TieredInt<std::uint8_t, 254>;
+using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
 using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
 
-using E = ae::Exponential<Runtime, Wire, 0.001, 60.0>;
+using E = ae::Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
 ```
 
 ### Optional floating runtime
@@ -150,10 +159,10 @@ For desktop, server, debug, or reference use, include the optional header before
 ```cpp
 #include "numeric/exponential_floating_runtime.h"
 
-using Wire = ae::TieredInt<std::uint8_t, 254>;
+using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
 
-using EFloat = ae::Exponential<float, Wire, 0.001f, 60.0f>;
-using EDouble = ae::Exponential<double, Wire, 0.001, 60.0>;
+using EFloat = ae::Exponential<float, Wire, 0.001f, 60.0f, 1529>;
+using EDouble = ae::Exponential<double, Wire, 0.001, 60.0, 1529>;
 ```
 
 `float` and `double` are **not** valid storage types for `TieredInt` or `FixedPoint`. Wire representation is unchanged: `Exponential` still stores only the `WireT` code.
@@ -231,8 +240,8 @@ For exponential wire IO:
 #include "numeric/exponential_wire_io.h"
 
 using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
-using Wire = ae::TieredInt<std::uint8_t, 254>;
-using E = ae::Exponential<Runtime, Wire, 0.001, 60.0>;
+using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
+using E = ae::Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
 
 std::uint8_t buf[ae::MaxWireBytes<E>()];
 auto n = ae::Serialize(E::from_double(1.0), buf);
@@ -248,9 +257,9 @@ You can combine `TieredInt`, `FixedPoint`, and `Exponential` for compact storage
 **Example — duration from 1 ms to 60 s in one byte:**
 
 ```cpp
-using Raw = ae::TieredInt<std::uint8_t, 254>;
 using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
-using Duration = ae::Exponential<Runtime, Raw, 0.001, 60.0>;
+using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
+using Duration = ae::Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
 
 constexpr auto one_second = Duration::from_double(1.0);
 auto runtime = one_second.to_runtime();
@@ -263,7 +272,7 @@ auto n = ae::Serialize(one_second, buf);
 
 ## Integration Notes
 
-* **Header-only**, minimal external deps (`gcem` is used only by `Exponential` magnitude tables at compile time)
+* **Header-only**, minimal external deps (`gcem` is used only by compile-time `fixed_math` helpers)
 * C++23
 * Interoperable with Æthernet message packing
 * Designed for deterministic, low-overhead serialization on MCUs and embedded systems

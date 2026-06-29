@@ -30,7 +30,14 @@
 namespace ae::fixed_math {
 
 inline constexpr int kDefaultLogIterations = 11;
-inline constexpr int kExp2FractionBits = 11;
+
+struct DefaultFixedMathPolicy {
+  using log_type = FixedPoint<std::int16_t, 16.0>;
+  using mant_type = FixedPoint<std::uint16_t, 4.0>;
+  using mul_intermediate_type = std::int64_t;
+  static constexpr int kLogIterations = kDefaultLogIterations;
+  static constexpr int kExp2FractionBits = kDefaultLogIterations;
+};
 
 namespace internal {
 
@@ -85,16 +92,17 @@ consteval Log InvPow2LogEntry() {
   return Log::FromDouble(1.0 / static_cast<double>(std::uint64_t{1} << I));
 }
 
-template <typename Log, std::size_t... Is>
-consteval std::array<Log, sizeof...(Is)> MakeInvPow2Table(
+template <typename Log, int Iterations, std::size_t... Is>
+consteval std::array<Log, Iterations> MakeInvPow2Table(
     std::index_sequence<Is...>) {
   return {InvPow2LogEntry<Log, static_cast<int>(Is + 1)>()...};
 }
 
-template <typename Log>
+template <typename Log, int Iterations>
 constexpr Log InvPow2Log(int i) {
+  static_assert(Iterations >= 1);
   constexpr auto kTable =
-      MakeInvPow2Table<Log>(std::make_index_sequence<kDefaultLogIterations>{});
+      MakeInvPow2Table<Log, Iterations>(std::make_index_sequence<Iterations>{});
   return kTable[static_cast<std::size_t>(i - 1)];
 }
 
@@ -104,16 +112,17 @@ consteval Mant Exp2FactorEntry() {
       gcem::pow(2.0, 1.0 / static_cast<double>(std::uint64_t{1} << I)));
 }
 
-template <typename Mant, std::size_t... Is>
-consteval std::array<Mant, sizeof...(Is)> MakeExp2FactorTable(
+template <typename Mant, int Iterations, std::size_t... Is>
+consteval std::array<Mant, Iterations> MakeExp2FactorTable(
     std::index_sequence<Is...>) {
   return {Exp2FactorEntry<Mant, static_cast<int>(Is + 1)>()...};
 }
 
-template <typename Mant>
+template <typename Mant, int Iterations>
 constexpr Mant Exp2Factor(int i) {
-  constexpr auto kTable =
-      MakeExp2FactorTable<Mant>(std::make_index_sequence<kExp2FractionBits>{});
+  static_assert(Iterations >= 1);
+  constexpr auto kTable = MakeExp2FactorTable<Mant, Iterations>(
+      std::make_index_sequence<Iterations>{});
   return kTable[static_cast<std::size_t>(i - 1)];
 }
 
@@ -178,11 +187,15 @@ constexpr std::int64_t align_raw_to_target(Source x) {
       static_cast<std::int64_t>(Target::kRawMax));
 }
 
-template <typename Target>
+template <typename Target, typename Policy>
   requires is_fixed_point_v<Target>
 constexpr std::int64_t mul_raw_fixed(std::int64_t acc, std::int64_t factor) {
+  using Intermediate = typename Policy::mul_intermediate_type;
+  const Intermediate product =
+      static_cast<Intermediate>(acc) * static_cast<Intermediate>(factor);
   const std::int64_t one = raw_one<Target>();
-  return fixed_point_internal::RoundDivNearest(acc * factor, one);
+  return fixed_point_internal::RoundDivNearest(
+      static_cast<std::int64_t>(product), one);
 }
 
 template <typename Target>
@@ -218,63 +231,87 @@ constexpr Target from_clamped_raw(std::int64_t raw) {
           clamped));
 }
 
-}  // namespace internal
-
 // Precondition: x > 0.
-template <typename Target, typename X>
+template <typename Target, typename X, typename Policy>
   requires internal::is_fixed_point_v<X> && internal::is_fixed_point_v<Target>
 constexpr Target log2_to(X x) {
   if (!std::is_constant_evaluated()) {
     assert(x.raw_value() != typename X::rep_value_type{0});
   }
 
-  using Mant = FixedPoint<std::uint16_t, 4.0>;
+  using Mant = typename Policy::mant_type;
   using Log = Target;
 
   int exponent = 0;
-  Mant mantissa = internal::NormalizeMantissa<Mant>(x, exponent);
+  Mant mantissa = NormalizeMantissa<Mant>(x, exponent);
 
   Log result = Log::FromRuntimeInteger(exponent);
-  const Mant two_m = internal::two<Mant>();
+  const Mant two_m = two<Mant>();
 
-  for (int i = 1; i <= kDefaultLogIterations; ++i) {
+  for (int i = 1; i <= Policy::kLogIterations; ++i) {
     mantissa = mul_to<Mant>(mantissa, mantissa);
     if (mantissa >= two_m) {
       mantissa = div_to<Mant>(mantissa, two_m);
-      result = add_to<Log>(result, internal::InvPow2Log<Log>(i));
+      result = add_to<Log>(result,
+                           InvPow2Log<Log, Policy::kLogIterations>(i));
     }
   }
 
   return result;
 }
 
-template <typename Target, typename X>
+template <typename Target, typename X, typename Policy>
   requires internal::is_fixed_point_v<X> && internal::is_fixed_point_v<Target>
 constexpr Target exp2_to(X y) {
-  using Log = FixedPoint<std::int16_t, 16.0>;
-  using Mant = FixedPoint<std::uint16_t, 4.0>;
+  using Log = typename Policy::log_type;
+  using Mant = typename Policy::mant_type;
 
-  const Log ly = internal::cast_fixed<Log>(y);
-  const std::int64_t int_part = internal::FloorLogical(ly);
-  Log frac =
-      sub_to<Log>(ly, Log::FromRuntimeInteger(int_part));
+  const Log ly = cast_fixed<Log>(y);
+  const std::int64_t int_part = FloorLogical(ly);
+  Log frac = sub_to<Log>(ly, Log::FromRuntimeInteger(int_part));
 
-  std::int64_t acc = internal::raw_one<Target>();
-  for (int i = 1; i <= kExp2FractionBits; ++i) {
-    const Log bit = internal::InvPow2Log<Log>(i);
+  std::int64_t acc = raw_one<Target>();
+  for (int i = 1; i <= Policy::kExp2FractionBits; ++i) {
+    const Log bit = InvPow2Log<Log, Policy::kExp2FractionBits>(i);
     if (bit.raw_value() == typename Log::rep_value_type{0}) {
       break;
     }
     if (frac >= bit) {
-      const std::int64_t factor = internal::align_raw_to_target<Target>(
-          internal::Exp2Factor<Mant>(i));
-      acc = internal::mul_raw_fixed<Target>(acc, factor);
+      const std::int64_t factor =
+          align_raw_to_target<Target>(Exp2Factor<Mant, Policy::kExp2FractionBits>(i));
+      acc = mul_raw_fixed<Target, Policy>(acc, factor);
       frac = sub_to<Log>(frac, bit);
     }
   }
 
-  acc = internal::apply_pow2_int_raw<Target>(acc, int_part);
-  return internal::from_clamped_raw<Target>(acc);
+  acc = apply_pow2_int_raw<Target>(acc, int_part);
+  return from_clamped_raw<Target>(acc);
+}
+
+}  // namespace internal
+
+template <typename Target, typename X>
+  requires internal::is_fixed_point_v<X> && internal::is_fixed_point_v<Target>
+constexpr Target log2_to(X x) {
+  return internal::log2_to<Target, X, DefaultFixedMathPolicy>(x);
+}
+
+template <typename Target, typename X, typename Policy>
+  requires internal::is_fixed_point_v<X> && internal::is_fixed_point_v<Target>
+constexpr Target log2_to(X x) {
+  return internal::log2_to<Target, X, Policy>(x);
+}
+
+template <typename Target, typename X>
+  requires internal::is_fixed_point_v<X> && internal::is_fixed_point_v<Target>
+constexpr Target exp2_to(X y) {
+  return internal::exp2_to<Target, X, DefaultFixedMathPolicy>(y);
+}
+
+template <typename Target, typename X, typename Policy>
+  requires internal::is_fixed_point_v<X> && internal::is_fixed_point_v<Target>
+constexpr Target exp2_to(X y) {
+  return internal::exp2_to<Target, X, Policy>(y);
 }
 
 }  // namespace ae::fixed_math

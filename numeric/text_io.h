@@ -103,7 +103,7 @@ constexpr DecimalParseResult ParseDecimal(std::string_view text) {
     }
     std::size_t fraction_digits = 0;
     while (index < text.size() && IsDigit(text[index])) {
-      if (fraction_digits >= 18) {
+      if (fraction_digits >= 19) {
         return result;
       }
       ++fraction_digits;
