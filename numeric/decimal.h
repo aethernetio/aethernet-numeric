@@ -115,16 +115,13 @@ template <std::int64_t M, int E>
 struct NumberRatio<Decimal<M, E>> {
  private:
   static constexpr std::int64_t kScaledNum =
-      E >= 0 ? M * Pow10i(static_cast<unsigned>(E))
-             : M;
+      E >= 0 ? M * Pow10i(static_cast<unsigned>(E)) : M;
   static constexpr std::int64_t kScaledDen =
       E >= 0 ? 1 : Pow10i(static_cast<unsigned>(-E));
 
  public:
-  static constexpr std::int64_t num =
-      NormalizeRatioNum(kScaledNum, kScaledDen);
-  static constexpr std::int64_t den =
-      NormalizeRatioDen(kScaledNum, kScaledDen);
+  static constexpr std::int64_t num = NormalizeRatioNum(kScaledNum, kScaledDen);
+  static constexpr std::int64_t den = NormalizeRatioDen(kScaledNum, kScaledDen);
   static constexpr bool kIsPositive = (num > 0) && (den > 0);
 };
 

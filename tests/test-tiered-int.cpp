@@ -47,11 +47,11 @@ using S4 = TieredInt<std::int8_t, 124, 125, 126>;
 static_assert(tiered_int_internal::kIsValidTierConfig<std::uint8_t, 254>);
 static_assert(tiered_int_internal::kIsValidTierConfig<std::uint8_t, 249>);
 static_assert(tiered_int_internal::kIsValidTierConfig<std::uint8_t, 249, 1529>);
-static_assert(tiered_int_internal::kIsValidTierConfig<
-              std::uint8_t, 249, 1529, 16777215>);
+static_assert(
+    tiered_int_internal::kIsValidTierConfig<std::uint8_t, 249, 1529, 16777215>);
 static_assert(!tiered_int_internal::kIsValidTierConfig<std::uint8_t, 255>);
-static_assert(!tiered_int_internal::kIsValidTierConfig<
-              std::uint8_t, 249, 1000000>);
+static_assert(
+    !tiered_int_internal::kIsValidTierConfig<std::uint8_t, 249, 1000000>);
 static_assert(tiered_int_internal::kIsValidTierConfig<std::int8_t, 10, 20>);
 static_assert(tiered_int_internal::kIsValidTierConfig<std::int16_t, 1000>);
 
@@ -109,8 +109,8 @@ static_assert(T6::kBaseBytes == 4);
 static_assert(T6::kMaxWireBytes == 8);
 static_assert(sizeof(T6::ValueType) == 8);
 static_assert(T6::kMaxWireBytes == sizeof(T6::ValueType));
-static_assert(T6::kUpper >
-              static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()));
+static_assert(T6::kUpper > static_cast<std::uint64_t>(
+                               std::numeric_limits<std::int64_t>::max()));
 static_assert(T6{T6::kUpper}.value_ == T6::kUpper);
 
 static_assert(S1::kBaseBytes == 2);
@@ -177,8 +177,12 @@ struct Omstream {
   ObVector obv_;
   test::Omstream<ObVector> stream_{obv_};
 
-  auto& stream() { return stream_; }
-  auto& data() const { return obv_.data_; }
+  auto& stream() {
+    return stream_;
+  }
+  auto& data() const {
+    return obv_.data_;
+  }
 };
 
 struct IbVector {
@@ -202,7 +206,9 @@ struct Imstream {
   explicit Imstream(std::vector<std::uint8_t> const& v)
       : ibv_{v}, stream_{ibv_} {}
 
-  auto& stream() { return stream_; }
+  auto& stream() {
+    return stream_;
+  }
 };
 
 #pragma pack(push, 1)
@@ -316,8 +322,7 @@ void TestValueToSizeStream(typename TInt::ValueType value,
 template <typename TInt>
 void TestWireSizeTransition(typename TInt::ValueType last_small,
                             typename TInt::ValueType first_large,
-                            std::size_t small_bytes,
-                            std::size_t large_bytes) {
+                            std::size_t small_bytes, std::size_t large_bytes) {
   TestValueToSize<TInt>(last_small, small_bytes);
   TestValueToSize<TInt>(first_large, large_bytes);
   TestValueToSizeStream<TInt>(last_small, small_bytes);
@@ -369,13 +374,33 @@ void test_TwoTier() {
   TestValueToSizeStream<T1>(1785, 2);
 
   std::uint64_t v = 0;
-  { S b{249}; T1 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  {
+    S b{249};
+    T1 t;
+    t.Deserialize(reinterpret_cast<std::uint8_t*>(&b));
+    v = t;
+  }
   TEST_ASSERT_EQUAL(249, v);
-  { S b{250, 0}; T1 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  {
+    S b{250, 0};
+    T1 t;
+    t.Deserialize(reinterpret_cast<std::uint8_t*>(&b));
+    v = t;
+  }
   TEST_ASSERT_EQUAL(250, v);
-  { S b{250, 1}; T1 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  {
+    S b{250, 1};
+    T1 t;
+    t.Deserialize(reinterpret_cast<std::uint8_t*>(&b));
+    v = t;
+  }
   TEST_ASSERT_EQUAL(251, v);
-  { S b{255, 255}; T1 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  {
+    S b{255, 255};
+    T1 t;
+    t.Deserialize(reinterpret_cast<std::uint8_t*>(&b));
+    v = t;
+  }
   TEST_ASSERT_EQUAL(1785, v);
 
   TEST_ASSERT(T1{249} == T1{249});
@@ -407,11 +432,26 @@ void test_ThreeTier() {
   TestValueToSizeStream<T2>(16778745, 4);
 
   std::uint64_t v = 0;
-  { S b{254, 255}; T2 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  {
+    S b{254, 255};
+    T2 t;
+    t.Deserialize(reinterpret_cast<std::uint8_t*>(&b));
+    v = t;
+  }
   TEST_ASSERT_EQUAL(1529, v);
-  { S b{255, 0, 0, 0}; T2 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  {
+    S b{255, 0, 0, 0};
+    T2 t;
+    t.Deserialize(reinterpret_cast<std::uint8_t*>(&b));
+    v = t;
+  }
   TEST_ASSERT_EQUAL(1530, v);
-  { S b{255, 255, 65535}; T2 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  {
+    S b{255, 255, 65535};
+    T2 t;
+    t.Deserialize(reinterpret_cast<std::uint8_t*>(&b));
+    v = t;
+  }
   TEST_ASSERT_EQUAL(16778745, v);
 }
 
@@ -430,17 +470,33 @@ void test_FourTier() {
   TestValueToSizeStream<T3>(16777216, 8);
 
   std::uint64_t v = 0;
-  { S b{255, 255, static_cast<std::uint16_t>(65535 - 1530), 0};
-    T3 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  {
+    S b{255, 255, static_cast<std::uint16_t>(65535 - 1530), 0};
+    T3 t;
+    t.Deserialize(reinterpret_cast<std::uint8_t*>(&b));
+    v = t;
+  }
   TEST_ASSERT_EQUAL(16777215, v);
-  { S b{255, 255, static_cast<std::uint16_t>(65535 - 1530 + 1), 0};
-    T3 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  {
+    S b{255, 255, static_cast<std::uint16_t>(65535 - 1530 + 1), 0};
+    T3 t;
+    t.Deserialize(reinterpret_cast<std::uint8_t*>(&b));
+    v = t;
+  }
   TEST_ASSERT_EQUAL(16777216, v);
-  { S b{255, 255, static_cast<std::uint16_t>(65535 - 1530 + 1), 1};
-    T3 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  {
+    S b{255, 255, static_cast<std::uint16_t>(65535 - 1530 + 1), 1};
+    T3 t;
+    t.Deserialize(reinterpret_cast<std::uint8_t*>(&b));
+    v = t;
+  }
   TEST_ASSERT_EQUAL(16777217, v);
-  { S b{255, 255, 65535, 0xFFFFFFFF};
-    T3 t; t.Deserialize(reinterpret_cast<std::uint8_t*>(&b)); v = t; }
+  {
+    S b{255, 255, 65535, 0xFFFFFFFF};
+    T3 t;
+    t.Deserialize(reinterpret_cast<std::uint8_t*>(&b));
+    v = t;
+  }
   TEST_ASSERT_EQUAL(6571316740095ull, v);
 }
 

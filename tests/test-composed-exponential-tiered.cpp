@@ -39,7 +39,7 @@ bool ExponentialCodeWireRoundTrip(const E& value) {
   std::uint8_t buf[MaxWireBytes<E>()] = {};
   const auto n = Serialize(value, buf);
   const auto r = Deserialize<E>(buf, n);
-  return r.bytes_read == n && r.value.code_value() == value.code_value();
+  return r.BytesRead == n && r.value.CodeValue() == value.CodeValue();
 }
 
 using IntRuntime = FixedPoint<std::uint32_t, 60.0>;
@@ -50,21 +50,21 @@ using TieredE = Exponential<TieredRuntime, Code, 0.25, 60.0, 1529>;
 
 static_assert(MaxWireBytes<TieredE>() == MaxWireBytes<Code>());
 static_assert(sizeof(TieredE) == sizeof(Code));
-static_assert(TieredE::Code(10).code_value() == 10);
+static_assert(TieredE::Code(10).CodeValue() == 10);
 
 using FutureE = Exponential<IntRuntime, Code, 0.001, 60.0, 1529>;
 
 static_assert(MaxWireBytes<FutureE>() == MaxWireBytes<Code>());
 
 void test_ExponentialTieredIntFixedPointRuntime() {
-  const TieredE te_min = TieredE::from_double(0.25);
-  const TieredE te1 = TieredE::from_double(1.0);
+  const TieredE te_min = TieredE::FromDouble(0.25);
+  const TieredE te1 = TieredE::FromDouble(1.0);
   const TieredE te10 = TieredE::FromRuntimeInteger(10);
 
-  TEST_ASSERT(te_min.code_value() != 0);
-  TEST_ASSERT_EQUAL(10, TieredE::Code(10).code_value());
+  TEST_ASSERT(te_min.CodeValue() != 0);
+  TEST_ASSERT_EQUAL(10, TieredE::Code(10).CodeValue());
 
-  const auto decoded = te1.value();
+  const auto decoded = te1.Value();
   TEST_ASSERT(decoded > TieredRuntime::FromDouble(0.9));
   TEST_ASSERT(decoded < TieredRuntime::FromDouble(1.1));
 
@@ -91,18 +91,18 @@ void test_PackedRingExponentialTieredIntFixedPoint() {
   TEST_ASSERT_TRUE(ring.push(TieredE::Code(250)));
   TEST_ASSERT_TRUE(ring.push(TieredE::Code(1529)));
 
-  TEST_ASSERT_EQUAL(6, ring.used_bytes());
+  TEST_ASSERT_EQUAL(6, ring.UsedBytes());
   TEST_ASSERT_EQUAL(4, ring.size());
-  TEST_ASSERT_EQUAL(10, static_cast<int>(ring.front().code_value()));
+  TEST_ASSERT_EQUAL(10, static_cast<int>(ring.front().CodeValue()));
 
-  TEST_ASSERT_TRUE(ring.pop_front());
-  TEST_ASSERT_EQUAL(249, static_cast<int>(ring.front().code_value()));
+  TEST_ASSERT_TRUE(ring.PopFront());
+  TEST_ASSERT_EQUAL(249, static_cast<int>(ring.front().CodeValue()));
   TEST_ASSERT_EQUAL(3, ring.size());
 
   const int expected[] = {249, 250, 1529};
   int i = 0;
   for (const TieredE value : ring) {
-    TEST_ASSERT_EQUAL(expected[i], static_cast<int>(value.code_value()));
+    TEST_ASSERT_EQUAL(expected[i], static_cast<int>(value.CodeValue()));
     ++i;
   }
   TEST_ASSERT_EQUAL(3, i);
@@ -116,14 +116,14 @@ void test_PackedRingTwoByteCode() {
   TEST_ASSERT_TRUE(ring.push(FutureE::Code(Code{250})));
   TEST_ASSERT_TRUE(ring.push(FutureE::Code(Code{1529})));
 
-  TEST_ASSERT_EQUAL(6, ring.used_bytes());
+  TEST_ASSERT_EQUAL(6, ring.UsedBytes());
   TEST_ASSERT_EQUAL(4, ring.size());
 
   const int expected_codes[] = {10, 249, 250, 1529};
   int i = 0;
   for (const FutureE value : ring) {
     TEST_ASSERT_EQUAL(expected_codes[i],
-                     static_cast<int>(value.code().value_));
+                      static_cast<int>(value.WireCode().value_));
     ++i;
   }
   TEST_ASSERT_EQUAL(4, i);
@@ -133,8 +133,8 @@ void test_PackedRingTwoByteCode() {
 
 int test_composed_exponential_tiered() {
   UNITY_BEGIN();
-  RUN_TEST(
-      ae::test_composed_exponential_tiered::test_ExponentialTieredIntFixedPointRuntime);
+  RUN_TEST(ae::test_composed_exponential_tiered::
+               test_ExponentialTieredIntFixedPointRuntime);
   RUN_TEST(ae::test_composed_exponential_tiered::test_FutureTierCode);
   RUN_TEST(ae::test_composed_exponential_tiered::
                test_PackedRingExponentialTieredIntFixedPoint);

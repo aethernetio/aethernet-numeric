@@ -47,7 +47,7 @@ inline constexpr bool is_fixed_point_v = numeric_traits<T>::kIsFixedPoint;
 template <typename T>
   requires is_fixed_point_v<T>
 constexpr auto raw_value(T x) {
-  return x.raw_value();
+  return x.RawValue();
 }
 
 template <typename T>
@@ -59,14 +59,14 @@ constexpr int scale_of() {
 template <typename Target, typename Source>
   requires is_fixed_point_v<Target> && is_fixed_point_v<Source>
 constexpr Target cast_fixed(Source x) {
-  const std::int64_t src_raw = static_cast<std::int64_t>(x.raw_value());
+  const std::int64_t src_raw = static_cast<std::int64_t>(x.RawValue());
   const std::int64_t aligned = fixed_point_internal::ConvertRawScale(
       src_raw, Source::kScaleExp, Target::kScaleExp,
       static_cast<std::int64_t>(Target::kRawMin),
       static_cast<std::int64_t>(Target::kRawMax));
-  return Target::FromRaw(fixed_point_internal::RepFromRawValue<
-                           typename Target::rep_type>(
-      static_cast<typename Target::rep_value_type>(aligned)));
+  return Target::FromRaw(
+      fixed_point_internal::RepFromRawValue<typename Target::rep_type>(
+          static_cast<typename Target::rep_value_type>(aligned)));
 }
 
 template <typename T>
@@ -128,7 +128,7 @@ constexpr Mant Exp2Factor(int i) {
 
 template <typename Log>
 constexpr std::int64_t FloorLogical(Log y) {
-  std::int64_t num = static_cast<std::int64_t>(y.raw_value());
+  std::int64_t num = static_cast<std::int64_t>(y.RawValue());
   std::int64_t den = 1;
   const int scale = Log::kScaleExp;
   if constexpr (scale > 0) {
@@ -158,13 +158,14 @@ constexpr Mant NormalizeMantissa(X x, int& exponent_out) {
   const X two_x = two<X>();
 
   for (int guard = 0; guard < 64 && m >= two_x; ++guard) {
-    m = div_to<X>(m, two_x);
+    m = DivTo<X>(m, two_x);
     ++e;
   }
-  for (int guard = 0; guard < 64 && m.raw_value() != typename X::rep_value_type{0} &&
-                      m < one_x;
+  for (int guard = 0;
+       guard < 64 &&
+           m.RawValue() != typename X::rep_value_type {0} && m < one_x;
        ++guard) {
-    m = mul_to<X>(m, two_x);
+    m = MulTo<X>(m, two_x);
     --e;
   }
 
@@ -175,14 +176,14 @@ constexpr Mant NormalizeMantissa(X x, int& exponent_out) {
 template <typename Target>
   requires is_fixed_point_v<Target>
 constexpr std::int64_t raw_one() {
-  return static_cast<std::int64_t>(Target::FromRuntimeInteger(1).raw_value());
+  return static_cast<std::int64_t>(Target::FromRuntimeInteger(1).RawValue());
 }
 
 template <typename Target, typename Source>
   requires is_fixed_point_v<Target> && is_fixed_point_v<Source>
 constexpr std::int64_t align_raw_to_target(Source x) {
   return fixed_point_internal::ConvertRawScale(
-      static_cast<std::int64_t>(x.raw_value()), Source::kScaleExp,
+      static_cast<std::int64_t>(x.RawValue()), Source::kScaleExp,
       Target::kScaleExp, static_cast<std::int64_t>(Target::kRawMin),
       static_cast<std::int64_t>(Target::kRawMax));
 }
@@ -262,9 +263,9 @@ constexpr Target from_clamped_raw(std::int64_t raw) {
 // Precondition: x > 0.
 template <typename Target, typename X, typename Policy>
   requires internal::is_fixed_point_v<X> && internal::is_fixed_point_v<Target>
-constexpr Target log2_to(X x) {
+constexpr Target Log2To(X x) {
   if (!std::is_constant_evaluated()) {
-    assert(x.raw_value() != typename X::rep_value_type{0});
+    assert(x.RawValue() != typename X::rep_value_type{0});
   }
 
   using Mant = typename Policy::mant_type;
@@ -277,11 +278,10 @@ constexpr Target log2_to(X x) {
   const Mant two_m = two<Mant>();
 
   for (int i = 1; i <= Policy::kLogIterations; ++i) {
-    mantissa = mul_to<Mant>(mantissa, mantissa);
+    mantissa = MulTo<Mant>(mantissa, mantissa);
     if (mantissa >= two_m) {
-      mantissa = div_to<Mant>(mantissa, two_m);
-      result = add_to<Log>(result,
-                           InvPow2Log<Log, Policy::kLogIterations>(i));
+      mantissa = DivTo<Mant>(mantissa, two_m);
+      result = AddTo<Log>(result, InvPow2Log<Log, Policy::kLogIterations>(i));
     }
   }
 
@@ -290,25 +290,25 @@ constexpr Target log2_to(X x) {
 
 template <typename Target, typename X, typename Policy>
   requires internal::is_fixed_point_v<X> && internal::is_fixed_point_v<Target>
-constexpr Target exp2_to(X y) {
+constexpr Target Exp2To(X y) {
   using Log = typename Policy::log_type;
   using Mant = typename Policy::mant_type;
 
   const Log ly = cast_fixed<Log>(y);
   const std::int64_t int_part = FloorLogical(ly);
-  Log frac = sub_to<Log>(ly, Log::FromRuntimeInteger(int_part));
+  Log frac = SubTo<Log>(ly, Log::FromRuntimeInteger(int_part));
 
   std::int64_t acc = raw_one<Target>();
   for (int i = 1; i <= Policy::kExp2FractionBits; ++i) {
     const Log bit = InvPow2Log<Log, Policy::kExp2FractionBits>(i);
-    if (bit.raw_value() == typename Log::rep_value_type{0}) {
+    if (bit.RawValue() == typename Log::rep_value_type{0}) {
       break;
     }
     if (frac >= bit) {
-      const std::int64_t factor =
-          align_raw_to_target<Target>(Exp2Factor<Mant, Policy::kExp2FractionBits>(i));
+      const std::int64_t factor = align_raw_to_target<Target>(
+          Exp2Factor<Mant, Policy::kExp2FractionBits>(i));
       acc = mul_raw_fixed<Target, Policy>(acc, factor);
-      frac = sub_to<Log>(frac, bit);
+      frac = SubTo<Log>(frac, bit);
     }
   }
 
@@ -320,26 +320,26 @@ constexpr Target exp2_to(X y) {
 
 template <typename Target, typename X>
   requires internal::is_fixed_point_v<X> && internal::is_fixed_point_v<Target>
-constexpr Target log2_to(X x) {
-  return internal::log2_to<Target, X, DefaultFixedMathPolicy>(x);
+constexpr Target Log2To(X x) {
+  return internal::Log2To<Target, X, DefaultFixedMathPolicy>(x);
 }
 
 template <typename Target, typename X, typename Policy>
   requires internal::is_fixed_point_v<X> && internal::is_fixed_point_v<Target>
-constexpr Target log2_to(X x) {
-  return internal::log2_to<Target, X, Policy>(x);
+constexpr Target Log2To(X x) {
+  return internal::Log2To<Target, X, Policy>(x);
 }
 
 template <typename Target, typename X>
   requires internal::is_fixed_point_v<X> && internal::is_fixed_point_v<Target>
-constexpr Target exp2_to(X y) {
-  return internal::exp2_to<Target, X, DefaultFixedMathPolicy>(y);
+constexpr Target Exp2To(X y) {
+  return internal::Exp2To<Target, X, DefaultFixedMathPolicy>(y);
 }
 
 template <typename Target, typename X, typename Policy>
   requires internal::is_fixed_point_v<X> && internal::is_fixed_point_v<Target>
-constexpr Target exp2_to(X y) {
-  return internal::exp2_to<Target, X, Policy>(y);
+constexpr Target Exp2To(X y) {
+  return internal::Exp2To<Target, X, Policy>(y);
 }
 
 }  // namespace ae::fixed_math

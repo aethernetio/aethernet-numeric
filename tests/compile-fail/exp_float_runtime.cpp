@@ -32,5 +32,5 @@ E make(double runtime_value) {
 }
 
 int main() {
-  return static_cast<int>(make(1.0).code_value());
+  return static_cast<int>(make(1.0).CodeValue());
 }

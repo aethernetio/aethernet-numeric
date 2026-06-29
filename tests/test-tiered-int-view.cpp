@@ -54,8 +54,7 @@ std::vector<typename TInt::ValueType> DecodeViaView(
 }
 
 template <typename TInt>
-void TestViewRoundTrip(
-    std::initializer_list<typename TInt::ValueType> values) {
+void TestViewRoundTrip(std::initializer_list<typename TInt::ValueType> values) {
   const auto bytes = SerializeValues<TInt>(values);
   const auto decoded = DecodeViaView<TInt>(bytes);
   TEST_ASSERT_EQUAL(values.size(), decoded.size());
@@ -72,7 +71,7 @@ void test_EmptyView() {
   const TieredIntView<T> view{empty};
 
   TEST_ASSERT(view.empty());
-  TEST_ASSERT_EQUAL(0, view.byte_size());
+  TEST_ASSERT_EQUAL(0, view.ByteSize());
   TEST_ASSERT(view.begin() == std::default_sentinel);
 
   std::size_t count = 0;
@@ -129,11 +128,13 @@ void test_RangeForCollect() {
 
 void test_NoAllocation() {
   static_assert(std::is_nothrow_default_constructible_v<TieredIntView<T2>>);
-  static_assert(sizeof(TieredIntView<T2>) == sizeof(std::span<const std::uint8_t>));
+  static_assert(sizeof(TieredIntView<T2>) ==
+                sizeof(std::span<const std::uint8_t>));
 
   using It = TieredIntView<T2>::iterator;
   static_assert(std::is_default_constructible_v<It>);
-  static_assert(!std::is_same_v<typename It::reference, typename It::value_type&>);
+  static_assert(
+      !std::is_same_v<typename It::reference, typename It::value_type&>);
 }
 
 }  // namespace ae::test_tiered_int_view

@@ -29,7 +29,8 @@
 namespace ae {
 
 template <typename TieredIntT>
-class TieredIntView : public std::ranges::view_interface<TieredIntView<TieredIntT>> {
+class TieredIntView
+    : public std::ranges::view_interface<TieredIntView<TieredIntT>> {
  public:
   using value_type = TieredIntT;
   using byte_type = std::uint8_t;
@@ -57,7 +58,9 @@ class TieredIntView : public std::ranges::view_interface<TieredIntView<TieredInt
       return *this;
     }
 
-    void operator++(int) { ++(*this); }
+    void operator++(int) {
+      ++(*this);
+    }
 
     friend bool operator==(const iterator& it,
                            std::default_sentinel_t) noexcept {
@@ -81,13 +84,11 @@ class TieredIntView : public std::ranges::view_interface<TieredIntView<TieredInt
       }
 
       if (current_ == end_) {
-        throw std::out_of_range(
-            "TieredIntView iterator dereferenced at end");
+        throw std::out_of_range("TieredIntView iterator dereferenced at end");
       }
 
       value_type value{};
-      const auto remaining =
-          static_cast<std::size_t>(end_ - current_);
+      const auto remaining = static_cast<std::size_t>(end_ - current_);
       const auto consumed = value.Deserialize(current_, remaining);
 
       if (consumed == 0 || consumed > remaining) {
@@ -111,11 +112,17 @@ class TieredIntView : public std::ranges::view_interface<TieredIntView<TieredInt
   constexpr explicit TieredIntView(std::span<const byte_type> bytes) noexcept
       : bytes_(bytes) {}
 
-  constexpr std::span<const byte_type> bytes() const noexcept { return bytes_; }
+  constexpr std::span<const byte_type> bytes() const noexcept {
+    return bytes_;
+  }
 
-  constexpr std::size_t byte_size() const noexcept { return bytes_.size(); }
+  constexpr std::size_t ByteSize() const noexcept {
+    return bytes_.size();
+  }
 
-  constexpr bool empty() const noexcept { return bytes_.empty(); }
+  constexpr bool empty() const noexcept {
+    return bytes_.empty();
+  }
 
   constexpr iterator begin() const noexcept {
     return iterator(bytes_.data(), bytes_.data() + bytes_.size());

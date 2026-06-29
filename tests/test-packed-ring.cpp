@@ -41,7 +41,7 @@ void test_TieredIntBasic() {
 
   TEST_ASSERT_TRUE(ring.empty());
   TEST_ASSERT_EQUAL(0, ring.size());
-  TEST_ASSERT_EQUAL(64, ring.capacity_bytes());
+  TEST_ASSERT_EQUAL(64, ring.CapacityBytes());
 
   TEST_ASSERT_TRUE(ring.push(T{10}));
   TEST_ASSERT_TRUE(ring.push(T{254}));
@@ -49,8 +49,8 @@ void test_TieredIntBasic() {
   TEST_ASSERT_TRUE(ring.push(T{510}));
 
   // 1 + 1 + 2 + 2 bytes.
-  TEST_ASSERT_EQUAL(6, ring.used_bytes());
-  TEST_ASSERT_EQUAL(64 - 6, ring.free_bytes());
+  TEST_ASSERT_EQUAL(6, ring.UsedBytes());
+  TEST_ASSERT_EQUAL(64 - 6, ring.FreeBytes());
   TEST_ASSERT_EQUAL(4, ring.size());
   TEST_ASSERT_FALSE(ring.empty());
 
@@ -80,13 +80,13 @@ void test_FixedPointLogicalValues() {
 
   // Used bytes must follow the raw TieredInt wire size of each value.
   const std::size_t expected_used = WireSize(a) + WireSize(b) + WireSize(c);
-  TEST_ASSERT_EQUAL(expected_used, ring.used_bytes());
+  TEST_ASSERT_EQUAL(expected_used, ring.UsedBytes());
   TEST_ASSERT_EQUAL(3, ring.size());
 
   const F expected[] = {a, b, c};
   int i = 0;
   for (const F value : ring) {
-    TEST_ASSERT_EQUAL(expected[i].raw_value(), value.raw_value());
+    TEST_ASSERT_EQUAL(expected[i].RawValue(), value.RawValue());
     ++i;
   }
   TEST_ASSERT_EQUAL(3, i);
@@ -103,13 +103,13 @@ void test_ExponentialCodes() {
   TEST_ASSERT_TRUE(ring.push(E::Code(Wire{250})));
   TEST_ASSERT_TRUE(ring.push(E::Code(Wire{1529})));
 
-  TEST_ASSERT_EQUAL(6, ring.used_bytes());
+  TEST_ASSERT_EQUAL(6, ring.UsedBytes());
   TEST_ASSERT_EQUAL(4, ring.size());
 
   const int expected[] = {10, 249, 250, 1529};
   int i = 0;
   for (const E value : ring) {
-    TEST_ASSERT_EQUAL(expected[i], static_cast<int>(value.code_value()));
+    TEST_ASSERT_EQUAL(expected[i], static_cast<int>(value.CodeValue()));
     ++i;
   }
   TEST_ASSERT_EQUAL(4, i);
@@ -123,12 +123,12 @@ void test_Eviction() {
   TEST_ASSERT_TRUE(ring.push(T{10}));   // 1 byte
   TEST_ASSERT_TRUE(ring.push(T{20}));   // 1 byte
   TEST_ASSERT_TRUE(ring.push(T{255}));  // 2 bytes -> ring is full (4 bytes)
-  TEST_ASSERT_EQUAL(4, ring.used_bytes());
+  TEST_ASSERT_EQUAL(4, ring.UsedBytes());
   TEST_ASSERT_EQUAL(3, ring.size());
 
   // Pushing the last 2-byte value evicts the two 1-byte values.
   TEST_ASSERT_TRUE(ring.push(T{300}));  // 2 bytes
-  TEST_ASSERT_EQUAL(4, ring.used_bytes());
+  TEST_ASSERT_EQUAL(4, ring.UsedBytes());
   TEST_ASSERT_EQUAL(2, ring.size());
 
   const int expected[] = {255, 300};
@@ -150,17 +150,17 @@ void test_Wraparound() {
   TEST_ASSERT_TRUE(ring.push(T{256}));  // B
   TEST_ASSERT_TRUE(ring.push(T{257}));  // C
   TEST_ASSERT_TRUE(ring.push(T{258}));  // D
-  TEST_ASSERT_EQUAL(8, ring.used_bytes());
+  TEST_ASSERT_EQUAL(8, ring.UsedBytes());
 
-  TEST_ASSERT_TRUE(ring.pop_front());  // drop A
-  TEST_ASSERT_TRUE(ring.pop_front());  // drop B
-  TEST_ASSERT_EQUAL(4, ring.used_bytes());
+  TEST_ASSERT_TRUE(ring.PopFront());  // drop A
+  TEST_ASSERT_TRUE(ring.PopFront());  // drop B
+  TEST_ASSERT_EQUAL(4, ring.UsedBytes());
 
   // These pushes wrap the tail past the physical end of the buffer.
   TEST_ASSERT_TRUE(ring.push(T{10}));   // E, 1 byte
   TEST_ASSERT_TRUE(ring.push(T{20}));   // F, 1 byte
   TEST_ASSERT_TRUE(ring.push(T{300}));  // G, 2 bytes (straddles the end)
-  TEST_ASSERT_EQUAL(8, ring.used_bytes());
+  TEST_ASSERT_EQUAL(8, ring.UsedBytes());
   TEST_ASSERT_EQUAL(5, ring.size());
 
   const int expected[] = {257, 258, 10, 20, 300};
@@ -176,7 +176,7 @@ void test_ClearAndPopEmpty() {
   using T = TieredInt<std::uint8_t, 254>;
   PackedRing<T, 16> ring;
 
-  TEST_ASSERT_FALSE(ring.pop_front());
+  TEST_ASSERT_FALSE(ring.PopFront());
 
   TEST_ASSERT_TRUE(ring.push(T{1}));
   TEST_ASSERT_TRUE(ring.push(T{2}));
@@ -185,8 +185,8 @@ void test_ClearAndPopEmpty() {
   ring.clear();
   TEST_ASSERT_TRUE(ring.empty());
   TEST_ASSERT_EQUAL(0, ring.size());
-  TEST_ASSERT_EQUAL(0, ring.used_bytes());
-  TEST_ASSERT_EQUAL(16, ring.free_bytes());
+  TEST_ASSERT_EQUAL(0, ring.UsedBytes());
+  TEST_ASSERT_EQUAL(16, ring.FreeBytes());
 }
 
 void test_IndexType() {

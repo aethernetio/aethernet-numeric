@@ -31,7 +31,8 @@ using Runtime = FixedPoint<std::uint32_t, 60.0>;
 using Code = TieredInt<std::uint8_t, 249>;
 using E = Exponential<Runtime, Code, 0.001, 60.0, 255>;
 
-// Tiered runtime: MinMagnitude must fit runtime precision (0.001 rounds to zero).
+// Tiered runtime: MinMagnitude must fit runtime precision (0.001 rounds to
+// zero).
 using TieredRuntime = FixedPoint<Code, 60.0>;
 using TieredE = Exponential<TieredRuntime, Code, 0.25, 60.0, 255>;
 
@@ -39,9 +40,9 @@ static_assert(E::kBoundaryCode == 255);
 static_assert(E::kBoundaryCode < Code::kUpper);
 static_assert(E::kBoundaryCode <= numeric_traits<Code>::kRawMax);
 
-static_assert(E::Code(1).value().raw_value() > 0);
-static_assert(E::from_double(0.001).code_value() != 0);
-static_assert(TieredE::from_double(0.25).code_value() != 0);
+static_assert(E::Code(1).Value().RawValue() > 0);
+static_assert(E::FromDouble(0.001).CodeValue() != 0);
+static_assert(TieredE::FromDouble(0.25).CodeValue() != 0);
 
 static_assert(sizeof(E) == sizeof(Code));
 static_assert(sizeof(E) == sizeof(Code::ValueType));
@@ -52,10 +53,9 @@ static_assert(MaxWireBytes<E>() <= 2);
 static_assert(Code::kMaxWireBytes == 2);
 
 Runtime RuntimeMidpoint(const Runtime& a, const Runtime& b) {
-  const std::int64_t mid =
-      (static_cast<std::int64_t>(a.raw_value()) +
-       static_cast<std::int64_t>(b.raw_value())) /
-      2;
+  const std::int64_t mid = (static_cast<std::int64_t>(a.RawValue()) +
+                            static_cast<std::int64_t>(b.RawValue())) /
+                           2;
   return Runtime::FromRaw(static_cast<typename Runtime::rep_type>(mid));
 }
 
@@ -67,8 +67,8 @@ void test_SelectedCodeDecodeMonotonicity() {
   const int codes[] = {0, 1, 2, 5, 10, 50, 100, 200, 249, 250, 255};
   Runtime prev = Runtime::FromInteger(0);
   for (const int code : codes) {
-    const Runtime current = E::Code(code).value();
-    TEST_ASSERT(current.raw_value() >= prev.raw_value());
+    const Runtime current = E::Code(code).Value();
+    TEST_ASSERT(current.RawValue() >= prev.RawValue());
     prev = current;
   }
 }
@@ -77,43 +77,41 @@ void test_CodeValueCodeRoundTrip() {
   const int codes[] = {1, 2, 10, 50, 100, 200, 249, 250, 255};
   for (const int code : codes) {
     const E encoded = E::Code(code);
-    const E roundtrip = E::FromRuntime(encoded.value());
-    const int diff =
-        static_cast<int>(roundtrip.code_value()) -
-        static_cast<int>(encoded.code_value());
+    const E roundtrip = E::FromRuntime(encoded.Value());
+    const int diff = static_cast<int>(roundtrip.CodeValue()) -
+                     static_cast<int>(encoded.CodeValue());
     const int tolerance = CodeRoundTripTolerance(code);
     TEST_ASSERT(diff <= tolerance && diff >= -tolerance);
   }
 }
 
 void test_AdjacentCodeMidpointBoundaries() {
-  const int pairs[][2] = {{1, 2},     {2, 3},       {10, 11},     {50, 51},
-                          {100, 101}, {200, 201},   {248, 249},   {249, 250},
+  const int pairs[][2] = {{1, 2},     {2, 3},     {10, 11},   {50, 51},
+                          {100, 101}, {200, 201}, {248, 249}, {249, 250},
                           {250, 251}, {254, 255}};
   for (const auto& pair : pairs) {
     const int lo = pair[0];
     const int hi = pair[1];
-    const Runtime v_lo = E::Code(lo).value();
-    const Runtime v_hi = E::Code(hi).value();
-    TEST_ASSERT(v_lo.raw_value() < v_hi.raw_value());
+    const Runtime v_lo = E::Code(lo).Value();
+    const Runtime v_hi = E::Code(hi).Value();
+    TEST_ASSERT(v_lo.RawValue() < v_hi.RawValue());
 
     const Runtime mid = RuntimeMidpoint(v_lo, v_hi);
-    const int encoded =
-        static_cast<int>(E::FromRuntime(mid).code_value());
+    const int encoded = static_cast<int>(E::FromRuntime(mid).CodeValue());
     TEST_ASSERT(encoded >= lo - 1);
     TEST_ASSERT(encoded <= hi + 1);
   }
 }
 
 void test_MinMagnitudeRepresentability() {
-  TEST_ASSERT(E::Code(1).value().raw_value() > 0);
-  TEST_ASSERT(E::from_double(0.001).code_value() >= 1);
+  TEST_ASSERT(E::Code(1).Value().RawValue() > 0);
+  TEST_ASSERT(E::FromDouble(0.001).CodeValue() >= 1);
   const int reencoded =
-      static_cast<int>(E::FromRuntime(E::Code(1).value()).code_value());
+      static_cast<int>(E::FromRuntime(E::Code(1).Value()).CodeValue());
   TEST_ASSERT(reencoded >= 0 && reencoded <= 2);
 
-  TEST_ASSERT(TieredE::Code(1).value().raw_value() > 0);
-  TEST_ASSERT(TieredE::from_double(0.25).code_value() >= 1);
+  TEST_ASSERT(TieredE::Code(1).Value().RawValue() > 0);
+  TEST_ASSERT(TieredE::FromDouble(0.25).CodeValue() >= 1);
 }
 
 void test_ExactStorageAndMaxWireBytes() {
@@ -140,7 +138,8 @@ void test_WireTierByteCounts() {
 }
 
 void test_NoWideWireExponentialConfigs() {
-  // This suite uses a two-byte-max TieredInt wire only; no 4- or 8-byte configs.
+  // This suite uses a two-byte-max TieredInt wire only; no 4- or 8-byte
+  // configs.
   TEST_ASSERT(MaxWireBytes<E>() <= 2);
   TEST_ASSERT(Code::kMaxWireBytes <= 2);
   TEST_PASS();
@@ -150,9 +149,11 @@ void test_NoWideWireExponentialConfigs() {
 
 int test_exponential_arithmetic() {
   UNITY_BEGIN();
-  RUN_TEST(ae::test_exponential_arithmetic::test_SelectedCodeDecodeMonotonicity);
+  RUN_TEST(
+      ae::test_exponential_arithmetic::test_SelectedCodeDecodeMonotonicity);
   RUN_TEST(ae::test_exponential_arithmetic::test_CodeValueCodeRoundTrip);
-  RUN_TEST(ae::test_exponential_arithmetic::test_AdjacentCodeMidpointBoundaries);
+  RUN_TEST(
+      ae::test_exponential_arithmetic::test_AdjacentCodeMidpointBoundaries);
   RUN_TEST(ae::test_exponential_arithmetic::test_MinMagnitudeRepresentability);
   RUN_TEST(ae::test_exponential_arithmetic::test_ExactStorageAndMaxWireBytes);
   RUN_TEST(ae::test_exponential_arithmetic::test_WireTierByteCounts);

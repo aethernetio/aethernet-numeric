@@ -25,14 +25,18 @@ namespace ae::test {
 template <typename TReader>
 class Imstream {
  public:
-  void read(std::uint8_t* p, std::size_t size) { reader.read(p, size); }
+  void read(std::uint8_t* p, std::size_t size) {
+    reader.read(p, size);
+  }
   TReader& reader;
 };
 
 template <typename TWriter>
 class Omstream {
  public:
-  void write(std::uint8_t const* p, std::size_t size) { writer.write(p, size); }
+  void write(std::uint8_t const* p, std::size_t size) {
+    writer.write(p, size);
+  }
   TWriter& writer;
 };
 

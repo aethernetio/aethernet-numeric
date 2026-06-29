@@ -32,16 +32,15 @@ namespace exponential_internal {
 
 template <typename Raw>
 struct MulIntermediate {
-  using type = std::conditional_t<
-      (sizeof(Raw) <= 2), std::int32_t,
-      std::conditional_t<
-          (sizeof(Raw) <= 4), std::int64_t,
+  using type =
+      std::conditional_t<(sizeof(Raw) <= 2), std::int32_t,
+                         std::conditional_t<(sizeof(Raw) <= 4), std::int64_t,
 #ifdef __SIZEOF_INT128__
-          __int128_t
+                                            __int128_t
 #else
-          std::int64_t
+                                            std::int64_t
 #endif
-          >>;
+                                            >>;
 };
 
 inline constexpr int ClampInt(int value, int lo, int hi) {
@@ -54,9 +53,9 @@ consteval double RuntimeObservedQuantum() {
     return static_cast<double>(std::numeric_limits<RuntimeT>::epsilon());
   } else if constexpr (numeric_traits<RuntimeT>::kIsFixedPoint) {
     if constexpr (RuntimeT::kFractionBits > 0) {
-      return 1.0 / static_cast<double>(std::uint64_t{1}
-                                       << static_cast<unsigned>(
-                                              RuntimeT::kFractionBits));
+      return 1.0 / static_cast<double>(
+                       std::uint64_t{1}
+                       << static_cast<unsigned>(RuntimeT::kFractionBits));
     }
     return 1.0;
   } else {
@@ -74,14 +73,14 @@ struct WorkCandidateOk {
       static_cast<double>(Max) <= gcem::max(BoundaryMag * 4.0, 1.0);
   static constexpr double kStep =
       Candidate::kFractionBits > 0
-          ? (1.0 / static_cast<double>(std::uint64_t{1}
-                                        << static_cast<unsigned>(
-                                               Candidate::kFractionBits)))
+          ? (1.0 / static_cast<double>(
+                       std::uint64_t{1}
+                       << static_cast<unsigned>(Candidate::kFractionBits)))
           : 1.0;
   static constexpr bool kQuantumOk = kStep <= MinQuantum;
   static constexpr bool kMinRepresentable =
-      Candidate::FromDouble(MinMag).raw_value() >
-          typename Candidate::rep_value_type{0} &&
+      Candidate::FromDouble(MinMag).RawValue() >
+          typename Candidate::rep_value_type {0} &&
       Candidate::FromDouble(MinMag * 10.0) > Candidate::FromDouble(MinMag);
   static constexpr bool kRepWidthOk =
       sizeof(Rep) >= sizeof(std::uint32_t) || MinMag >= 0.01;
@@ -108,7 +107,7 @@ struct PickFirstWork;
 template <typename Head, typename... Tail>
 struct PickFirstWork<Head, Tail...> {
   using type = std::conditional_t<Head::kOk, typename Head::type,
-                                   typename PickFirstWork<Tail...>::type>;
+                                  typename PickFirstWork<Tail...>::type>;
 };
 
 template <>
@@ -140,26 +139,24 @@ struct PickWorkType {
 // absolute log extent to support the current absolute-log implementation.
 // A future cleanup should switch interpolation to relative log delta:
 //   log_delta = log2(value) - log2(MinMagnitude)
-// so log_type depends only on log_span = log2(BoundaryMagnitude / MinMagnitude).
+// so log_type depends only on log_span = log2(BoundaryMagnitude /
+// MinMagnitude).
 template <double LogSpan, double AbsLogExtent>
 struct PickLogType {
   using type = std::conditional_t<
-      (LogSpan <= 16.0 && AbsLogExtent <= 16.0),
-      FixedPoint<std::int16_t, 16.0>,
+      (LogSpan <= 16.0 && AbsLogExtent <= 16.0), FixedPoint<std::int16_t, 16.0>,
       std::conditional_t<
           (LogSpan <= 32.0 && AbsLogExtent <= 32.0),
           FixedPoint<std::int16_t, 32.0>,
-          std::conditional_t<
-              (LogSpan <= 64.0 && AbsLogExtent <= 64.0),
-              FixedPoint<std::int16_t, 64.0>,
-              FixedPoint<std::int32_t, 1024.0>>>>;
+          std::conditional_t<(LogSpan <= 64.0 && AbsLogExtent <= 64.0),
+                             FixedPoint<std::int16_t, 64.0>,
+                             FixedPoint<std::int32_t, 1024.0>>>>;
 };
 
 template <typename RuntimeT, double BoundaryMag, double MinMag,
           double MinQuantum>
 struct SelectWorkType {
-  using type =
-      typename PickWorkType<BoundaryMag, MinMag, MinQuantum>::type;
+  using type = typename PickWorkType<BoundaryMag, MinMag, MinQuantum>::type;
 };
 
 template <typename RuntimeT, auto MinMagnitude, auto BoundaryMagnitude,
@@ -167,8 +164,7 @@ template <typename RuntimeT, auto MinMagnitude, auto BoundaryMagnitude,
 struct ExponentialMathPolicy {
   static constexpr double kMinMag = static_cast<double>(MinMagnitude);
   static constexpr double kBoundaryMag = static_cast<double>(BoundaryMagnitude);
-  static constexpr double kLogSpan =
-      gcem::log2(kBoundaryMag / kMinMag);
+  static constexpr double kLogSpan = gcem::log2(kBoundaryMag / kMinMag);
   static constexpr double kAbsLogMinValue = gcem::log2(kMinMag);
   static constexpr double kAbsLogMaxValue = gcem::log2(kBoundaryMag);
   static constexpr double kAbsLogExtent =
@@ -184,16 +180,14 @@ struct ExponentialMathPolicy {
 
   static constexpr double kLogStep =
       static_cast<double>(static_cast<int>(kMaxMagnitudeIndex) - 1) > 0.0
-          ? (kLogSpan / static_cast<double>(static_cast<int>(
-                            kMaxMagnitudeIndex) -
-                        1))
+          ? (kLogSpan /
+             static_cast<double>(static_cast<int>(kMaxMagnitudeIndex) - 1))
           : kLogSpan;
 
   static constexpr double kMathErrorBudgetCodes = 0.25;
-  static constexpr double kAllowedLogError =
-      kLogStep * kMathErrorBudgetCodes;
-  static constexpr int kDerivedIterations = static_cast<int>(gcem::ceil(
-      -gcem::log2(kAllowedLogError > 0.0 ? kAllowedLogError : 1.0)));
+  static constexpr double kAllowedLogError = kLogStep * kMathErrorBudgetCodes;
+  static constexpr int kDerivedIterations = static_cast<int>(
+      gcem::ceil(-gcem::log2(kAllowedLogError > 0.0 ? kAllowedLogError : 1.0)));
   static constexpr int kMinIterations = 4;
   static constexpr int kMaxIterations = 10;
   static constexpr int kLogIterations =

@@ -30,7 +30,7 @@ namespace ae {
 template <typename T>
 struct DeserializeResult {
   T value;
-  std::size_t bytes_read;
+  std::size_t BytesRead;
 };
 
 namespace wire_io_internal {
@@ -90,8 +90,7 @@ struct wire_traits<T> {
 
   static DeserializeResult<T> Deserialize(const std::uint8_t* in,
                                           std::size_t len) {
-    return {wire_io_internal::DeserializeLittleEndian<T>(in, len),
-            sizeof(T)};
+    return {wire_io_internal::DeserializeLittleEndian<T>(in, len), sizeof(T)};
   }
 };
 
@@ -108,8 +107,8 @@ struct wire_traits<TieredInt<WireCell, TierMaxVals...>> {
   static DeserializeResult<T> Deserialize(const std::uint8_t* in,
                                           std::size_t len) {
     T value{};
-    const std::size_t bytes_read = value.Deserialize(in, len);
-    return {value, bytes_read};
+    const std::size_t BytesRead = value.Deserialize(in, len);
+    return {value, BytesRead};
   }
 };
 
@@ -122,13 +121,13 @@ struct wire_traits<FixedPoint<Rep, Max>> {
   static constexpr std::size_t kMaxWireBytes = RepTraits::kMaxWireBytes;
 
   static std::size_t Serialize(const T& value, std::uint8_t* out) {
-    return RepTraits::Serialize(value.raw(), out);
+    return RepTraits::Serialize(value.Raw(), out);
   }
 
   static DeserializeResult<T> Deserialize(const std::uint8_t* in,
-                                            std::size_t len) {
+                                          std::size_t len) {
     const auto rep_result = RepTraits::Deserialize(in, len);
-    return {T::FromRaw(rep_result.value), rep_result.bytes_read};
+    return {T::FromRaw(rep_result.value), rep_result.BytesRead};
   }
 };
 
@@ -152,7 +151,7 @@ DeserializeResult<T> Deserialize(const std::uint8_t* in, std::size_t len) {
 // self-delimiting on the wire (the same property that lets it be skipped).
 template <WireSerializable T>
 std::size_t SerializedSizeAt(const std::uint8_t* in, std::size_t len) {
-  return wire_traits<T>::Deserialize(in, len).bytes_read;
+  return wire_traits<T>::Deserialize(in, len).BytesRead;
 }
 
 }  // namespace ae

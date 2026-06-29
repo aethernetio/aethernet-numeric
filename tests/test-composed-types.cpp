@@ -38,7 +38,7 @@ bool WireRoundTripEqual(const T& value) {
   std::uint8_t buf[MaxWireBytes<T>()] = {};
   const auto n = Serialize(value, buf);
   const auto r = Deserialize<T>(buf, n);
-  return r.bytes_read == n && r.value == value;
+  return r.BytesRead == n && r.value == value;
 }
 
 // ---------------------------------------------------------------------------
@@ -55,8 +55,8 @@ constexpr F fa{1};
 constexpr F fb{30};
 constexpr F fc{60};
 
-static_assert(F::FromRaw(fa.raw()).raw_value() == fa.raw_value());
-static_assert(F::Raw(fb.raw()).raw_value() == fb.raw_value());
+static_assert(F::FromRaw(fa.Raw()).RawValue() == fa.RawValue());
+static_assert(F::Raw(fb.Raw()).RawValue() == fb.RawValue());
 
 void test_FixedPointOverTieredInt() {
   TEST_ASSERT(WireRoundTripEqual(fa));
@@ -64,15 +64,15 @@ void test_FixedPointOverTieredInt() {
   TEST_ASSERT(WireRoundTripEqual(fc));
 
   const F from_raw = F::FromRaw(Raw{500});
-  TEST_ASSERT(from_raw.raw_value() == Raw{500});
-  TEST_ASSERT(from_raw.raw_value() != fa.raw_value());
+  TEST_ASSERT(from_raw.RawValue() == Raw{500});
+  TEST_ASSERT(from_raw.RawValue() != fa.RawValue());
 
   TEST_ASSERT_EQUAL(1, WireSize(fa));
-  TEST_ASSERT_EQUAL(WireSize(fa), WireSize(fa.raw()));
+  TEST_ASSERT_EQUAL(WireSize(fa), WireSize(fa.Raw()));
 
   const F two_byte_raw = F::FromRaw(Raw{255});
   TEST_ASSERT_EQUAL(2, WireSize(two_byte_raw));
-  TEST_ASSERT_EQUAL(WireSize(two_byte_raw), WireSize(two_byte_raw.raw()));
+  TEST_ASSERT_EQUAL(WireSize(two_byte_raw), WireSize(two_byte_raw.Raw()));
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ void test_PackedRingTieredInt() {
   TEST_ASSERT_TRUE(ring.push(T{255}));
   TEST_ASSERT_TRUE(ring.push(T{510}));
 
-  TEST_ASSERT_EQUAL(6, ring.used_bytes());
+  TEST_ASSERT_EQUAL(6, ring.UsedBytes());
   TEST_ASSERT_EQUAL(4, ring.size());
 
   const int expected[] = {10, 254, 255, 510};
@@ -115,18 +115,18 @@ void test_PackedRingFixedPointTieredInt() {
   TEST_ASSERT_TRUE(ring.push(b));
   TEST_ASSERT_TRUE(ring.push(c));
 
-  TEST_ASSERT_EQUAL(WireSize(a) + WireSize(b) + WireSize(c), ring.used_bytes());
+  TEST_ASSERT_EQUAL(WireSize(a) + WireSize(b) + WireSize(c), ring.UsedBytes());
   TEST_ASSERT_EQUAL(3, ring.size());
-  TEST_ASSERT_EQUAL(a.raw_value(), ring.front().raw_value());
+  TEST_ASSERT_EQUAL(a.RawValue(), ring.front().RawValue());
 
-  TEST_ASSERT_TRUE(ring.pop_front());
-  TEST_ASSERT_EQUAL(b.raw_value(), ring.front().raw_value());
+  TEST_ASSERT_TRUE(ring.PopFront());
+  TEST_ASSERT_EQUAL(b.RawValue(), ring.front().RawValue());
   TEST_ASSERT_EQUAL(2, ring.size());
 
   const F expected[] = {b, c};
   int i = 0;
   for (const F value : ring) {
-    TEST_ASSERT_EQUAL(expected[i].raw_value(), value.raw_value());
+    TEST_ASSERT_EQUAL(expected[i].RawValue(), value.RawValue());
     ++i;
   }
   TEST_ASSERT_EQUAL(2, i);
@@ -142,7 +142,7 @@ void test_PackedRingValueTooLarge() {
 
   TEST_ASSERT_FALSE(ring.push(T{255}));
   TEST_ASSERT_TRUE(ring.empty());
-  TEST_ASSERT_EQUAL(0, ring.used_bytes());
+  TEST_ASSERT_EQUAL(0, ring.UsedBytes());
   TEST_ASSERT_EQUAL(0, ring.size());
 }
 
@@ -156,7 +156,7 @@ void test_PackedRingEmptyBehavior() {
 
   // front() requires a non-empty ring; do not call it here.
 
-  TEST_ASSERT_FALSE(ring.pop_front());
+  TEST_ASSERT_FALSE(ring.PopFront());
   ring.clear();
   TEST_ASSERT_TRUE(ring.empty());
   TEST_ASSERT(ring.begin() == ring.end());
@@ -177,7 +177,9 @@ using R256 = PackedRing<TieredInt<std::uint8_t, 254>, 256>;
 static_assert(std::is_same_v<typename R64::Index, std::uint8_t>);
 static_assert(std::is_same_v<typename R256::Index, std::uint16_t>);
 
-void test_PackedRingIndexType() { TEST_PASS(); }
+void test_PackedRingIndexType() {
+  TEST_PASS();
+}
 
 }  // namespace ae::test_composed_types
 

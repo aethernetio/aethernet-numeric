@@ -46,7 +46,7 @@ void test_BuiltinIntegerUnsigned() {
 
   const auto r = Deserialize<std::uint16_t>(buf, n);
   TEST_ASSERT_EQUAL(0x1234, r.value);
-  TEST_ASSERT_EQUAL(2, r.bytes_read);
+  TEST_ASSERT_EQUAL(2, r.BytesRead);
 }
 
 void test_BuiltinIntegerSigned() {
@@ -58,7 +58,7 @@ void test_BuiltinIntegerSigned() {
 
     const auto r = Deserialize<std::int8_t>(buf, n);
     TEST_ASSERT_EQUAL(-1, r.value);
-    TEST_ASSERT_EQUAL(1, r.bytes_read);
+    TEST_ASSERT_EQUAL(1, r.BytesRead);
   }
 
   {
@@ -70,7 +70,7 @@ void test_BuiltinIntegerSigned() {
 
     const auto r = Deserialize<std::int16_t>(buf, n);
     TEST_ASSERT_EQUAL(-2, r.value);
-    TEST_ASSERT_EQUAL(2, r.bytes_read);
+    TEST_ASSERT_EQUAL(2, r.BytesRead);
   }
 
   {
@@ -84,7 +84,7 @@ void test_BuiltinIntegerSigned() {
 
     const auto r = Deserialize<std::int32_t>(buf, n);
     TEST_ASSERT_EQUAL(-123456, r.value);
-    TEST_ASSERT_EQUAL(4, r.bytes_read);
+    TEST_ASSERT_EQUAL(4, r.BytesRead);
   }
 }
 
@@ -100,7 +100,7 @@ void test_TieredInt() {
 
   const auto r = Deserialize<T>(buf, n);
   TEST_ASSERT_EQUAL(123, r.value.value_);
-  TEST_ASSERT_EQUAL(n, r.bytes_read);
+  TEST_ASSERT_EQUAL(n, r.BytesRead);
 }
 
 void test_FixedPointBuiltinRep() {
@@ -113,7 +113,7 @@ void test_FixedPointBuiltinRep() {
   TEST_ASSERT_EQUAL(1, n);
 
   const auto r = Deserialize<F>(buf, n);
-  TEST_ASSERT_EQUAL(value.raw_value(), r.value.raw_value());
+  TEST_ASSERT_EQUAL(value.RawValue(), r.value.RawValue());
 }
 
 void test_FixedPointTieredIntRep() {
@@ -128,7 +128,7 @@ void test_FixedPointTieredIntRep() {
   TEST_ASSERT(n <= Raw::kMaxWireBytes);
 
   const auto r = Deserialize<F>(buf, n);
-  TEST_ASSERT_EQUAL(value.raw_value(), r.value.raw_value());
+  TEST_ASSERT_EQUAL(value.RawValue(), r.value.RawValue());
 }
 
 void test_Exponential() {
@@ -136,7 +136,7 @@ void test_Exponential() {
   using Wire = TieredInt<std::uint8_t, 249, 1529>;
   using E = Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
 
-  const auto value = E::from_double(1.0);
+  const auto value = E::FromDouble(1.0);
   std::uint8_t buf[MaxWireBytes<E>()] = {};
 
   const auto n = Serialize(value, buf);
@@ -144,7 +144,7 @@ void test_Exponential() {
   TEST_ASSERT(n <= Wire::kMaxWireBytes);
 
   const auto r = Deserialize<E>(buf, n);
-  TEST_ASSERT_EQUAL(value.code_value(), r.value.code_value());
+  TEST_ASSERT_EQUAL(value.CodeValue(), r.value.CodeValue());
 }
 
 void test_ShortBufferFixedWidth() {
@@ -182,7 +182,7 @@ void test_ShortBufferExponential() {
   using Wire = TieredInt<std::uint8_t, 249, 1529>;
   using E = Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
 
-  const auto value = E::from_double(60.0);
+  const auto value = E::FromDouble(60.0);
   std::uint8_t buf[MaxWireBytes<E>()] = {};
   const auto n = Serialize(value, buf);
   TEST_ASSERT(n > 1);

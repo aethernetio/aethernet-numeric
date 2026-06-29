@@ -86,7 +86,7 @@ using Q80 = ae::FixedPoint<std::uint8_t, 130.0>;  // Q8.0, step 1, max 255
 
 Canonical syntax is `FixedPoint<Rep, Max>` where `Rep` is a built-in integral or `TieredInt` storage type and `Max` is a positive C++23 NTTP (integral or floating-point). Logical value is `raw * 2^kScaleExp`. Signed storage uses a **symmetric** raw range around zero (e.g. `int8_t` uses `-127..+127`, not `INT_MIN`).
 
-Runtime arithmetic is **integer-only** (shifts and saturated raw add/sub); floating-point is used only at compile/parse boundaries in tests and consteval helpers. Mixed addition infers `FixedPoint<Rep, MaxA + MaxB>`. Scale conversion uses `Cast<To>()`. Explicit division uses `div_to<Target>(lhs, rhs)` (currently a slow boundary helper, not an MCU hot-path API).
+Runtime arithmetic is **integer-only** (shifts and saturated raw add/sub); floating-point is used only at compile/parse boundaries in tests and consteval helpers. Mixed addition infers `FixedPoint<Rep, MaxA + MaxB>`. Scale conversion uses `Cast<To>()`. Explicit division uses `DivTo<Target>(lhs, rhs)` (currently a slow boundary helper, not an MCU hot-path API).
 
 Configure the compiler explicitly when building (C++23 with floating-point NTTP), for example MacPorts Clang 20:
 
@@ -109,9 +109,9 @@ When values span several orders of magnitude, **relative precision** is often mo
 
 **API semantics:**
 
-* **Exact raw-code APIs** — `Code()` / `FromCode()` / `from_code()` construct from a wire code without magnitude approximation.
-* **Approximate arithmetic APIs** — `value()` decodes a code to runtime; `FromRuntime()` / `from_runtime()` / `from_double()` encode a runtime value to a code. Round-trip tolerance depends on code tier (typically ±1 for single-byte codes, ±3 near the boundary).
-* **Comparisons** — `abs`, `min`, `max`, and `clamp` operate on wire codes directly without decoding. Arithmetic operators are intentionally not implemented yet.
+* **Exact raw-code APIs** — `Code()` / `FromCode()` construct from a wire code without magnitude approximation.
+* **Approximate arithmetic APIs** — `Value()` decodes a code to runtime; `FromRuntime()` / `FromDouble()` encode a runtime value to a code. Round-trip tolerance depends on code tier (typically ±1 for single-byte codes, ±3 near the boundary).
+* **Comparisons** — `Abs`, `Min`, `Max`, and `Clamp` operate on wire codes directly without decoding. Arithmetic operators are intentionally not implemented yet.
 
 Code `0` is zero. For unsigned runtime types, code `1` is `MinMagnitude` and code `BoundaryCode` is `BoundaryMagnitude`. For signed runtime types, even codes are positive magnitudes and odd codes are negative magnitudes (`code 2` → `+MinMagnitude`, `code 1` → `-MinMagnitude`).
 
@@ -125,8 +125,8 @@ using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
 
 using E = ae::Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
 
-constexpr auto encoded = E::from_double(1.0);
-constexpr auto decoded = encoded.to_runtime();
+constexpr auto encoded = E::FromDouble(1.0);
+constexpr auto decoded = encoded.ToRuntime();
 ```
 
 Here:
@@ -187,10 +187,10 @@ Core APIs:
 
 * `ae::ToString(value)` — allocates a `std::string`
 * `ae::FromString(text, value)` — returns `false` on malformed or out-of-range input
-* `ae::to_chars(first, last, value)` — non-allocating buffer write via `<charconv>`
-* `ae::from_chars(first, last, value)` — non-allocating parse
+* `ae::ToChars(first, last, value)` — non-allocating buffer write via `<charconv>`
+* `ae::FromChars(first, last, value)` — non-allocating parse
 
-`Exponential` text IO encodes/decodes through `to_runtime()` / `from_runtime()`. JSON or logging layers can call `ToString` / `FromString` without pulling a JSON dependency into the numeric core.
+`Exponential` text IO encodes/decodes through `ToRuntime()` / `FromRuntime()`. JSON or logging layers can call `ToString` / `FromString` without pulling a JSON dependency into the numeric core.
 
 ---
 
@@ -198,7 +198,7 @@ Core APIs:
 
 `numeric/ostream_io.h` provides optional `operator<<` for `TieredInt` and `FixedPoint`. Include it only when you need stream output; core numeric headers do not pull in `<ostream>`.
 
-Formatting uses the same integer-only text IO backend (`to_chars` / stack buffer, no runtime floating-point):
+Formatting uses the same integer-only text IO backend (`ToChars` / stack buffer, no runtime floating-point):
 
 ```cpp
 #include "numeric/ostream_io.h"
@@ -244,7 +244,7 @@ using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
 using E = ae::Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
 
 std::uint8_t buf[ae::MaxWireBytes<E>()];
-auto n = ae::Serialize(E::from_double(1.0), buf);
+auto n = ae::Serialize(E::FromDouble(1.0), buf);
 auto restored = ae::Deserialize<E>(buf, n).value;
 ```
 
@@ -261,8 +261,8 @@ using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
 using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
 using Duration = ae::Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
 
-constexpr auto one_second = Duration::from_double(1.0);
-auto runtime = one_second.to_runtime();
+constexpr auto one_second = Duration::FromDouble(1.0);
+auto runtime = one_second.ToRuntime();
 
 std::uint8_t buf[ae::MaxWireBytes<Duration>()];
 auto n = ae::Serialize(one_second, buf);

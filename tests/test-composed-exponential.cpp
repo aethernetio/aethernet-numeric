@@ -39,7 +39,7 @@ bool WireRoundTripEqual(const T& value) {
   std::uint8_t buf[MaxWireBytes<T>()] = {};
   const auto n = Serialize(value, buf);
   const auto r = Deserialize<T>(buf, n);
-  return r.bytes_read == n && r.value == value;
+  return r.BytesRead == n && r.value == value;
 }
 
 template <typename E>
@@ -47,7 +47,7 @@ bool ExponentialCodeWireRoundTrip(const E& value) {
   std::uint8_t buf[MaxWireBytes<E>()] = {};
   const auto n = Serialize(value, buf);
   const auto r = Deserialize<E>(buf, n);
-  return r.bytes_read == n && r.value.code_value() == value.code_value();
+  return r.BytesRead == n && r.value.CodeValue() == value.CodeValue();
 }
 
 using IntRuntime = FixedPoint<std::uint32_t, 60.0>;
@@ -56,23 +56,23 @@ using E = Exponential<IntRuntime, Code, 0.001, 60.0, 1529>;
 
 static_assert(MaxWireBytes<E>() == MaxWireBytes<Code>());
 static_assert(sizeof(E) == sizeof(Code));
-static_assert(E::Code(10).code_value() == 10);
-static_assert(E::FromCode(10).code_value() == 10);
+static_assert(E::Code(10).CodeValue() == 10);
+static_assert(E::FromCode(10).CodeValue() == 10);
 
 void test_ExponentialIntegerFixedPointRuntime() {
-  const E e_min = E::from_double(0.001);
-  const E e1 = E::from_double(1.0);
+  const E e_min = E::FromDouble(0.001);
+  const E e1 = E::FromDouble(1.0);
   const E e10 = E::FromRuntimeInteger(10);
 
-  TEST_ASSERT(e_min.code_value() != 0);
-  TEST_ASSERT(e10.code_value() != e1.code_value());
-  TEST_ASSERT_EQUAL(10, E::Code(10).code_value());
-  TEST_ASSERT_EQUAL(10, E::FromCode(10).code_value());
+  TEST_ASSERT(e_min.CodeValue() != 0);
+  TEST_ASSERT(e10.CodeValue() != e1.CodeValue());
+  TEST_ASSERT_EQUAL(10, E::Code(10).CodeValue());
+  TEST_ASSERT_EQUAL(10, E::FromCode(10).CodeValue());
 
-  const auto decoded = e1.value();
+  const auto decoded = e1.Value();
   TEST_ASSERT(decoded > IntRuntime::FromDouble(0.9));
   TEST_ASSERT(decoded < IntRuntime::FromDouble(1.1));
-  TEST_ASSERT_EQUAL(10, E::Code(10).code().value_);
+  TEST_ASSERT_EQUAL(10, E::Code(10).WireCode().value_);
 
   TEST_ASSERT(ExponentialCodeWireRoundTrip(E::Code(10)));
   TEST_ASSERT(ExponentialCodeWireRoundTrip(e1));
@@ -93,16 +93,16 @@ using SignedRuntime = FixedPoint<std::int32_t, 60.0>;
 using SE = Exponential<SignedRuntime, Code, 0.001, 60.0, 1529>;
 
 void test_SignedExponentialRuntime() {
-  const SE se_neg = SE::from_double(-1.0);
-  const SE se_zero = SE::from_double(0.0);
-  const SE se_pos = SE::from_double(1.0);
+  const SE se_neg = SE::FromDouble(-1.0);
+  const SE se_zero = SE::FromDouble(0.0);
+  const SE se_pos = SE::FromDouble(1.0);
 
-  TEST_ASSERT(se_neg.is_negative());
-  TEST_ASSERT(se_zero.is_zero());
-  TEST_ASSERT(se_pos.is_positive());
+  TEST_ASSERT(se_neg.IsNegative());
+  TEST_ASSERT(se_zero.IsZero());
+  TEST_ASSERT(se_pos.IsPositive());
   TEST_ASSERT(se_neg < se_zero);
   TEST_ASSERT(se_zero < se_pos);
-  TEST_ASSERT(se_neg.abs().code_value() == se_pos.code_value());
+  TEST_ASSERT(se_neg.Abs().CodeValue() == se_pos.CodeValue());
   TEST_ASSERT(ExponentialCodeWireRoundTrip(se_neg));
   TEST_ASSERT(ExponentialCodeWireRoundTrip(se_zero));
   TEST_ASSERT(ExponentialCodeWireRoundTrip(se_pos));
@@ -116,13 +116,13 @@ void test_PackedRingExponentialIntegerFixedPoint() {
   TEST_ASSERT_TRUE(ring.push(E::Code(Code{250})));
   TEST_ASSERT_TRUE(ring.push(E::Code(Code{1529})));
 
-  TEST_ASSERT_EQUAL(6, ring.used_bytes());
+  TEST_ASSERT_EQUAL(6, ring.UsedBytes());
   TEST_ASSERT_EQUAL(4, ring.size());
 
   const int expected[] = {10, 249, 250, 1529};
   int i = 0;
   for (const E value : ring) {
-    TEST_ASSERT_EQUAL(expected[i], static_cast<int>(value.code_value()));
+    TEST_ASSERT_EQUAL(expected[i], static_cast<int>(value.CodeValue()));
     ++i;
   }
   TEST_ASSERT_EQUAL(4, i);
@@ -132,9 +132,11 @@ void test_PackedRingExponentialIntegerFixedPoint() {
 
 int test_composed_exponential() {
   UNITY_BEGIN();
-  RUN_TEST(ae::test_composed_exponential::test_ExponentialIntegerFixedPointRuntime);
+  RUN_TEST(
+      ae::test_composed_exponential::test_ExponentialIntegerFixedPointRuntime);
   RUN_TEST(ae::test_composed_exponential::test_TwoByteBoundaryCode);
   RUN_TEST(ae::test_composed_exponential::test_SignedExponentialRuntime);
-  RUN_TEST(ae::test_composed_exponential::test_PackedRingExponentialIntegerFixedPoint);
+  RUN_TEST(ae::test_composed_exponential::
+               test_PackedRingExponentialIntegerFixedPoint);
   return UNITY_END();
 }

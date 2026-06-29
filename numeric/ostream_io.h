@@ -29,7 +29,7 @@ namespace ostream_io_internal {
 template <typename T>
 std::ostream& WriteNumeric(std::ostream& os, const T& value) {
   char buf[MaxTextSize<T>()];
-  const auto result = to_chars(buf, buf + sizeof(buf), value);
+  const auto result = ToChars(buf, buf + sizeof(buf), value);
   if (result.ec == std::errc{}) {
     os.write(buf, static_cast<std::streamsize>(result.ptr - buf));
   } else {

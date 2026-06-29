@@ -32,10 +32,9 @@ namespace ae {
 template <std::size_t N>
 using SmallestUIntForSize = std::conditional_t<
     (N <= 0xFFULL), std::uint8_t,
-    std::conditional_t<
-        (N <= 0xFFFFULL), std::uint16_t,
-        std::conditional_t<(N <= 0xFFFFFFFFULL), std::uint32_t,
-                           std::uint64_t>>>;
+    std::conditional_t<(N <= 0xFFFFULL), std::uint16_t,
+                       std::conditional_t<(N <= 0xFFFFFFFFULL), std::uint32_t,
+                                          std::uint64_t>>>;
 
 // A byte ring buffer that stores serialized T values back to back, with no
 // per-record length headers:
@@ -74,7 +73,9 @@ class PackedRing {
     iterator(const PackedRing* ring, Index pos, Index ordinal)
         : ring_(ring), pos_(pos), ordinal_(ordinal) {}
 
-    T operator*() const { return ring_->ReadValueAt(pos_); }
+    T operator*() const {
+      return ring_->ReadValueAt(pos_);
+    }
 
     iterator& operator++() {
       pos_ = ring_->NextPos(pos_);
@@ -90,7 +91,9 @@ class PackedRing {
     bool operator==(const iterator& other) const {
       return ordinal_ == other.ordinal_;
     }
-    bool operator!=(const iterator& other) const { return !(*this == other); }
+    bool operator!=(const iterator& other) const {
+      return !(*this == other);
+    }
 
    private:
     const PackedRing* ring_ = nullptr;
@@ -100,11 +103,19 @@ class PackedRing {
 
   PackedRing() = default;
 
-  bool empty() const { return count_ == 0; }
-  Index size() const { return count_; }
-  Index capacity_bytes() const { return static_cast<Index>(kCapacity); }
-  Index used_bytes() const { return used_; }
-  Index free_bytes() const {
+  bool empty() const {
+    return count_ == 0;
+  }
+  Index size() const {
+    return count_;
+  }
+  Index CapacityBytes() const {
+    return static_cast<Index>(kCapacity);
+  }
+  Index UsedBytes() const {
+    return used_;
+  }
+  Index FreeBytes() const {
     return static_cast<Index>(kCapacity - static_cast<std::size_t>(used_));
   }
 
@@ -115,7 +126,9 @@ class PackedRing {
     count_ = 0;
   }
 
-  T front() const { return ReadValueAt(head_); }
+  T front() const {
+    return ReadValueAt(head_);
+  }
 
   bool push(T value) {
     std::uint8_t temp[kMaxRecordBytes];
@@ -123,10 +136,10 @@ class PackedRing {
     if (n > kCapacity) {
       return false;
     }
-    while (static_cast<std::size_t>(free_bytes()) < n && count_ > 0) {
-      pop_front();
+    while (static_cast<std::size_t>(FreeBytes()) < n && count_ > 0) {
+      PopFront();
     }
-    if (static_cast<std::size_t>(free_bytes()) < n) {
+    if (static_cast<std::size_t>(FreeBytes()) < n) {
       return false;
     }
     for (std::size_t i = 0; i < n; ++i) {
@@ -138,7 +151,7 @@ class PackedRing {
     return true;
   }
 
-  bool pop_front() {
+  bool PopFront() {
     if (empty()) {
       return false;
     }
@@ -149,8 +162,12 @@ class PackedRing {
     return true;
   }
 
-  iterator begin() const { return iterator(this, head_, 0); }
-  iterator end() const { return iterator(this, tail_, count_); }
+  iterator begin() const {
+    return iterator(this, head_, 0);
+  }
+  iterator end() const {
+    return iterator(this, tail_, count_);
+  }
 
  private:
   static constexpr Index Wrap(std::size_t value) {
@@ -159,25 +176,29 @@ class PackedRing {
 
   // Number of valid bytes from pos forward, in logical (front-to-back) order.
   std::size_t AvailFrom(Index pos) const {
-    const std::size_t offset =
-        (static_cast<std::size_t>(pos) + kCapacity -
-         static_cast<std::size_t>(head_)) %
-        kCapacity;
+    const std::size_t offset = (static_cast<std::size_t>(pos) + kCapacity -
+                                static_cast<std::size_t>(head_)) %
+                               kCapacity;
     return static_cast<std::size_t>(used_) - offset;
   }
 
   DeserializeResult<T> ReadAt(Index pos) const {
     std::uint8_t temp[kMaxRecordBytes];
     const std::size_t avail = AvailFrom(pos);
-    const std::size_t to_copy = avail < kMaxRecordBytes ? avail : kMaxRecordBytes;
+    const std::size_t to_copy =
+        avail < kMaxRecordBytes ? avail : kMaxRecordBytes;
     for (std::size_t i = 0; i < to_copy; ++i) {
       temp[i] = storage_[Wrap(static_cast<std::size_t>(pos) + i)];
     }
     return Deserialize<T>(temp, to_copy);
   }
 
-  T ReadValueAt(Index pos) const { return ReadAt(pos).value; }
-  std::size_t SizeAt(Index pos) const { return ReadAt(pos).bytes_read; }
+  T ReadValueAt(Index pos) const {
+    return ReadAt(pos).value;
+  }
+  std::size_t SizeAt(Index pos) const {
+    return ReadAt(pos).BytesRead;
+  }
   Index NextPos(Index pos) const {
     return Wrap(static_cast<std::size_t>(pos) + SizeAt(pos));
   }

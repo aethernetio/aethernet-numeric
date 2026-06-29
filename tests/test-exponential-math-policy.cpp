@@ -33,20 +33,21 @@ using RuntimeSmall = FixedPoint<std::uint16_t, 60.0>;
 using Code = TieredInt<std::uint8_t, 254>;
 
 static constexpr double kLatencyBoundarySeconds = 42.5937;
-using LatencyE = Exponential<RuntimeSeconds, Code, 0.001, kLatencyBoundarySeconds,
-                             510>;
+using LatencyE =
+    Exponential<RuntimeSeconds, Code, 0.001, kLatencyBoundarySeconds, 510>;
 using LatencyPolicy = LatencyE::math_policy;
 
 static_assert(LatencyPolicy::kLogIterations <= 8);
-static_assert(LatencyPolicy::kExp2FractionBits == LatencyPolicy::kLogIterations);
+static_assert(LatencyPolicy::kExp2FractionBits ==
+              LatencyPolicy::kLogIterations);
 static_assert(LatencyPolicy::kLogIterations != 11);
 static_assert(
     std::is_same_v<LatencyPolicy::mant_type, FixedPoint<std::uint16_t, 4.0>>);
 static_assert(sizeof(typename LatencyPolicy::mul_intermediate_type) <=
               sizeof(std::int64_t));
 
-using SecondsE = Exponential<RuntimeSeconds, Code, 0.001, kLatencyBoundarySeconds,
-                             510>;
+using SecondsE =
+    Exponential<RuntimeSeconds, Code, 0.001, kLatencyBoundarySeconds, 510>;
 using MillisE = Exponential<RuntimeMillis, Code, 1.0,
                             kLatencyBoundarySeconds * 1000.0, 510>;
 
@@ -60,8 +61,7 @@ static_assert(SmallPolicy::kLogIterations <= 10);
 
 template <typename RuntimeT>
 RuntimeT RuntimeFromRaw(std::int64_t raw) {
-  return RuntimeT::FromRaw(
-      static_cast<typename RuntimeT::rep_type>(raw));
+  return RuntimeT::FromRaw(static_cast<typename RuntimeT::rep_type>(raw));
 }
 
 template <typename RuntimeT>
@@ -85,13 +85,12 @@ void test_PolicyLogTypeUsedByExp2() {
   using LogT = Policy::log_type;
   using WorkT = Policy::work_type;
   const WorkT w = WorkT::FromDouble(1.0);
-  const LogT logv = fixed_math::log2_to<LogT, WorkT, Policy>(w);
-  const WorkT back = fixed_math::exp2_to<WorkT, LogT, Policy>(logv);
-  TEST_ASSERT(back.raw_value() > 0);
+  const LogT logv = fixed_math::Log2To<LogT, WorkT, Policy>(w);
+  const WorkT back = fixed_math::Exp2To<WorkT, LogT, Policy>(logv);
+  TEST_ASSERT(back.RawValue() > 0);
 }
 
-static_assert(
-    std::is_same_v<LatencyE::WorkT, FixedPoint<std::uint32_t, 64.0>>);
+static_assert(std::is_same_v<LatencyE::WorkT, FixedPoint<std::uint32_t, 64.0>>);
 
 void test_RuntimeMatchedWorkType() {
   TEST_PASS();
@@ -103,19 +102,17 @@ void test_MidpointBoundaryNoUpwardBias() {
   for (const auto& pair : pairs) {
     const int lo = pair[0];
     const int hi = pair[1];
-    const RuntimeSeconds v_lo = E::Code(lo).value();
-    const RuntimeSeconds v_hi = E::Code(hi).value();
-    const std::int64_t raw_lo = static_cast<std::int64_t>(v_lo.raw_value());
-    const std::int64_t raw_hi = static_cast<std::int64_t>(v_hi.raw_value());
+    const RuntimeSeconds v_lo = E::Code(lo).Value();
+    const RuntimeSeconds v_hi = E::Code(hi).Value();
+    const std::int64_t raw_lo = static_cast<std::int64_t>(v_lo.RawValue());
+    const std::int64_t raw_hi = static_cast<std::int64_t>(v_hi.RawValue());
     const std::int64_t mid = (raw_lo + raw_hi) / 2;
     const RuntimeSeconds below =
         RuntimeRawMidpoint<RuntimeSeconds>(raw_lo, mid);
     const RuntimeSeconds above =
         RuntimeRawMidpoint<RuntimeSeconds>(mid, raw_hi);
-    const int code_below =
-        static_cast<int>(E::FromRuntime(below).code_value());
-    const int code_above =
-        static_cast<int>(E::FromRuntime(above).code_value());
+    const int code_below = static_cast<int>(E::FromRuntime(below).CodeValue());
+    const int code_above = static_cast<int>(E::FromRuntime(above).CodeValue());
     TEST_ASSERT(code_below <= lo + 1);
     TEST_ASSERT(code_above >= hi - 1);
     TEST_ASSERT(code_below <= code_above);
@@ -127,33 +124,32 @@ void test_CodeRangeMonotonicity() {
   static constexpr int kRoundtripBudget = 3;
   std::int64_t prev_raw = -1;
   for (int code = 1; code <= 510; code += 17) {
-    const RuntimeSeconds decoded = E::Code(code).value();
-    const std::int64_t raw = static_cast<std::int64_t>(decoded.raw_value());
+    const RuntimeSeconds decoded = E::Code(code).Value();
+    const std::int64_t raw = static_cast<std::int64_t>(decoded.RawValue());
     TEST_ASSERT(raw >= prev_raw);
     prev_raw = raw;
 
     const int roundtrip_code =
-        static_cast<int>(E::FromRuntime(decoded).code_value());
+        static_cast<int>(E::FromRuntime(decoded).CodeValue());
     TEST_ASSERT(roundtrip_code - code <= kRoundtripBudget);
     TEST_ASSERT(roundtrip_code - code >= -kRoundtripBudget);
   }
 }
 
 void test_SmallRuntimeLowCostPath() {
-  const SmallE e = SmallE::from_double(5.0);
-  TEST_ASSERT(e.code_value() > 0);
-  const SmallE roundtrip = SmallE::FromRuntime(e.value());
+  const SmallE e = SmallE::FromDouble(5.0);
+  TEST_ASSERT(e.CodeValue() > 0);
+  const SmallE roundtrip = SmallE::FromRuntime(e.Value());
   const int diff =
-      static_cast<int>(roundtrip.code_value()) -
-      static_cast<int>(e.code_value());
+      static_cast<int>(roundtrip.CodeValue()) - static_cast<int>(e.CodeValue());
   TEST_ASSERT(diff <= 3 && diff >= -3);
 }
 
 void test_UnitScalingCodeMapping() {
   const int seconds_code =
-      static_cast<int>(SecondsE::from_double(1.0).code_value());
+      static_cast<int>(SecondsE::FromDouble(1.0).CodeValue());
   const int millis_code =
-      static_cast<int>(MillisE::from_double(1000.0).code_value());
+      static_cast<int>(MillisE::FromDouble(1000.0).CodeValue());
   TEST_ASSERT(seconds_code - millis_code <= 1);
   TEST_ASSERT(seconds_code - millis_code >= -1);
 }

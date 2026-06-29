@@ -39,35 +39,35 @@ static_assert(EFloat::kBoundaryCode == 1529);
 static_assert(EDouble::kIsSigned);
 static_assert(EDouble::kBoundaryCode == 1529);
 
-constexpr auto one_ms = EFloat::from_double(0.001);
-static_assert(one_ms.code_value() == 2);
+constexpr auto one_ms = EFloat::FromDouble(0.001);
+static_assert(one_ms.CodeValue() == 2);
 
-constexpr auto max_v = EFloat::from_double(60.0);
-static_assert(max_v.code_value() == EFloat::kPositiveBoundaryCode);
+constexpr auto max_v = EFloat::FromDouble(60.0);
+static_assert(max_v.CodeValue() == EFloat::kPositiveBoundaryCode);
 
 void test_FloatFromDoubleToRuntime() {
-  const auto e = EFloat::from_runtime(1.0f);
-  const float r = e.to_runtime();
+  const auto e = EFloat::FromRuntime(1.0f);
+  const float r = e.ToRuntime();
 
   TEST_ASSERT(r > 0.9f);
   TEST_ASSERT(r < 1.1f);
 }
 
 void test_FloatSignedOrdering() {
-  const auto neg = EFloat::from_runtime(-1.0f);
-  const auto zero = EFloat::from_runtime(0.0f);
-  const auto pos = EFloat::from_runtime(1.0f);
+  const auto neg = EFloat::FromRuntime(-1.0f);
+  const auto zero = EFloat::FromRuntime(0.0f);
+  const auto pos = EFloat::FromRuntime(1.0f);
 
   TEST_ASSERT(neg < zero);
   TEST_ASSERT(zero < pos);
-  TEST_ASSERT(neg.is_negative());
-  TEST_ASSERT(pos.is_positive());
-  TEST_ASSERT_EQUAL(pos.abs().code_value(), neg.abs().code_value());
+  TEST_ASSERT(neg.IsNegative());
+  TEST_ASSERT(pos.IsPositive());
+  TEST_ASSERT_EQUAL(pos.Abs().CodeValue(), neg.Abs().CodeValue());
 }
 
 void test_DoublePrecisionSmoke() {
-  const auto e = EDouble::from_runtime(1.0);
-  const double r = e.to_runtime();
+  const auto e = EDouble::FromRuntime(1.0);
+  const double r = e.ToRuntime();
 
   TEST_ASSERT(r > 0.9);
   TEST_ASSERT(r < 1.1);
@@ -75,18 +75,19 @@ void test_DoublePrecisionSmoke() {
 
 void test_WireSerialization() {
   std::uint8_t buf[MaxWireBytes<EFloat>()] = {};
-  const auto n = Serialize(EFloat::from_runtime(1.0f), buf);
+  const auto n = Serialize(EFloat::FromRuntime(1.0f), buf);
   const auto restored = Deserialize<EFloat>(buf, n).value;
 
-  TEST_ASSERT_EQUAL(EFloat::from_runtime(1.0f).code_value(),
-                    restored.code_value());
+  TEST_ASSERT_EQUAL(EFloat::FromRuntime(1.0f).CodeValue(),
+                    restored.CodeValue());
 }
 
 }  // namespace ae::test_exponential_floating_runtime
 
 int test_exponential_floating_runtime() {
   UNITY_BEGIN();
-  RUN_TEST(ae::test_exponential_floating_runtime::test_FloatFromDoubleToRuntime);
+  RUN_TEST(
+      ae::test_exponential_floating_runtime::test_FloatFromDoubleToRuntime);
   RUN_TEST(ae::test_exponential_floating_runtime::test_FloatSignedOrdering);
   RUN_TEST(ae::test_exponential_floating_runtime::test_DoublePrecisionSmoke);
   RUN_TEST(ae::test_exponential_floating_runtime::test_WireSerialization);

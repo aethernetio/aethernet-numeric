@@ -63,7 +63,9 @@ struct DecimalParseResult {
   std::int64_t den = 1;
 };
 
-constexpr bool IsDigit(char c) { return c >= '0' && c <= '9'; }
+constexpr bool IsDigit(char c) {
+  return c >= '0' && c <= '9';
+}
 
 constexpr DecimalParseResult ParseDecimal(std::string_view text) {
   DecimalParseResult result;
@@ -285,9 +287,9 @@ inline std::to_chars_result WriteUnsignedDecimal(char* first, char* last,
   if (result.ec != std::errc{}) {
     return {first, result.ec};
   }
-  return WriteChars(first, last,
-                    std::string_view(buffer, static_cast<std::size_t>(
-                                                   result.ptr - buffer)));
+  return WriteChars(
+      first, last,
+      std::string_view(buffer, static_cast<std::size_t>(result.ptr - buffer)));
 }
 
 inline std::to_chars_result WriteSignedDecimal(char* first, char* last,
@@ -297,9 +299,9 @@ inline std::to_chars_result WriteSignedDecimal(char* first, char* last,
   if (result.ec != std::errc{}) {
     return {first, result.ec};
   }
-  return WriteChars(first, last,
-                    std::string_view(buffer, static_cast<std::size_t>(
-                                                   result.ptr - buffer)));
+  return WriteChars(
+      first, last,
+      std::string_view(buffer, static_cast<std::size_t>(result.ptr - buffer)));
 }
 
 inline std::from_chars_result ParseInteger(std::string_view text,
@@ -313,12 +315,12 @@ inline std::to_chars_result FormatFixedPointScaled(char* first, char* last,
                                                    bool is_signed) {
   if (scale_exp >= 0) {
     if (is_signed) {
-      const std::int64_t logical =
-          static_cast<std::int64_t>(raw) << static_cast<unsigned>(scale_exp);
+      const std::int64_t logical = static_cast<std::int64_t>(raw)
+                                   << static_cast<unsigned>(scale_exp);
       return WriteSignedDecimal(first, last, logical);
     }
-    const std::uint64_t logical =
-        static_cast<std::uint64_t>(raw) << static_cast<unsigned>(scale_exp);
+    const std::uint64_t logical = static_cast<std::uint64_t>(raw)
+                                  << static_cast<unsigned>(scale_exp);
     return WriteUnsignedDecimal(first, last, logical);
   }
 
@@ -398,20 +400,20 @@ constexpr std::size_t MaxTextSize() {
 }
 
 template <typename T>
-std::to_chars_result to_chars(char* first, char* last, T value) {
-  return TextIO<T>::to_chars(first, last, value);
+std::to_chars_result ToChars(char* first, char* last, T value) {
+  return TextIO<T>::ToChars(first, last, value);
 }
 
 template <typename T>
-std::from_chars_result from_chars(const char* first, const char* last,
-                                  T& value) {
-  return TextIO<T>::from_chars(first, last, value);
+std::from_chars_result FromChars(const char* first, const char* last,
+                                 T& value) {
+  return TextIO<T>::FromChars(first, last, value);
 }
 
 template <typename T>
 std::string ToString(T value) {
   char buffer[TextIO<T>::kMaxTextSize];
-  const auto result = to_chars(buffer, buffer + sizeof(buffer), value);
+  const auto result = ToChars(buffer, buffer + sizeof(buffer), value);
   if (result.ec != std::errc{}) {
     return {};
   }
@@ -420,10 +422,8 @@ std::string ToString(T value) {
 
 template <typename T>
 bool FromString(std::string_view text, T& value) {
-  const auto result =
-      from_chars(text.data(), text.data() + text.size(), value);
-  return result.ec == std::errc{} &&
-         result.ptr == text.data() + text.size();
+  const auto result = FromChars(text.data(), text.data() + text.size(), value);
+  return result.ec == std::errc {} && result.ptr == text.data() + text.size();
 }
 
 template <typename WireCell, std::uint32_t... TierMaxVals>
@@ -436,7 +436,7 @@ struct TextIO<TieredInt<WireCell, TierMaxVals...>> {
           static_cast<std::int64_t>(T::kUpper)) +
       (T::kIsSigned ? 1 : 0);
 
-  static std::to_chars_result to_chars(char* first, char* last, T value) {
+  static std::to_chars_result ToChars(char* first, char* last, T value) {
     if constexpr (T::kIsSigned) {
       return text_io_internal::WriteSignedDecimal(
           first, last, static_cast<std::int64_t>(value.value_));
@@ -445,13 +445,13 @@ struct TextIO<TieredInt<WireCell, TierMaxVals...>> {
         first, last, static_cast<std::uint64_t>(value.value_));
   }
 
-  static std::from_chars_result from_chars(const char* first, const char* last,
-                                           T& value) {
+  static std::from_chars_result FromChars(const char* first, const char* last,
+                                          T& value) {
     const std::string_view text(first, static_cast<std::size_t>(last - first));
     if constexpr (T::kIsSigned) {
       std::int64_t parsed = 0;
       const auto result = text_io_internal::ParseInteger(text, parsed);
-      if (result.ec != std::errc{} ||
+      if (result.ec != std::errc {} ||
           result.ptr != text.data() + text.size()) {
         return {first, std::errc::invalid_argument};
       }
@@ -465,8 +465,8 @@ struct TextIO<TieredInt<WireCell, TierMaxVals...>> {
 
     std::int64_t parsed = 0;
     const auto result = text_io_internal::ParseInteger(text, parsed);
-    if (result.ec != std::errc{} ||
-        result.ptr != text.data() + text.size() || parsed < 0) {
+    if (result.ec != std::errc {} || result.ptr != text.data() + text.size() ||
+        parsed < 0) {
       return {first, std::errc::invalid_argument};
     }
     if (parsed > static_cast<std::int64_t>(T::kUpper)) {
@@ -487,13 +487,13 @@ struct TextIO<FixedPoint<Rep, Max>> {
           static_cast<std::int64_t>(T::kRawMax)) +
       static_cast<std::size_t>(T::kFractionBits) + 4;
 
-  static std::to_chars_result to_chars(char* first, char* last, T value) {
+  static std::to_chars_result ToChars(char* first, char* last, T value) {
     return text_io_internal::FormatFixedPointScaled(
-        first, last, value.raw_value(), T::kScaleExp, T::kIsSigned);
+        first, last, value.RawValue(), T::kScaleExp, T::kIsSigned);
   }
 
-  static std::from_chars_result from_chars(const char* first, const char* last,
-                                           T& value) {
+  static std::from_chars_result FromChars(const char* first, const char* last,
+                                          T& value) {
     const std::string_view text(first, static_cast<std::size_t>(last - first));
     auto parsed = text_io_internal::NormalizeDecimal(
         text_io_internal::ParseDecimal(text));
@@ -505,9 +505,9 @@ struct TextIO<FixedPoint<Rep, Max>> {
     }
 
     RepValue raw = 0;
-    if (!text_io_internal::RawFromRatioInRange(
-            parsed.num, parsed.den, T::kScaleExp, T::kRawMin, T::kRawMax,
-            raw)) {
+    if (!text_io_internal::RawFromRatioInRange(parsed.num, parsed.den,
+                                               T::kScaleExp, T::kRawMin,
+                                               T::kRawMax, raw)) {
       return {first, std::errc::result_out_of_range};
     }
 
@@ -525,19 +525,19 @@ struct TextIO<Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
 
   static constexpr std::size_t kMaxTextSize = TextIO<RuntimeT>::kMaxTextSize;
 
-  static std::to_chars_result to_chars(char* first, char* last, T value) {
-    return TextIO<RuntimeT>::to_chars(first, last, value.to_runtime());
+  static std::to_chars_result ToChars(char* first, char* last, T value) {
+    return TextIO<RuntimeT>::ToChars(first, last, value.ToRuntime());
   }
 
-  static std::from_chars_result from_chars(const char* first, const char* last,
-                                           T& value) {
+  static std::from_chars_result FromChars(const char* first, const char* last,
+                                          T& value) {
     RuntimeT runtime = RuntimeT::FromInteger(0);
     const auto runtime_result =
-        TextIO<RuntimeT>::from_chars(first, last, runtime);
+        TextIO<RuntimeT>::FromChars(first, last, runtime);
     if (runtime_result.ec != std::errc{}) {
       return runtime_result;
     }
-    value = T::from_runtime(runtime);
+    value = T::FromRuntime(runtime);
     return {last, std::errc{}};
   }
 };

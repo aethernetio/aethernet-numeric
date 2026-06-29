@@ -106,8 +106,8 @@ struct BoundRatio {
   static constexpr bool kIsPositive = (num > 0) && (den > 0);
 };
 
-constexpr bool PositiveRationalLE(std::int64_t an, std::int64_t ad, std::int64_t bn,
-                                  std::int64_t bd) {
+constexpr bool PositiveRationalLE(std::int64_t an, std::int64_t ad,
+                                  std::int64_t bn, std::int64_t bd) {
   return an * bd <= bn * ad;
 }
 
@@ -213,8 +213,7 @@ consteval Rational ScaleRationalByPow2(Rational value, int scale_exp) {
 }
 
 template <typename RepValue>
-constexpr RepValue ClampRaw(RepValue raw, RepValue raw_min,
-                            RepValue raw_max) {
+constexpr RepValue ClampRaw(RepValue raw, RepValue raw_min, RepValue raw_max) {
   if (raw < raw_min) {
     return raw_min;
   }
@@ -245,8 +244,8 @@ constexpr Rep RepFromRawValue(RepValue raw) {
 }
 
 template <typename RepValue>
-constexpr RepValue SaturatedAddRaw(RepValue lhs, RepValue rhs,
-                                   RepValue raw_min, RepValue raw_max) {
+constexpr RepValue SaturatedAddRaw(RepValue lhs, RepValue rhs, RepValue raw_min,
+                                   RepValue raw_max) {
   if constexpr (std::is_signed_v<RepValue>) {
     if (rhs > 0 && lhs > raw_max - rhs) {
       return raw_max;
@@ -264,8 +263,8 @@ constexpr RepValue SaturatedAddRaw(RepValue lhs, RepValue rhs,
 }
 
 template <typename RepValue>
-constexpr RepValue SaturatedSubRaw(RepValue lhs, RepValue rhs,
-                                   RepValue raw_min, RepValue raw_max) {
+constexpr RepValue SaturatedSubRaw(RepValue lhs, RepValue rhs, RepValue raw_min,
+                                   RepValue raw_max) {
   if constexpr (std::is_signed_v<RepValue>) {
     if (rhs > 0 && lhs < raw_min + rhs) {
       return raw_min;
@@ -345,13 +344,13 @@ constexpr RepValue RoundShiftRight(RepValue raw, unsigned bits) {
   const Unsigned bias = divisor / Unsigned{2};
   if constexpr (std::is_signed_v<RepValue>) {
     if (raw >= RepValue{0}) {
-      return static_cast<RepValue>(
-          (static_cast<Unsigned>(raw) + bias) / divisor);
+      return static_cast<RepValue>((static_cast<Unsigned>(raw) + bias) /
+                                   divisor);
     }
     const Unsigned magnitude =
         static_cast<Unsigned>(static_cast<RepValue>(-raw));
-    return static_cast<RepValue>(-static_cast<RepValue>(
-        (magnitude + bias) / divisor));
+    return static_cast<RepValue>(
+        -static_cast<RepValue>((magnitude + bias) / divisor));
   }
   return static_cast<RepValue>((static_cast<Unsigned>(raw) + bias) / divisor);
 }
@@ -421,15 +420,11 @@ constexpr RepValue RawFromRatioAtScale(std::int64_t num, std::int64_t den,
     den *= factor;
   }
 
-  const std::int64_t rounded =
-      RoundDivNearest(num, den);
-  const std::int64_t clamped = negative
-                                   ? std::max<std::int64_t>(
-                                         static_cast<std::int64_t>(raw_min),
-                                         -rounded)
-                                   : std::min<std::int64_t>(
-                                         static_cast<std::int64_t>(raw_max),
-                                         rounded);
+  const std::int64_t rounded = RoundDivNearest(num, den);
+  const std::int64_t clamped =
+      negative
+          ? std::max<std::int64_t>(static_cast<std::int64_t>(raw_min), -rounded)
+          : std::min<std::int64_t>(static_cast<std::int64_t>(raw_max), rounded);
   return static_cast<RepValue>(clamped);
 }
 
@@ -439,10 +434,11 @@ constexpr typename numeric_traits<Rep>::rep_value_type MakeRawFromLogical(
   using RepValue = typename numeric_traits<Rep>::rep_value_type;
   constexpr RepValue kRawMax = numeric_traits<Rep>::kRawMax;
   constexpr RepValue kRawMin =
-      kIsSigned ? static_cast<RepValue>(-static_cast<std::int64_t>(kRawMax)) : RepValue{0};
-  constexpr int kScaleExp = ComputeScaleExp(
-      static_cast<std::int64_t>(kRawMax), BoundRatio<Max>::num,
-      BoundRatio<Max>::den);
+      kIsSigned ? static_cast<RepValue>(-static_cast<std::int64_t>(kRawMax))
+                : RepValue{0};
+  constexpr int kScaleExp =
+      ComputeScaleExp(static_cast<std::int64_t>(kRawMax), BoundRatio<Max>::num,
+                      BoundRatio<Max>::den);
   const auto clamped = ClampLogicalRational<Max, kIsSigned>(num, den);
   return RawFromRatioAtScale(clamped.first, clamped.second, kScaleExp, kRawMin,
                              kRawMax);
@@ -455,10 +451,11 @@ struct LogicalBoundChecker {
   static constexpr bool kOk = true;
 };
 
-template <typename Rep, auto Max, bool kIsSigned, std::int64_t Num, std::int64_t Den = 1>
-constexpr typename numeric_traits<Rep>::rep_value_type MakeRawFromLogicalConstexpr(
-    std::integral_constant<std::int64_t, Num>,
-    std::integral_constant<std::int64_t, Den> = {}) {
+template <typename Rep, auto Max, bool kIsSigned, std::int64_t Num,
+          std::int64_t Den = 1>
+constexpr typename numeric_traits<Rep>::rep_value_type
+MakeRawFromLogicalConstexpr(std::integral_constant<std::int64_t, Num>,
+                            std::integral_constant<std::int64_t, Den> = {}) {
   (void)LogicalBoundChecker<Max, kIsSigned, Num, Den>{};
   return MakeRawFromLogical<Rep, Max, kIsSigned>(Num, Den);
 }
@@ -609,14 +606,16 @@ class FixedPoint {
 
   template <typename Other>
   static constexpr rep_value_type AlignRawFrom(const Other& other) {
-    return AlignRawFromScale(other.raw_value(), Other::kScaleExp);
+    return AlignRawFromScale(other.RawValue(), Other::kScaleExp);
   }
 
   static constexpr FixedPoint FromRaw(Rep raw) {
     return FixedPoint(fixed_point_internal::raw_storage_t{}, raw);
   }
 
-  static constexpr FixedPoint Raw(Rep raw) { return FromRaw(raw); }
+  static constexpr FixedPoint Raw(Rep raw) {
+    return FromRaw(raw);
+  }
 
   static constexpr FixedPoint FromRatio(std::int64_t num, std::int64_t den) {
     return FixedPoint(fixed_point_internal::logical_storage_t{}, num, den);
@@ -648,8 +647,8 @@ class FixedPoint {
 
   static consteval FixedPoint FromDouble(double value) {
     const auto rational = fixed_point_internal::DoubleToRational(value);
-    return FixedPoint(fixed_point_internal::logical_storage_t{},
-                      rational.num, rational.den);
+    return FixedPoint(fixed_point_internal::logical_storage_t{}, rational.num,
+                      rational.den);
   }
 
   // Ordinary numeric construction is consteval: constants are bound-checked at
@@ -671,7 +670,7 @@ class FixedPoint {
       fixed_point_internal::FixedPointConstantExceedsDeclaredMax();
     }
     return FixedPoint(fixed_point_internal::logical_storage_t{}, rational.num,
-                       rational.den);
+                      rational.den);
   }
 
   consteval FixedPoint(double logical) : FixedPoint(MakeFromDouble(logical)) {}
@@ -682,19 +681,21 @@ class FixedPoint {
   template <typename To>
     requires IntegralStorage<typename To::rep_type>
   static constexpr To Cast(const FixedPoint& value) {
-    return To::FromRaw(fixed_point_internal::RepFromRawValue<
-                       typename To::rep_type>(To::AlignRawFromScale(
-        value.raw_value(), kScaleExp)));
+    return To::FromRaw(
+        fixed_point_internal::RepFromRawValue<typename To::rep_type>(
+            To::AlignRawFromScale(value.RawValue(), kScaleExp)));
   }
 
-  constexpr Rep raw() const { return raw_; }
+  constexpr Rep Raw() const {
+    return raw_;
+  }
 
-  constexpr rep_value_type raw_value() const {
+  constexpr rep_value_type RawValue() const {
     return fixed_point_internal::RepRawValue(raw_);
   }
 
   constexpr bool operator==(const FixedPoint& other) const {
-    return raw_value() == other.raw_value();
+    return RawValue() == other.RawValue();
   }
 
   constexpr bool operator!=(const FixedPoint& other) const {
@@ -702,7 +703,7 @@ class FixedPoint {
   }
 
   constexpr bool operator<(const FixedPoint& other) const {
-    return raw_value() < other.raw_value();
+    return RawValue() < other.RawValue();
   }
 
   constexpr bool operator>(const FixedPoint& other) const {
@@ -719,11 +720,11 @@ class FixedPoint {
 
  private:
   constexpr FixedPoint(fixed_point_internal::raw_storage_t, Rep raw)
-      : raw_(fixed_point_internal::RepFromRawValue<Rep>(ClampRaw(
-            fixed_point_internal::RepRawValue(raw)))) {}
+      : raw_(fixed_point_internal::RepFromRawValue<Rep>(
+            ClampRaw(fixed_point_internal::RepRawValue(raw)))) {}
 
-  constexpr FixedPoint(fixed_point_internal::logical_storage_t, std::int64_t num,
-                       std::int64_t den)
+  constexpr FixedPoint(fixed_point_internal::logical_storage_t,
+                       std::int64_t num, std::int64_t den)
       : raw_(fixed_point_internal::RepFromRawValue<Rep>(
             fixed_point_internal::MakeRawFromLogical<Rep, Max, kIsSigned>(
                 num, den))) {}
@@ -736,8 +737,8 @@ namespace fixed_point_internal {
 template <typename ResultRep, auto ResultMax, typename L, typename R>
 constexpr FixedPoint<ResultRep, ResultMax> AddFixedPoint(L lhs, R rhs) {
   using Result = FixedPoint<ResultRep, ResultMax>;
-  const auto lhs_raw = Result::AlignRawFromScale(lhs.raw_value(), L::kScaleExp);
-  const auto rhs_raw = Result::AlignRawFromScale(rhs.raw_value(), R::kScaleExp);
+  const auto lhs_raw = Result::AlignRawFromScale(lhs.RawValue(), L::kScaleExp);
+  const auto rhs_raw = Result::AlignRawFromScale(rhs.RawValue(), R::kScaleExp);
   const std::int64_t sum =
       static_cast<std::int64_t>(lhs_raw) + static_cast<std::int64_t>(rhs_raw);
   return Result::FromRaw(RepFromRawValue<ResultRep>(
@@ -747,8 +748,8 @@ constexpr FixedPoint<ResultRep, ResultMax> AddFixedPoint(L lhs, R rhs) {
 template <typename ResultRep, auto ResultMax, typename L, typename R>
 constexpr FixedPoint<ResultRep, ResultMax> SubFixedPoint(L lhs, R rhs) {
   using Result = FixedPoint<ResultRep, ResultMax>;
-  const auto lhs_raw = Result::AlignRawFromScale(lhs.raw_value(), L::kScaleExp);
-  const auto rhs_raw = Result::AlignRawFromScale(rhs.raw_value(), R::kScaleExp);
+  const auto lhs_raw = Result::AlignRawFromScale(lhs.RawValue(), L::kScaleExp);
+  const auto rhs_raw = Result::AlignRawFromScale(rhs.RawValue(), R::kScaleExp);
   const std::int64_t diff =
       static_cast<std::int64_t>(lhs_raw) - static_cast<std::int64_t>(rhs_raw);
   return Result::FromRaw(RepFromRawValue<ResultRep>(
@@ -760,8 +761,8 @@ constexpr FixedPoint<ResultRep, ResultMax> MulFixedPoint(L lhs, R rhs) {
   using Result = FixedPoint<ResultRep, ResultMax>;
   const int scale_adjust = L::kScaleExp + R::kScaleExp - Result::kScaleExp;
 
-  std::int64_t num = static_cast<std::int64_t>(lhs.raw_value()) *
-                     static_cast<std::int64_t>(rhs.raw_value());
+  std::int64_t num = static_cast<std::int64_t>(lhs.RawValue()) *
+                     static_cast<std::int64_t>(rhs.RawValue());
 
   if constexpr (scale_adjust > 0) {
     for (int i = 0; i < scale_adjust; ++i) {
@@ -807,47 +808,47 @@ consteval FixedPoint<Rep, Max + Max> operator+(FixedPoint<Rep, Max> lhs,
 }
 
 template <typename Rep, auto Max, std::integral T>
-consteval FixedPoint<Rep, Max + Max> operator+(T lhs, FixedPoint<Rep, Max> rhs) {
+consteval FixedPoint<Rep, Max + Max> operator+(T lhs,
+                                               FixedPoint<Rep, Max> rhs) {
   return FixedPoint<Rep, Max>{lhs} + rhs;
 }
 
 template <typename Target, typename L, typename R>
-constexpr Target add_to(L lhs, R rhs) {
+constexpr Target AddTo(L lhs, R rhs) {
   using Sum = decltype(lhs + rhs);
   const Sum sum = lhs + rhs;
   return Sum::template Cast<Target>(sum);
 }
 
 template <typename Target, typename L, typename R>
-constexpr Target sub_to(L lhs, R rhs) {
+constexpr Target SubTo(L lhs, R rhs) {
   using Diff = decltype(lhs - rhs);
   const Diff diff = lhs - rhs;
   return Diff::template Cast<Target>(diff);
 }
 
 template <typename Target, typename L, typename R>
-constexpr Target mul_to(L lhs, R rhs) {
+constexpr Target MulTo(L lhs, R rhs) {
   using Prod = decltype(lhs * rhs);
   const Prod prod = lhs * rhs;
   return Prod::template Cast<Target>(prod);
 }
 
 template <typename Target, typename L, typename R>
-constexpr Target div_to(L lhs, R rhs) {
-  const auto lhs_raw = lhs.raw_value();
-  const auto rhs_raw = rhs.raw_value();
+constexpr Target DivTo(L lhs, R rhs) {
+  const auto lhs_raw = lhs.RawValue();
+  const auto rhs_raw = rhs.RawValue();
 
-  if (rhs_raw == typename Target::rep_value_type{0}) {
+  if (rhs_raw == typename Target::rep_value_type {0}) {
     if constexpr (Target::kIsSigned) {
-      return lhs_raw >= typename Target::rep_value_type{0}
+      return lhs_raw >= typename Target::rep_value_type {0}
                  ? Target::FromRaw(Target::kRawMax)
                  : Target::FromRaw(Target::kRawMin);
     }
     return Target::FromRaw(Target::kRawMax);
   }
 
-  const int scale_adjust =
-      L::kScaleExp - R::kScaleExp - Target::kScaleExp;
+  const int scale_adjust = L::kScaleExp - R::kScaleExp - Target::kScaleExp;
 
   std::int64_t num = static_cast<std::int64_t>(lhs_raw);
   std::int64_t den = static_cast<std::int64_t>(rhs_raw);
@@ -863,9 +864,10 @@ constexpr Target div_to(L lhs, R rhs) {
   }
 
   const auto quotient = fixed_point_internal::RoundDivNearest(num, den);
-  return Target::FromRaw(fixed_point_internal::RepFromRawValue<
-                         typename Target::rep_type>(
-      Target::ClampRaw(static_cast<typename Target::rep_value_type>(quotient))));
+  return Target::FromRaw(
+      fixed_point_internal::RepFromRawValue<typename Target::rep_type>(
+          Target::ClampRaw(
+              static_cast<typename Target::rep_value_type>(quotient))));
 }
 
 template <typename Rep, auto Max>

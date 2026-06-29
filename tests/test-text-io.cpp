@@ -46,7 +46,7 @@ void test_FixedPointQ71() {
 
   F100 x = F100::FromInteger(0);
   TEST_ASSERT(FromString("10.5", x));
-  TEST_ASSERT_EQUAL(F100::FromDouble(10.5).raw_value(), x.raw_value());
+  TEST_ASSERT_EQUAL(F100::FromDouble(10.5).RawValue(), x.RawValue());
 }
 
 void test_FixedPointQ53() {
@@ -57,7 +57,7 @@ void test_FixedPointQ53() {
 
   F30 y = F30::FromInteger(0);
   TEST_ASSERT(FromString("0.125", y));
-  TEST_ASSERT_EQUAL(1, y.raw_value());
+  TEST_ASSERT_EQUAL(1, y.RawValue());
 }
 
 void test_SignedFixedPoint() {
@@ -84,14 +84,14 @@ void test_Exponential() {
   using Wire = TieredInt<std::uint8_t, 249, 1529>;
   using E = Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
 
-  constexpr auto e = E::from_double(1.0);
+  constexpr auto e = E::FromDouble(1.0);
   const auto text = ToString(e);
   TEST_ASSERT(!text.empty());
 
   E parsed{};
   TEST_ASSERT(FromString("1.0", parsed));
-  TEST_ASSERT(parsed > E::from_double(0.9));
-  TEST_ASSERT(parsed < E::from_double(1.1));
+  TEST_ASSERT(parsed > E::FromDouble(0.9));
+  TEST_ASSERT(parsed < E::FromDouble(1.1));
 }
 
 }  // namespace ae::test_text_io
