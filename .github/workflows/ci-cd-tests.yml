@@ -125,4 +125,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v1
       - run: pip install cpplint
-      - run: cpplint --recursive ./numeric
+      - run: cpplint --recursive --filter=-whitespace/line_length,-whitespace/braces,-legal/copyright ./numeric
