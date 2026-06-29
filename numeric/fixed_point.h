@@ -439,7 +439,7 @@ constexpr typename numeric_traits<Rep>::rep_value_type MakeRawFromLogical(
   using RepValue = typename numeric_traits<Rep>::rep_value_type;
   constexpr RepValue kRawMax = numeric_traits<Rep>::kRawMax;
   constexpr RepValue kRawMin =
-      kIsSigned ? static_cast<RepValue>(-kRawMax) : RepValue{0};
+      kIsSigned ? static_cast<RepValue>(-static_cast<std::int64_t>(kRawMax)) : RepValue{0};
   constexpr int kScaleExp = ComputeScaleExp(
       static_cast<std::int64_t>(kRawMax), BoundRatio<Max>::num,
       BoundRatio<Max>::den);
@@ -572,9 +572,14 @@ class FixedPoint {
   static constexpr bool kIsSigned = numeric_traits<Rep>::kIsSigned;
   static constexpr rep_value_type kStorageRawMax = numeric_traits<Rep>::kRawMax;
   static constexpr rep_value_type kRawMax = kStorageRawMax;
-  static constexpr rep_value_type kRawMin =
-      kIsSigned ? static_cast<rep_value_type>(-kStorageRawMax)
-                : rep_value_type{0};
+  static constexpr rep_value_type kRawMin = [] {
+    if constexpr (kIsSigned) {
+      return static_cast<rep_value_type>(
+          -static_cast<std::int64_t>(kStorageRawMax));
+    } else {
+      return rep_value_type{0};
+    }
+  }();
 
   static_assert(BoundRatio<Max>::kIsPositive,
                 "FixedPoint Max must be positive");

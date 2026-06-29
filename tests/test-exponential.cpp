@@ -93,9 +93,9 @@ static_assert(SE::from_double(1.0) < SE::from_double(10.0));
 
 constexpr auto low = SE::from_double(-1.0);
 constexpr auto high = SE::from_double(1.0);
-constexpr auto v = SE::from_double(10.0);
+constexpr auto value = SE::from_double(10.0);
 
-static_assert(clamp(v, low, high) == high);
+static_assert(clamp(value, low, high) == high);
 static_assert(min(low, high) == low);
 static_assert(max(low, high) == high);
 
