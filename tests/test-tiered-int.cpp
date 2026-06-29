@@ -120,7 +120,7 @@ static_assert(S1::kLower == -2081915880);
 static_assert(S1::kUpper == 2081915880);
 static_assert(S1::kUpper > 2000000000);
 static_assert(S1::kLower < -2000000000);
-static_assert(ae::tiered_int_internal::zigzag_encode64(S1::kUpper) >
+static_assert(ae::tiered_int_internal::ZigZagEncode64(S1::kUpper) >
               static_cast<std::uint64_t>(1) << 31);
 
 static_assert(S2::kBaseBytes == 1);

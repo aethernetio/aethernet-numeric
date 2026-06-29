@@ -84,18 +84,18 @@ using Q71 = ae::FixedPoint<std::uint8_t, 100.0>;  // Q7.1, step 1/2, max ~127.5
 using Q80 = ae::FixedPoint<std::uint8_t, 130.0>;  // Q8.0, step 1, max 255
 ```
 
-Canonical syntax is `FixedPoint<Rep, Max>` where `Rep` is a built-in integral or `TieredInt` storage type and `Max` is a positive C++23 NTTP (integral or floating-point). Logical value is `raw * 2^kScaleExp`. Signed storage uses a **symmetric** raw range around zero (e.g. `int8_t` uses `-127..+127`, not `INT_MIN`).
+Canonical syntax is `FixedPoint<Rep, Max>` where `Rep` is a built-in integral or `TieredInt` storage type and `Max` is a positive C++20 NTTP (integral or floating-point). Logical value is `raw * 2^kScaleExp`. Signed storage uses a **symmetric** raw range around zero (e.g. `int8_t` uses `-127..+127`, not `INT_MIN`).
 
 Runtime arithmetic is **integer-only** (shifts and saturated raw add/sub); floating-point is used only at compile/parse boundaries in tests and consteval helpers. Mixed addition infers `FixedPoint<Rep, MaxA + MaxB>`. Scale conversion uses `Cast<To>()`. Explicit division uses `DivTo<Target>(lhs, rhs)` (currently a slow boundary helper, not an MCU hot-path API).
 
-Configure the compiler explicitly when building (C++23 with floating-point NTTP), for example MacPorts Clang 20:
+Configure the compiler explicitly when building (C++20 with floating-point NTTP), for example MacPorts Clang 20:
 
 ```bash
 cmake -S . -B build-dev \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_C_COMPILER=/opt/local/bin/clang-mp-20 \
   -DCMAKE_CXX_COMPILER=/opt/local/bin/clang++-mp-20 \
-  -DCMAKE_CXX_STANDARD=23 \
+  -DCMAKE_CXX_STANDARD=20 \
   -DAE_BUILD_TESTS=ON
 ```
 
@@ -273,7 +273,7 @@ auto n = ae::Serialize(one_second, buf);
 ## Integration Notes
 
 * **Header-only**, minimal external deps (`gcem` is used only by compile-time `fixed_math` helpers)
-* C++23
+* C++20
 * Interoperable with Æthernet message packing
 * Designed for deterministic, low-overhead serialization on MCUs and embedded systems
 * Typical code size per instantiated type is minimal
@@ -298,7 +298,7 @@ cmake -S . -B build-dev \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_C_COMPILER=/opt/local/bin/clang-mp-20 \
   -DCMAKE_CXX_COMPILER=/opt/local/bin/clang++-mp-20 \
-  -DCMAKE_CXX_STANDARD=23 \
+  -DCMAKE_CXX_STANDARD=20 \
   -DAE_BUILD_TESTS=ON
 
 # 4) Build and run tests
