@@ -144,6 +144,25 @@ static_assert(S4::kLower == -251920099861069950LL);
 static_assert(S4::kUpper == 251920099861069950LL);
 static_assert(S4::kUpper > static_cast<std::int64_t>(1) << 31);
 
+template <typename T>
+void AssertNumericLimitsMatchBounds() {
+  if constexpr (std::numeric_limits<T>::max() != T::kUpper) {
+    TEST_FAIL();
+  }
+  if constexpr (T::kIsSigned) {
+    if constexpr (std::numeric_limits<T>::min() != T::kLower) {
+      TEST_FAIL();
+    }
+  }
+}
+
+template <typename T, auto Threshold>
+void AssertUpperExceeds() {
+  if constexpr (!(T::kUpper > Threshold)) {
+    TEST_FAIL();
+  }
+}
+
 struct ObVector {
   using size_type = std::uint32_t;
   std::vector<std::uint8_t> data_;
@@ -361,7 +380,7 @@ void test_TwoTier() {
 
   TEST_ASSERT(T1{249} == T1{249});
   TEST_ASSERT(T1{250} > T1{249});
-  TEST_ASSERT(std::numeric_limits<T1>::max() == T1::kUpper);
+  AssertNumericLimitsMatchBounds<T1>();
 }
 
 void test_ConstexprConstruction() {
@@ -517,8 +536,7 @@ void test_SignedWireCell() {
   TestMaxWireSize<S1>();
 
   TEST_ASSERT(S1{-1000} < S1{1000});
-  TEST_ASSERT(std::numeric_limits<S1>::min() == S1::kLower);
-  TEST_ASSERT(std::numeric_limits<S1>::max() == S1::kUpper);
+  AssertNumericLimitsMatchBounds<S1>();
 }
 
 void test_SignedThreeTier() {
@@ -546,8 +564,7 @@ void test_SignedThreeTier() {
   TestValueToSizeStream<S2>(S2::kUpper, S2::kMaxWireBytes);
   TestValueToSizeStream<S2>(S2::kLower, S2::kMaxWireBytes);
 
-  TEST_ASSERT(std::numeric_limits<S2>::min() == S2::kLower);
-  TEST_ASSERT(std::numeric_limits<S2>::max() == S2::kUpper);
+  AssertNumericLimitsMatchBounds<S2>();
 }
 
 void test_SignedNearInt32Limit() {
@@ -563,9 +580,8 @@ void test_SignedNearInt32Limit() {
   TestValueToSizeStream<S3>(2100000000, S3::kMaxWireBytes);
   TestMaxWireSize<S3>();
 
-  TEST_ASSERT(S3::kUpper > static_cast<std::int32_t>(2000000000));
-  TEST_ASSERT(std::numeric_limits<S3>::max() == S3::kUpper);
-  TEST_ASSERT(std::numeric_limits<S3>::min() == S3::kLower);
+  AssertUpperExceeds<S3, static_cast<std::int32_t>(2000000000)>();
+  AssertNumericLimitsMatchBounds<S3>();
 }
 
 void test_SignedFourTier() {
@@ -597,8 +613,7 @@ void test_SignedFourTier() {
   TestValueToSizeStream<S4>(2147483648LL, 8);
   TestValueToSizeStream<S4>(S4::kUpper, S4::kMaxWireBytes);
 
-  TEST_ASSERT(std::numeric_limits<S4>::min() == S4::kLower);
-  TEST_ASSERT(std::numeric_limits<S4>::max() == S4::kUpper);
+  AssertNumericLimitsMatchBounds<S4>();
 }
 
 void test_CrossSignedUnsignedCompare() {

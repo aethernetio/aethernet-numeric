@@ -763,11 +763,11 @@ constexpr FixedPoint<ResultRep, ResultMax> MulFixedPoint(L lhs, R rhs) {
   std::int64_t num = static_cast<std::int64_t>(lhs.raw_value()) *
                      static_cast<std::int64_t>(rhs.raw_value());
 
-  if (scale_adjust > 0) {
+  if constexpr (scale_adjust > 0) {
     for (int i = 0; i < scale_adjust; ++i) {
       num *= 2;
     }
-  } else if (scale_adjust < 0) {
+  } else if constexpr (scale_adjust < 0) {
     for (int i = 0; i < -scale_adjust; ++i) {
       num = RoundDivNearest(num, std::int64_t{2});
     }
@@ -852,11 +852,11 @@ constexpr Target div_to(L lhs, R rhs) {
   std::int64_t num = static_cast<std::int64_t>(lhs_raw);
   std::int64_t den = static_cast<std::int64_t>(rhs_raw);
 
-  if (scale_adjust > 0) {
+  if constexpr (scale_adjust > 0) {
     for (int i = 0; i < scale_adjust; ++i) {
       num *= 2;
     }
-  } else if (scale_adjust < 0) {
+  } else if constexpr (scale_adjust < 0) {
     for (int i = 0; i < -scale_adjust; ++i) {
       den *= 2;
     }
