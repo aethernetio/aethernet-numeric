@@ -7,7 +7,7 @@ on:
   pull_request:
     branches: ["main"]
 
-  #Allows you to start workflow manually from the actions tab in the interface github.com
+  # Allows you to start workflow manually from the actions tab in the interface github.com
   workflow_dispatch:
 
 jobs:
@@ -24,18 +24,18 @@ jobs:
       matrix:
         config:
           - {
-              name: "Windows MSVC",
-              os: windows-2022,
-              platform: "msvc64",
+              name: "Windows MSVC x64",
+              os: windows-latest,
               shell: "powershell",
-              generator: "Visual Studio 17 2022",
-              architecture: "x64",
+              generator: "Visual Studio 18 2026",
+              arch: "x64",
+              cc: "cl",
+              cxx: "cl",
               build_type: Release,
             }
           - {
               name: "Windows MinGW",
               os: windows-latest,
-              platform: "mingw64_gcc",
               shell: "msys2",
               generator: "Ninja",
               cc: "gcc",
@@ -45,7 +45,6 @@ jobs:
           - {
               name: "Ubuntu GCC",
               os: ubuntu-latest,
-              platform: "linux_gcc",
               shell: "bash",
               generator: "Unix Makefiles",
               cc: "gcc",
@@ -53,28 +52,28 @@ jobs:
               build_type: Release,
             }
           - {
-              name: "macOS Apple-Clang",
+              name: "macOS Clang",
               os: macos-latest,
-              platform: "macos_clang",
               shell: "bash",
               generator: "Unix Makefiles",
               cc: "clang",
               cxx: "clang++",
               build_type: Release,
             }
-    steps:
-      - name: Set Windows environment
-        if: ${{ (matrix.config.platform == 'msvc64') }}
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-          vsversion: 2022
 
-      - name: Set MinGW environment
-        if: ${{ (matrix.config.platform == 'mingw64_gcc') }}
+    steps:
+      - name: Set Windows enviroment
+        if: ${{ (matrix.config.os == 'windows-latest' && matrix.config.cc == 'cl') }}
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set MinGW enviroment
+        if: ${{ (matrix.config.os == 'windows-latest' && matrix.config.cc == 'gcc') }}
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
+          install: >-
+            git
+            base-devel
           pacboy: >-
             cmake:p
             ninja:p
@@ -86,33 +85,26 @@ jobs:
           submodules: recursive
 
       - name: Configure CMake
-        if: ${{ matrix.config.platform == 'msvc64' }}
-        run: >
-          cmake -S . -B build-numerics
-          -G "Visual Studio 17 2022"
-          -A x64
-          -DAE_BUILD_TESTS=ON
-
-      - name: Configure CMake
-        if: ${{ matrix.config.platform != 'msvc64' }}
         run: >
           cmake -B build-numerics
           -G "${{ matrix.config.generator }}"
+          -A "${{ matrix.config.arch }}"
           -DCMAKE_CXX_COMPILER=${{ matrix.config.cxx }}
           -DCMAKE_C_COMPILER=${{ matrix.config.cc }}
           -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }}
-          -DAE_BUILD_TESTS=On
+          -DAE_BUILD_TESTS=ON
           -S ./
 
       - name: Build
         run: >
-          cmake --build build-numerics --target test-numeric
+          cmake --build build-numerics
           --config ${{ matrix.config.build_type }} --parallel
 
       - name: Test
         run: >
           ctest --test-dir build-numerics
-          --build-config ${{ matrix.config.build_type }} --output-on-failure
+          --build-config ${{ matrix.config.build_type }}
+          --output-on-failure --parallel
 
   cpplint:
     runs-on: ubuntu-latest
