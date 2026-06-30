@@ -99,7 +99,7 @@ void test_TruncatedBuffer() {
 
   std::vector<std::uint8_t> truncated(bytes.begin(), bytes.end() - 1);
   TEST_ASSERT_EQUAL(bytes.size() - 1, truncated.size());
-  TEST_ASSERT(truncated.size() >= 1);
+  TEST_ASSERT_EQUAL(0, T2::WireBytesNeeded(truncated.data(), truncated.size()));
 }
 
 void test_RangeForCollect() {

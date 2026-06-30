@@ -49,7 +49,10 @@ constexpr std::size_t SerializeLittleEndian(T value, std::uint8_t* out) {
 template <typename T>
   requires(std::is_integral_v<T> && !std::is_same_v<T, bool>)
 constexpr T DeserializeLittleEndian(const std::uint8_t* in, std::size_t len) {
-  assert(len >= sizeof(T));
+  if (len < sizeof(T)) {
+    assert(len >= sizeof(T));
+    return T{};
+  }
   using Unsigned = std::make_unsigned_t<T>;
   Unsigned bits = 0;
   for (std::size_t i = 0; i < sizeof(T); ++i) {

@@ -138,8 +138,9 @@ void test_Exponential() {
 }
 
 void test_ShortBufferFixedWidth() {
-  using U32 = std::uint32_t;
-  TEST_ASSERT(sizeof(U32) > 1);
+  const std::uint8_t one_byte[1] = {0};
+  TEST_ASSERT(1 < sizeof(std::uint32_t));
+  (void)one_byte;
 }
 
 void test_ShortBufferTieredInt() {
@@ -149,6 +150,7 @@ void test_ShortBufferTieredInt() {
   std::uint8_t buf[T::kMaxWireBytes] = {};
   const auto n = Serialize(value, buf);
   TEST_ASSERT(n > 1);
+  TEST_ASSERT_EQUAL(0, T::WireBytesNeeded(buf, 1));
 }
 
 void test_ShortBufferFixedPointTieredIntRep() {
@@ -159,6 +161,7 @@ void test_ShortBufferFixedPointTieredIntRep() {
   std::uint8_t buf[MaxWireBytes<F>()] = {};
   const auto n = Serialize(value, buf);
   TEST_ASSERT(n > 1);
+  TEST_ASSERT_EQUAL(0, Raw::WireBytesNeeded(buf, 1));
 }
 
 void test_ShortBufferExponential() {
@@ -170,6 +173,7 @@ void test_ShortBufferExponential() {
   std::uint8_t buf[MaxWireBytes<E>()] = {};
   const auto n = Serialize(value, buf);
   TEST_ASSERT(n > 1);
+  TEST_ASSERT_EQUAL(0, Wire::WireBytesNeeded(buf, 1));
 }
 
 }  // namespace ae::test_wire_io
