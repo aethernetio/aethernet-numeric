@@ -75,7 +75,7 @@ class TieredIntView
    private:
     friend class TieredIntView;
 
-    iterator(const byte_type* current, const byte_type* end) noexcept
+    iterator(byte_type const* current, byte_type const* end) noexcept
         : current_(current), end_(end) {}
 
     void ensure_decoded() const {
@@ -98,8 +98,8 @@ class TieredIntView
       decoded_ = true;
     }
 
-    const byte_type* current_ = nullptr;
-    const byte_type* end_ = nullptr;
+    byte_type const* current_ = nullptr;
+    byte_type const* end_ = nullptr;
     mutable value_type cached_value_{};
     mutable std::size_t cached_size_ = 0;
     mutable bool decoded_ = false;

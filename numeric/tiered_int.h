@@ -174,6 +174,7 @@ struct MinimalIntFor {
 
 inline std::uint64_t ReadLittleEndianU64(std::uint8_t const* p,
                                          std::size_t bytes) noexcept {
+  assert(p != nullptr);
   std::uint64_t out = 0;
   for (std::size_t i = 0; i < bytes; ++i) {
     out |= static_cast<std::uint64_t>(p[i]) << (i * 8);
@@ -183,6 +184,7 @@ inline std::uint64_t ReadLittleEndianU64(std::uint8_t const* p,
 
 inline void WriteLittleEndianU64(std::uint8_t* p, std::uint64_t value,
                                  std::size_t bytes) noexcept {
+  assert(p != nullptr);
   for (std::size_t i = 0; i < bytes; ++i) {
     p[i] = static_cast<std::uint8_t>((value >> (i * 8)) & 0xFF);
   }
@@ -456,6 +458,7 @@ struct TieredInt {
 
   std::size_t SerializeUnsignedMagnitude(std::uint64_t v,
                                        std::uint8_t* out) const noexcept {
+    assert(out != nullptr);
     constexpr std::uint32_t kTiers[] = {
         tiered_int_internal::WireTierThreshold<WireCell, TierMaxVals>()...};
     std::size_t const kBaseSize = static_cast<std::size_t>(kBaseBytes);
@@ -544,6 +547,7 @@ struct TieredInt {
   }
 
   std::size_t Serialize(std::uint8_t* out) const noexcept {
+    assert(out != nullptr);
     if constexpr (kIsSigned) {
       std::uint64_t const u = tiered_int_internal::ZigZagEncode64(
           static_cast<std::int64_t>(value_));
@@ -589,7 +593,7 @@ struct TieredInt {
     std::uint8_t buf[kMaxWireBytes] = {};
     std::size_t len = 0;
 
-    for (int i = 0; i < kBaseBytes; ++i) {
+    for (std::size_t i = 0; i < static_cast<std::size_t>(kBaseBytes); ++i) {
       is >> buf[len++];
     }
 

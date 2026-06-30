@@ -27,9 +27,9 @@ namespace ae {
 namespace ostream_io_internal {
 
 template <typename T>
-std::ostream& WriteNumeric(std::ostream& os, const T& value) {
+std::ostream& WriteNumeric(std::ostream& os, T const& value) {
   char buf[MaxTextSize<T>()];
-  const auto result = ToChars(buf, buf + sizeof(buf), value);
+  auto const result = ToChars(buf, buf + sizeof(buf), value);
   if (result.ec == std::errc{}) {
     os.write(buf, static_cast<std::streamsize>(result.ptr - buf));
   } else {
@@ -42,13 +42,13 @@ std::ostream& WriteNumeric(std::ostream& os, const T& value) {
 
 template <typename WireCell, std::uint32_t... TierMaxVals>
 std::ostream& operator<<(std::ostream& os,
-                         const TieredInt<WireCell, TierMaxVals...>& value) {
+                         TieredInt<WireCell, TierMaxVals...> const& value) {
   return ostream_io_internal::WriteNumeric(os, value);
 }
 
 template <typename Rep, auto Max>
   requires IntegralStorage<Rep>
-std::ostream& operator<<(std::ostream& os, const FixedPoint<Rep, Max>& value) {
+std::ostream& operator<<(std::ostream& os, FixedPoint<Rep, Max> const& value) {
   return ostream_io_internal::WriteNumeric(os, value);
 }
 

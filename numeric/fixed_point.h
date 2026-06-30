@@ -18,6 +18,7 @@
 #define NUMERIC_FIXED_POINT_H_
 
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <type_traits>
@@ -569,14 +570,14 @@ class FixedPoint {
   static constexpr bool kIsSigned = numeric_traits<Rep>::kIsSigned;
   static constexpr rep_value_type kStorageRawMax = numeric_traits<Rep>::kRawMax;
   static constexpr rep_value_type kRawMax = kStorageRawMax;
-  static constexpr rep_value_type kRawMin = [] {
+  static constexpr rep_value_type kRawMin = std::invoke([]() constexpr {
     if constexpr (kIsSigned) {
       return static_cast<rep_value_type>(
           -static_cast<std::int64_t>(kStorageRawMax));
     } else {
       return rep_value_type{0};
     }
-  }();
+  });
 
   static_assert(BoundRatio<Max>::kIsPositive,
                 "FixedPoint Max must be positive");

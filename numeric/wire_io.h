@@ -38,6 +38,7 @@ namespace wire_io_internal {
 template <typename T>
   requires(std::is_integral_v<T> && !std::is_same_v<T, bool>)
 constexpr std::size_t SerializeLittleEndian(T value, std::uint8_t* out) {
+  assert(out != nullptr);
   using Unsigned = std::make_unsigned_t<T>;
   Unsigned bits = static_cast<Unsigned>(value);
   for (std::size_t i = 0; i < sizeof(T); ++i) {
@@ -48,7 +49,7 @@ constexpr std::size_t SerializeLittleEndian(T value, std::uint8_t* out) {
 
 template <typename T>
   requires(std::is_integral_v<T> && !std::is_same_v<T, bool>)
-constexpr T DeserializeLittleEndian(const std::uint8_t* in, std::size_t len) {
+constexpr T DeserializeLittleEndian(std::uint8_t const* in, std::size_t len) {
   if (len < sizeof(T)) {
     assert(len >= sizeof(T));
     return T{};
@@ -68,7 +69,7 @@ struct wire_traits;
 
 template <typename T>
 concept WireSerializable = requires(T value, std::uint8_t* out,
-                                    const std::uint8_t* in, std::size_t len) {
+                                    std::uint8_t const* in, std::size_t len) {
   { wire_traits<T>::kMaxWireBytes } -> std::convertible_to<std::size_t>;
   { wire_traits<T>::Serialize(value, out) } -> std::same_as<std::size_t>;
   {
@@ -81,12 +82,13 @@ template <typename T>
 struct wire_traits<T> {
   static constexpr std::size_t kMaxWireBytes = sizeof(T);
 
-  static std::size_t Serialize(T value, std::uint8_t* out) {
+  static std::size_t Serialize(T value, std::uint8_t* out) noexcept {
+    assert(out != nullptr);
     return wire_io_internal::SerializeLittleEndian(value, out);
   }
 
-  static DeserializeResult<T> Deserialize(const std::uint8_t* in,
-                                          std::size_t len) {
+  static DeserializeResult<T> Deserialize(std::uint8_t const* in,
+                                          std::size_t len) noexcept {
     return {wire_io_internal::DeserializeLittleEndian<T>(in, len), sizeof(T)};
   }
 };
@@ -97,11 +99,12 @@ struct wire_traits<TieredInt<WireCell, TierMaxVals...>> {
 
   static constexpr std::size_t kMaxWireBytes = T::kMaxWireBytes;
 
-  static std::size_t Serialize(const T& value, std::uint8_t* out) {
+  static std::size_t Serialize(T const& value, std::uint8_t* out) noexcept {
+    assert(out != nullptr);
     return value.Serialize(out);
   }
 
-  static DeserializeResult<T> Deserialize(const std::uint8_t* in,
+  static DeserializeResult<T> Deserialize(std::uint8_t const* in,
                                           std::size_t len) {
     T value{};
     const std::size_t BytesRead = value.Deserialize(in, len);
@@ -117,13 +120,14 @@ struct wire_traits<FixedPoint<Rep, Max>> {
 
   static constexpr std::size_t kMaxWireBytes = RepTraits::kMaxWireBytes;
 
-  static std::size_t Serialize(const T& value, std::uint8_t* out) {
+  static std::size_t Serialize(T const& value, std::uint8_t* out) noexcept {
+    assert(out != nullptr);
     return RepTraits::Serialize(value.Raw(), out);
   }
 
-  static DeserializeResult<T> Deserialize(const std::uint8_t* in,
+  static DeserializeResult<T> Deserialize(std::uint8_t const* in,
                                           std::size_t len) {
-    const auto rep_result = RepTraits::Deserialize(in, len);
+    auto const rep_result = RepTraits::Deserialize(in, len);
     return {T::FromRaw(rep_result.value), rep_result.BytesRead};
   }
 };
@@ -134,12 +138,13 @@ constexpr std::size_t MaxWireBytes() {
 }
 
 template <WireSerializable T>
-std::size_t Serialize(T value, std::uint8_t* out) {
+std::size_t Serialize(T value, std::uint8_t* out) noexcept {
+  assert(out != nullptr);
   return wire_traits<T>::Serialize(value, out);
 }
 
 template <WireSerializable T>
-DeserializeResult<T> Deserialize(const std::uint8_t* in, std::size_t len) {
+DeserializeResult<T> Deserialize(std::uint8_t const* in, std::size_t len) {
   return wire_traits<T>::Deserialize(in, len);
 }
 
@@ -147,7 +152,7 @@ DeserializeResult<T> Deserialize(const std::uint8_t* in, std::size_t len) {
 // the buffer, without requiring an external length. This relies on T being
 // self-delimiting on the wire (the same property that lets it be skipped).
 template <WireSerializable T>
-std::size_t SerializedSizeAt(const std::uint8_t* in, std::size_t len) {
+std::size_t SerializedSizeAt(std::uint8_t const* in, std::size_t len) {
   return wire_traits<T>::Deserialize(in, len).BytesRead;
 }
 

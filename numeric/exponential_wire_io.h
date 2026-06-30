@@ -17,6 +17,7 @@
 #ifndef NUMERIC_EXPONENTIAL_WIRE_IO_H_
 #define NUMERIC_EXPONENTIAL_WIRE_IO_H_
 
+#include <cassert>
 #include "numeric/exponential.h"
 #include "numeric/wire_io.h"
 
@@ -32,13 +33,14 @@ struct wire_traits<Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
 
   static constexpr std::size_t kMaxWireBytes = WireTraits::kMaxWireBytes;
 
-  static std::size_t Serialize(const T& value, std::uint8_t* out) {
+  static std::size_t Serialize(T const& value, std::uint8_t* out) {
+    assert(out != nullptr);
     return WireTraits::Serialize(value.WireCode(), out);
   }
 
-  static DeserializeResult<T> Deserialize(const std::uint8_t* in,
+  static DeserializeResult<T> Deserialize(std::uint8_t const* in,
                                           std::size_t len) {
-    const auto wire_result = WireTraits::Deserialize(in, len);
+    auto const wire_result = WireTraits::Deserialize(in, len);
     return {T::FromCode(wire_result.value), wire_result.BytesRead};
   }
 };

@@ -143,7 +143,7 @@ constexpr std::int64_t Gcd64(std::int64_t a, std::int64_t b) {
   a = a < 0 ? -a : a;
   b = b < 0 ? -b : b;
   while (b != 0) {
-    const auto t = a % b;
+    auto const t = a % b;
     a = b;
     b = t;
   }
@@ -159,7 +159,7 @@ constexpr DecimalParseResult NormalizeDecimal(DecimalParseResult value) {
     value.den = 1;
     return value;
   }
-  const auto g = Gcd64(value.num, value.den);
+  auto const g = Gcd64(value.num, value.den);
   value.num /= g;
   value.den /= g;
   if (value.den < 0) {
@@ -283,7 +283,7 @@ inline std::to_chars_result WriteInteger(char* first, char* last, Int value) {
 inline std::to_chars_result WriteUnsignedDecimal(char* first, char* last,
                                                  std::uint64_t value) {
   char buffer[32];
-  const auto result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+  auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
   if (result.ec != std::errc{}) {
     return {first, result.ec};
   }
@@ -295,7 +295,7 @@ inline std::to_chars_result WriteUnsignedDecimal(char* first, char* last,
 inline std::to_chars_result WriteSignedDecimal(char* first, char* last,
                                                std::int64_t value) {
   char buffer[32];
-  const auto result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+  auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
   if (result.ec != std::errc{}) {
     return {first, result.ec};
   }
@@ -330,7 +330,7 @@ inline std::to_chars_result FormatFixedPointScaled(char* first, char* last,
   bool negative = false;
   std::uint64_t magnitude = 0;
   if (is_signed) {
-    const auto signed_raw = static_cast<std::int64_t>(raw);
+    auto const signed_raw = static_cast<std::int64_t>(raw);
     negative = signed_raw < 0;
     magnitude = static_cast<std::uint64_t>(negative ? -signed_raw : signed_raw);
   } else {
@@ -362,14 +362,14 @@ inline std::to_chars_result FormatFixedPointScaled(char* first, char* last,
 
   char* cursor = first;
   if (negative) {
-    const auto sign_result = WriteChar(cursor, last, '-');
+    auto const sign_result = WriteChar(cursor, last, '-');
     if (sign_result.ec != std::errc{}) {
       return sign_result;
     }
     cursor = sign_result.ptr;
   }
 
-  const auto integer_result = WriteUnsignedDecimal(cursor, last, integer_part);
+  auto const integer_result = WriteUnsignedDecimal(cursor, last, integer_part);
   if (integer_result.ec != std::errc{}) {
     return integer_result;
   }
@@ -379,7 +379,7 @@ inline std::to_chars_result FormatFixedPointScaled(char* first, char* last,
     return {cursor, std::errc{}};
   }
 
-  const auto dot_result = WriteChar(cursor, last, '.');
+  auto const dot_result = WriteChar(cursor, last, '.');
   if (dot_result.ec != std::errc{}) {
     return dot_result;
   }
@@ -405,7 +405,7 @@ std::to_chars_result ToChars(char* first, char* last, T value) {
 }
 
 template <typename T>
-std::from_chars_result FromChars(const char* first, const char* last,
+std::from_chars_result FromChars(char const* first, char const* last,
                                  T& value) {
   return TextIO<T>::FromChars(first, last, value);
 }
@@ -413,7 +413,7 @@ std::from_chars_result FromChars(const char* first, const char* last,
 template <typename T>
 std::string ToString(T value) {
   char buffer[TextIO<T>::kMaxTextSize];
-  const auto result = ToChars(buffer, buffer + sizeof(buffer), value);
+  auto const result = ToChars(buffer, buffer + sizeof(buffer), value);
   if (result.ec != std::errc{}) {
     return {};
   }
@@ -422,7 +422,7 @@ std::string ToString(T value) {
 
 template <typename T>
 bool FromString(std::string_view text, T& value) {
-  const auto result = FromChars(text.data(), text.data() + text.size(), value);
+  auto const result = FromChars(text.data(), text.data() + text.size(), value);
   return result.ec == std::errc {} && result.ptr == text.data() + text.size();
 }
 
@@ -445,12 +445,12 @@ struct TextIO<TieredInt<WireCell, TierMaxVals...>> {
         first, last, static_cast<std::uint64_t>(value.value_));
   }
 
-  static std::from_chars_result FromChars(const char* first, const char* last,
+  static std::from_chars_result FromChars(char const* first, char const* last,
                                           T& value) {
-    const std::string_view text(first, static_cast<std::size_t>(last - first));
+    std::string_view const text(first, static_cast<std::size_t>(last - first));
     if constexpr (T::kIsSigned) {
       std::int64_t parsed = 0;
-      const auto result = text_io_internal::ParseInteger(text, parsed);
+      auto const result = text_io_internal::ParseInteger(text, parsed);
       if (result.ec != std::errc {} ||
           result.ptr != text.data() + text.size()) {
         return {first, std::errc::invalid_argument};
@@ -464,7 +464,7 @@ struct TextIO<TieredInt<WireCell, TierMaxVals...>> {
     }
 
     std::int64_t parsed = 0;
-    const auto result = text_io_internal::ParseInteger(text, parsed);
+    auto const result = text_io_internal::ParseInteger(text, parsed);
     if (result.ec != std::errc {} || result.ptr != text.data() + text.size() ||
         parsed < 0) {
       return {first, std::errc::invalid_argument};
@@ -492,9 +492,9 @@ struct TextIO<FixedPoint<Rep, Max>> {
         first, last, value.RawValue(), T::kScaleExp, T::kIsSigned);
   }
 
-  static std::from_chars_result FromChars(const char* first, const char* last,
+  static std::from_chars_result FromChars(char const* first, char const* last,
                                           T& value) {
-    const std::string_view text(first, static_cast<std::size_t>(last - first));
+    std::string_view const text(first, static_cast<std::size_t>(last - first));
     auto parsed = text_io_internal::NormalizeDecimal(
         text_io_internal::ParseDecimal(text));
     if (!parsed.ok) {
@@ -529,10 +529,10 @@ struct TextIO<Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
     return TextIO<RuntimeT>::ToChars(first, last, value.ToRuntime());
   }
 
-  static std::from_chars_result FromChars(const char* first, const char* last,
+  static std::from_chars_result FromChars(char const* first, char const* last,
                                           T& value) {
     RuntimeT runtime = RuntimeT::FromInteger(0);
-    const auto runtime_result =
+    auto const runtime_result =
         TextIO<RuntimeT>::FromChars(first, last, runtime);
     if (runtime_result.ec != std::errc{}) {
       return runtime_result;

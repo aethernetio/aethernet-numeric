@@ -18,6 +18,7 @@
 
 #include <concepts>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <type_traits>
 
@@ -47,13 +48,13 @@ struct numeric_traits<T> {
   static constexpr rep_value_type kRawMax =
       kIsSigned ? static_cast<rep_value_type>(std::numeric_limits<T>::max())
                 : std::numeric_limits<T>::max();
-  static constexpr rep_value_type kRawMin = [] {
+  static constexpr rep_value_type kRawMin = std::invoke([]() constexpr {
     if constexpr (kIsSigned) {
       return static_cast<rep_value_type>(-static_cast<std::int64_t>(kRawMax));
     } else {
       return rep_value_type{0};
     }
-  }();
+  });
 };
 
 template <std::integral T>
