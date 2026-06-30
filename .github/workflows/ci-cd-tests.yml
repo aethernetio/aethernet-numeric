@@ -24,7 +24,7 @@ jobs:
       matrix:
         config:
           - {
-              name: "Windows MSVC x64",
+              name: "Windows MSVC",
               os: windows-latest,
               shell: "powershell",
               generator: "Visual Studio 18 2026",
@@ -52,7 +52,7 @@ jobs:
               build_type: Release,
             }
           - {
-              name: "macOS Clang",
+              name: "macOS Apple-Clang",
               os: macos-latest,
               shell: "bash",
               generator: "Unix Makefiles",
@@ -62,11 +62,11 @@ jobs:
             }
 
     steps:
-      - name: Set Windows enviroment
+      - name: Set Windows environment
         if: ${{ (matrix.config.os == 'windows-latest' && matrix.config.cc == 'cl') }}
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Set MinGW enviroment
+      - name: Set MinGW environment
         if: ${{ (matrix.config.os == 'windows-latest' && matrix.config.cc == 'gcc') }}
         uses: msys2/setup-msys2@v2
         with:
