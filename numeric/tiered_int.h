@@ -33,19 +33,14 @@ namespace tiered_int_internal {
 
 inline constexpr std::size_t kAbsoluteMaxWireBytes = 8;
 
+void ConstexprValidationFailure() noexcept;
+
 constexpr void ValidateOrAssert(bool condition) noexcept {
   if (condition) {
     return;
   }
   if (std::is_constant_evaluated()) {
-#if defined(__clang__) || defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdivision-by-zero"
-#endif
-    (void)(1 / static_cast<int>(condition));
-#if defined(__clang__) || defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+    ConstexprValidationFailure();
   } else {
     assert(condition);
   }
