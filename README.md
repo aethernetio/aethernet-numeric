@@ -1,7 +1,7 @@
 # Æthernet Numeric Types
 
-Specialized numeric formats for constrained systems without FPU or with limited bandwidth and memory.
-Used across the Æthernet C++ client to efficiently represent durations, fixed-point values, and tiered integers.
+Specialized numeric formats for constrained systems without an FPU or with limited bandwidth and memory.
+They are used across the Æthernet C++ client to represent durations, counters, sizes, fixed-point values, and compact wire codes.
 
 ---
 
@@ -9,211 +9,170 @@ Used across the Æthernet C++ client to efficiently represent durations, fixed-p
 
 1. [Overview](#overview)
 2. [TieredInt](#tieredint)
-3. [TieredIntView](#tieredintview)
-4. [Fixed](#fixed)
-5. [Exponent](#exponent)
-6. [Text IO](#text-io)
-7. [Ostream IO](#ostream-io)
-8. [Wire IO](#wire-io)
-9. [Combined Types](#combined-types)
-10. [Integration Notes](#integration-notes)
-11. [Running Tests](#running-tests)
+3. [FixedPoint](#fixedpoint)
+4. [Exponential](#exponential)
+5. [Text IO](#text-io)
+6. [Ostream IO](#ostream-io)
+7. [Wire IO](#wire-io)
+8. [Combined Types](#combined-types)
+9. [Integration Notes](#integration-notes)
+10. [Running Tests](#running-tests)
 
 ---
 
 ## Overview
 
-The **Æthernet C++ client** is designed for restricted devices with limited memory, bandwidth, and no floating point unit.
-To address these constraints, we've implemented specialized numeric formats that maintain precision, range, and compactness without sacrificing runtime performance.
+The Æthernet C++ client targets devices where every byte and every CPU cycle matters.
+The numeric types in this repository are header-only, compile-time configured, and deterministic.
+They separate two concerns:
 
-All formats are **header-only**, compile-time defined, and interoperable.
+* **logical value** — what the application means: milliseconds, bytes, ratios, sensor values;
+* **wire/storage representation** — how many bytes are needed to store or transmit that value.
+
+The core types are:
+
+* `TieredInt` — compact integer serialization with compile-time tier boundaries;
+* `FixedPoint` — binary-scaled fixed point over an integral or packed integral representation;
+* `Exponential` — logarithmic code mapping for values that span several orders of magnitude.
 
 ---
 
 ## TieredInt
 
-This integer format efficiently compresses frequently used numbers into fewer bytes.
-Numbers below **254** (adjustable via template parameters) can occupy a single byte; larger values use additional tiers.
-
-Compression and decompression occur only during serialization and deserialization, keeping runtime overhead minimal.
-
-Although other variable-length encoding methods exist (e.g., Google-optimized varint or UTF-8–style encodings), Æthernet’s `TieredInt` offers **compile-time control** over tier boundaries, improving both **packing ratio** and **predictability**.
-
-**Examples**
+`TieredInt` stores small integer values in fewer bytes while still supporting much larger values.
+Compression and decompression happen only during serialization/deserialization; normal arithmetic uses the logical integer value.
 
 ```cpp
-using T1 = ae::TieredInt<std::uint8_t, 249>;
-using T2 = ae::TieredInt<std::uint16_t, 1000>;
-using T4 = ae::TieredInt<std::uint32_t, 10>;
-using U8 = ae::TieredInt<std::uint8_t, 254>;
-using U16 = ae::TieredInt<std::uint8_t, 249, 1529>;
-using S8 = ae::TieredInt<std::int8_t, 10, 20>;
+using SmallCounter = ae::TieredInt<std::uint8_t, 254>;
+using SizeBytes = ae::TieredInt<std::uint8_t, 250, 1500>;
+using SignedSmall = ae::TieredInt<std::int8_t, 10, 20>;
 ```
 
-The first template parameter is the wire cell type (`std::uint8_t`, `std::uint16_t`, or `std::uint32_t`). Subsequent parameters are per-tier maximum **logical** values:
+The first template parameter is an integral **cell type**. It defines the minimum serialized chunk size, not merely a C++ value type.
+For `std::uint8_t`, the first serialized chunk is 1 byte; for `std::uint16_t`, it is 2 bytes; for `std::uint32_t`, it is 4 bytes.
 
-* `249` — maximum value encoded in 1 byte
-* `1529` — maximum value encoded in 2 bytes (must fit in the 2-byte format created by the first boundary)
-* `16777215` — maximum value encoded in 4 bytes (must fit in the 4-byte format created by earlier boundaries)
+Each next tier appends a chunk whose size is the sum of the previous chunks. Therefore total serialized sizes grow as:
+
+* `std::uint8_t` cell: 1, 2, 4, then 8 bytes;
+* `std::uint16_t` cell: 2, 4, then 8 bytes;
+* `std::uint32_t` cell: 4, then 8 bytes.
+
+The remaining template parameters are maximum logical values for each compact tier:
+
+```cpp
+using SizeBytes = ae::TieredInt<std::uint8_t, 250, 1500>;
+```
+
+For this type:
+
+* values `0..250` serialize to 1 byte;
+* values `251..1500` serialize to 2 bytes;
+* values `1501..1967580` serialize to 4 bytes.
+
+This is useful for packet or payload sizes: small control payloads use one byte, normal MTU-sized values up to 1500 bytes use two bytes, and rare large values still fit up to 1,967,580 bytes, about 1.88 MiB.
 
 For signed `TieredInt`, tier boundaries are validated in wire space after ZigZag encoding.
 
-`TieredInt` always requires extension header space: the first tier max must be **strictly below** the wire cell's header maximum (e.g. `254`, not `255`, for `std::uint8_t`). If you need a full fixed-width integer, use the built-in type directly (`std::uint8_t`, etc.).
-
-Invalid examples:
+`TieredInt` needs extension header space. For a `std::uint8_t` cell, the first tier max must be below `255`, so `254` is valid and `255` is not:
 
 ```cpp
+using Good = ae::TieredInt<std::uint8_t, 254>;
+
 // Invalid: no extension header left.
-using Bad1 = ae::TieredInt<std::uint8_t, 255>;
-
-// Invalid: second boundary does not fit in the two-byte format
-// created by first boundary 249.
-using Bad2 = ae::TieredInt<std::uint8_t, 249, 1000000>;
-```
-
-All standard C++ numeric limits and type traits are supported.
-
-**Validation (no exceptions):** out-of-range values fail at compile time in constant evaluation. At runtime, invalid preconditions use `assert` (for example null buffers or truncated wire data). The library does not use `throw` or `<stdexcept>` and builds cleanly with `-fno-exceptions`.
-
-Useful members:
-
-* `kNumTiers`, `kMaxWireBytes` — compile-time wire layout
-* `WireBytesNeeded(data, available)` — returns `0` when the buffer is too short to hold even the next encoded value; otherwise returns the byte length of the next complete value
-* `Serialize(buf)` / `Deserialize(data, len)` — read/write one value on the wire
-
----
-
-## TieredIntView
-
-`numeric/tiered_int_view.h` provides a lightweight, non-owning view over a contiguous byte span of encoded `TieredInt` values. It supports range-for iteration and C++20 `std::ranges` (sentinel end).
-
-The view does not throw. Invalid iterator use (for example dereferencing at end) asserts in debug builds.
-
-```cpp
-#include "numeric/tiered_int_view.h"
-
-using T = ae::TieredInt<std::uint8_t, 249, 1529>;
-
-std::vector<std::uint8_t> bytes = /* serialized values */;
-for (T const value : ae::MakeTieredIntView<T>(bytes)) {
-  // use value
-}
-
-// Check truncated input before deserialize:
-if (T::WireBytesNeeded(bytes.data(), bytes.size()) == 0) {
-  // buffer too short
-}
+using Bad = ae::TieredInt<std::uint8_t, 255>;
 ```
 
 ---
 
-## Fixed
+## FixedPoint
 
-Microcontrollers often lack an **FPU** or have limited floating-point performance.
-Æthernet provides a **binary-scaled inferred-point** fixed type. `Max` is a required logical bound — the storage raw range is **not** mapped exactly to `Max`. The implementation chooses a binary point so the type can represent at least `Max` with the highest precision that fits in `Rep`. The actual representable maximum may be larger than `Max`.
+`FixedPoint<Rep, Max>` represents a logical value as:
+
+```text
+logical_value = raw_value * 2^kScaleExp
+```
+
+`Rep` is the raw storage type: a built-in integral type or an integer-like packed type such as `TieredInt`.
+`Max` is the required logical range bound. The implementation chooses the most precise binary scale that still covers `Max`.
+
+The binary point is not constrained to sit inside the bit width of `Rep`. It can be far to the right or far to the left of the stored integer.
+
+Examples with `std::uint8_t` storage:
 
 ```cpp
-using Q53 = ae::FixedPoint<std::uint8_t, 30.0>;   // Q5.3, step 1/8, max ~31.875
-using Q71 = ae::FixedPoint<std::uint8_t, 100.0>;  // Q7.1, step 1/2, max ~127.5
-using Q80 = ae::FixedPoint<std::uint8_t, 130.0>;  // Q8.0, step 1, max 255
+using Micro = ae::FixedPoint<std::uint8_t, 0.001>;
+// kScaleExp = -17
+// step = 2^-17 ~= 0.000007629
+// raw 131 ~= 0.000999
+// max representable ~= 0.001945
+
+using Huge = ae::FixedPoint<std::uint8_t, 1000000.0>;
+// kScaleExp = 12
+// step = 4096
+// raw 244 ~= 999424
+// max representable = 1044480
 ```
 
-Canonical syntax is `FixedPoint<Rep, Max>` where `Rep` is a built-in integral or `TieredInt` storage type and `Max` is a positive C++20 NTTP (integral or floating-point). Logical value is `raw * 2^kScaleExp`. Signed storage uses a **symmetric** raw range around zero (e.g. `int8_t` uses `-127..+127`, not `INT_MIN`).
+So the point may be many bits beyond an 8-bit value in either direction.
+For tiny ranges, the raw byte becomes a fine fractional value. For huge ranges, the raw byte becomes a coarse bucket index.
 
-Runtime arithmetic is **integer-only** (shifts and saturated raw add/sub); floating-point is used only at compile/parse boundaries in tests and consteval helpers. Mixed addition infers `FixedPoint<Rep, MaxA + MaxB>`. Scale conversion uses `Cast<To>()`. Explicit division uses `DivTo<Target>(lhs, rhs)` (currently a slow boundary helper, not an MCU hot-path API).
+Signed storage uses a symmetric raw range around zero. For example, `std::int8_t` uses `-127..+127`, not the full `INT8_MIN..INT8_MAX` asymmetry.
 
-Configure the compiler explicitly when building (C++20 with floating-point NTTP), for example MacPorts Clang 20:
-
-```bash
-cmake -S . -B build-dev \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_C_COMPILER=/opt/local/bin/clang-mp-20 \
-  -DCMAKE_CXX_COMPILER=/opt/local/bin/clang++-mp-20 \
-  -DCMAKE_CXX_STANDARD=20 \
-  -DAE_BUILD_TESTS=ON
-```
+Runtime arithmetic is integer-only: shifts, rounding, saturated raw add/sub, and scale conversion. Floating-point appears only at compile-time or parse/debug boundaries.
 
 ---
 
-## Exponent
+## Exponential
 
-When values span several orders of magnitude, **relative precision** is often more meaningful than absolute precision (e.g., function durations from microseconds to seconds).
-
-`Exponential` is an **approximate logical codec**: it stores only a compact **wire code** (`WireT`); the decoded runtime value lives in `RuntimeT` (typically `FixedPoint`). Magnitude mapping uses compile-time fixed-point `log2` / `exp2` (`numeric/fixed_math.h`), so encode/decode through runtime values is approximate.
-
-**API semantics:**
-
-* **Exact raw-code APIs** — `Code()` / `FromCode()` construct from a wire code without magnitude approximation.
-* **Approximate arithmetic APIs** — `Value()` decodes a code to runtime; `FromRuntime()` / `FromDouble()` encode a runtime value to a code. Round-trip tolerance depends on code tier (typically ±1 for single-byte codes, ±3 near the boundary).
-* **Comparisons** — `Abs`, `Min`, `Max`, and `Clamp` operate on wire codes directly without decoding. Arithmetic operators are intentionally not implemented yet.
-
-Code `0` is zero. For unsigned runtime types, code `1` is `MinMagnitude` and code `BoundaryCode` is `BoundaryMagnitude`. For signed runtime types, even codes are positive magnitudes and odd codes are negative magnitudes (`code 2` → `+MinMagnitude`, `code 1` → `-MinMagnitude`).
-
-`MinMagnitude` must be representable in `RuntimeT` (a compile-time check rejects values that round to zero).
-
-**Example — store values from `0.001` to `60.0` with a two-byte wire tier:**
+`Exponential` is an approximate logical codec for values that span orders of magnitude.
+It stores only a compact integer code (`WireT`). The decoded runtime value lives in `RuntimeT`.
 
 ```cpp
-using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
-using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
+using Runtime = ae::FixedPoint<std::uint32_t, 1.0>;
+using E = ae::Exponential<Runtime, std::uint8_t, 0.001, 1.0>;
 
-using E = ae::Exponential<Runtime, Wire, 0.001, 60.0>;
-
-constexpr auto encoded = E::FromDouble(1.0);
+constexpr auto encoded = E::FromDouble(0.1);
 constexpr auto decoded = encoded.ToRuntime();
 ```
 
-Here:
+API semantics:
 
-* `Runtime` — decoded runtime type (`FixedPoint` semantics, precision, signedness)
-* `Wire` — compact serialized code type (1 byte for codes ≤249; larger codes add extension bytes)
-* `0.001` — smallest non-zero magnitude
-* `60.0` — magnitude at the boundary code
-* default boundary code — `numeric_traits<Wire>::kMaxBoundaryCode` (1529 for this wire type)
+* `Code()` / `FromCode()` construct from an exact wire code without magnitude approximation.
+* `Value()` / `ToRuntime()` decode a code to a runtime value.
+* `FromRuntime()` / `FromDouble()` encode a runtime value to a code.
+* `Abs`, `Min`, `Max`, and `Clamp` operate on wire codes directly.
 
-When `BoundaryCode` is omitted, `Exponential` uses `numeric_traits<WireT>::kMaxBoundaryCode`. For `TieredInt<std::uint8_t, 249, 1529>`, the default boundary code is **1529**. For built-in `std::uint8_t` wire storage, the default is **255**.
+Code `0` is zero. For unsigned runtime types, code `1` is `MinMagnitude`, and `BoundaryCode` is `BoundaryMagnitude`.
+For signed runtime types, even codes are positive magnitudes and odd codes are negative magnitudes: code `2` is `+MinMagnitude`, code `1` is `-MinMagnitude`.
 
-Pass the fifth template parameter only when you intentionally want a smaller used code range, e.g. `Exponential<Runtime, Wire, 0.001, 60.0, 200>`.
+When `BoundaryCode` is omitted, `Exponential` uses the maximum logical code representable by `WireT` (`numeric_traits<WireT>::kMaxBoundaryCode`).
+For built-in wire types such as `std::uint8_t`, the default boundary code is `255`.
+For `TieredInt<std::uint8_t, 249, 1529>`, the default boundary code is `1529`.
+Pass the fifth template parameter only when you intentionally want to use a smaller code range than the full wire range.
 
-Ideal for durations between **1 ms** and **60 s**.
-
-### Embedded runtime (default)
-
-Use `FixedPoint` or integral runtime types. No floating-point runtime is pulled in automatically:
-
-```cpp
-using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
-using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
-
-using E = ae::Exponential<Runtime, Wire, 0.001, 60.0>;
-```
-
-### Optional floating runtime
-
-For desktop, server, debug, or reference use, include the optional header before instantiating `Exponential` with `float` or `double` runtime:
+Use `FixedPoint` or an integral runtime type for embedded builds. For desktop, server, tests, or reference code, include the optional floating runtime header before using `float` or `double` as `RuntimeT`:
 
 ```cpp
 #include "numeric/exponential_floating_runtime.h"
 
-using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
-
-using EFloat = ae::Exponential<float, Wire, 0.001f, 60.0f>;
-using EDouble = ae::Exponential<double, Wire, 0.001, 60.0>;
+using EFloat = ae::Exponential<float, std::uint8_t, 0.001f, 1.0f>;
 ```
 
-`float` and `double` are **not** valid storage types for `TieredInt` or `FixedPoint`. Wire representation is unchanged: `Exponential` still stores only the `WireT` code.
+`float` and `double` are runtime value types only. They are not valid storage types for `TieredInt` or `FixedPoint`.
 
 ---
 
 ## Text IO
 
-`numeric/text_io.h` provides integer-only decimal conversion for `TieredInt`, `FixedPoint`, and `Exponential`. No runtime floating-point is used; `FixedPoint` formatting derives the logical value from `raw * 2^kScaleExp` using shifts and exact rational fraction expansion.
+`numeric/text_io.h` provides integer-only decimal conversion for `TieredInt`, `FixedPoint`, and `Exponential`.
+`FixedPoint` formatting derives the logical value from `raw * 2^kScaleExp` using shifts and exact rational fraction expansion.
 
 ```cpp
 #include "numeric/text_io.h"
 
-using F = ae::FixedPoint<std::uint8_t, 100.0>; // Q7.1
-auto s = ae::ToString(F::FromRaw(1));          // "0.5"
+using F = ae::FixedPoint<std::uint8_t, 100.0>;
+
+auto s = ae::ToString(F::FromRaw(1));  // "0.5"
 
 F parsed;
 ae::FromString("10.5", parsed);
@@ -221,46 +180,33 @@ ae::FromString("10.5", parsed);
 
 Core APIs:
 
-* `ae::ToString(value)` — allocates a `std::string`
-* `ae::FromString(text, value)` — returns `false` on malformed or out-of-range input
-* `ae::ToChars(first, last, value)` — non-allocating buffer write via `<charconv>`
-* `ae::FromChars(first, last, value)` — non-allocating parse
-
-`Exponential` text IO encodes/decodes through `ToRuntime()` / `FromRuntime()`. JSON or logging layers can call `ToString` / `FromString` without pulling a JSON dependency into the numeric core.
+* `ae::ToString(value)` — allocates a `std::string`;
+* `ae::FromString(text, value)` — returns `false` on malformed or out-of-range input;
+* `ae::ToChars(first, last, value)` — non-allocating buffer write;
+* `ae::FromChars(first, last, value)` — non-allocating parse.
 
 ---
 
 ## Ostream IO
 
-`numeric/ostream_io.h` provides optional `operator<<` for `TieredInt` and `FixedPoint`. Include it only when you need stream output; core numeric headers do not pull in `<ostream>`.
-
-Formatting uses the same integer-only text IO backend (`ToChars` / stack buffer, no runtime floating-point):
+`numeric/ostream_io.h` provides optional `operator<<` for `TieredInt` and `FixedPoint`.
+Include it only where stream output is actually needed; core numeric headers do not pull in `<ostream>`.
 
 ```cpp
 #include "numeric/ostream_io.h"
 
 using F = ae::FixedPoint<std::uint8_t, 100.0>;
 
-std::cout << ae::TieredInt<std::uint8_t, 254>{123}; // 123
-std::cout << F::FromRaw(1);                         // 0.5
+std::cout << ae::TieredInt<std::uint8_t, 254>{123};  // 123
+std::cout << F::FromRaw(1);                          // 0.5
 ```
 
 ---
 
 ## Wire IO
 
-`numeric/wire_io.h` provides a uniform wire serialization API for built-in integers, `TieredInt`, and `FixedPoint` via `wire_traits<T>` and convenience functions `MaxWireBytes`, `Serialize`, and `Deserialize`.
-
-`numeric/exponential_wire_io.h` adds `wire_traits` for `Exponential` (include it when serializing exponential values).
-
-* **Built-in integers** — fixed-width little-endian (`sizeof(T)` bytes); signed types use two's-complement (not ZigZag).
-* **TieredInt** — compact variable-length encoding (delegates to `TieredInt::Serialize` / `Deserialize`).
-* **FixedPoint** — serializes only the raw `Rep` storage.
-* **Exponential** — serializes only the `WireT` code (no runtime decode).
-
-`Deserialize` returns `{value, BytesRead}`. For `TieredInt`, `Deserialize` returns `0` bytes read when the buffer is truncated; use `WireBytesNeeded` to probe safely without hitting assert paths.
-
-Short buffers on built-in integer deserialize assert in debug builds (`assert(len >= sizeof(T))` under `NDEBUG` returns zero-initialized value). Prefer checking `len >= sizeof(T)` or `WireBytesNeeded` before calling deserialize on tiered data.
+`numeric/wire_io.h` provides a uniform serialization API for built-in integers, `TieredInt`, and `FixedPoint` through `wire_traits<T>` and convenience functions.
+`numeric/exponential_wire_io.h` adds wire traits for `Exponential`.
 
 ```cpp
 #include "numeric/wire_io.h"
@@ -268,95 +214,118 @@ Short buffers on built-in integer deserialize assert in debug builds (`assert(le
 using F = ae::FixedPoint<ae::TieredInt<std::uint8_t, 254>, 60.0>;
 
 std::uint8_t buf[ae::MaxWireBytes<F>()];
-auto const n = ae::Serialize(F::FromInteger(30), buf);
-auto const result = ae::Deserialize<F>(buf, n);
-auto restored = result.value;
+auto n = ae::Serialize(F::FromInteger(30), buf);
+auto restored = ae::Deserialize<F>(buf, n).value;
 ```
 
-For exponential wire IO:
+Serialization rules:
+
+* built-in integers — fixed-width little-endian (`sizeof(T)` bytes);
+* `TieredInt` — compact variable-length encoding;
+* `FixedPoint` — serializes only the raw `Rep` storage;
+* `Exponential` — serializes only the `WireT` code.
+
+Short or invalid buffers are handled by the corresponding deserializer result or debug assertions; the numeric core does not use exceptions.
+
+---
+
+## Combined Types
+
+You can combine `TieredInt`, `FixedPoint`, and `Exponential` to get compact wire encoding and useful runtime semantics.
+
+### Exponential duration over packed integer codes
+
+This maps durations from 1 ms to 60 s onto exponential codes stored in a packed integer:
 
 ```cpp
 #include "numeric/exponential_wire_io.h"
 
 using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
 using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
-using E = ae::Exponential<Runtime, Wire, 0.001, 60.0>;
-
-std::uint8_t buf[ae::MaxWireBytes<E>()];
-auto n = ae::Serialize(E::FromDouble(1.0), buf);
-auto restored = ae::Deserialize<E>(buf, n).value;
-```
-
----
-
-## Combined Types
-
-You can combine `TieredInt`, `FixedPoint`, and `Exponential` for compact storage with rich runtime semantics.
-
-**Example — duration from 1 ms to 60 s in one byte:**
-
-```cpp
-using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
-using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
 using Duration = ae::Exponential<Runtime, Wire, 0.001, 60.0>;
 
 constexpr auto one_second = Duration::FromDouble(1.0);
-auto runtime = one_second.ToRuntime();
 
 std::uint8_t buf[ae::MaxWireBytes<Duration>()];
 auto n = ae::Serialize(one_second, buf);
 ```
 
+Here `Wire` stores codes `0..249` in one byte and codes `250..1529` in two bytes.
+Because `Duration` stores only the code, small durations use one byte. With this particular logarithmic mapping, the one-byte region covers approximately 1 ms through 6 ms; the full range up to 60 s uses two bytes.
+
+### Latency histogram: 1 ms to about 43 s
+
+For latency and round-trip measurements, it is often useful to keep the common fast path in one byte while still allowing large outliers.
+
+```cpp
+using Runtime = ae::FixedPoint<std::uint32_t, 43.0>;
+using Wire = ae::TieredInt<std::uint8_t, 254>;
+using Latency = ae::Exponential<Runtime, Wire, 0.001, 43.0, 510>;
+```
+
+For `TieredInt<std::uint8_t, 254>`, wire codes `0..254` serialize to one byte and codes `255..510` serialize to two bytes.
+With the exponential mapping from 1 ms to 43 s:
+
+* code `1` is 1 ms;
+* code `254` is about 200.9 ms;
+* code `255` is about 205.2 ms;
+* code `510` is 43 s.
+
+So typical 1 ms to roughly 200 ms latencies stay in one byte, while slower values up to 43 s still fit in two bytes.
+
+### Linear ping values over a packed integer
+
+For telemetry where linear precision is preferred over relative precision, use `FixedPoint` over `TieredInt`.
+This example stores ping time in milliseconds with 1 ms resolution:
+
+```cpp
+using PingRaw = ae::TieredInt<std::uint8_t, 250, 1500>;
+using PingMs = ae::FixedPoint<PingRaw, 1000000.0>;
+
+constexpr auto fast = PingMs::FromInteger(42);
+constexpr auto mtu_like_timeout = PingMs::FromInteger(1500);
+```
+
+For this type:
+
+* `0..250 ms` serialize to one byte;
+* `251..1500 ms` serialize to two bytes;
+* rare large values can use the four-byte tier;
+* the physical representable maximum is about 1,967,580 ms, while the declared safe range is 1,000,000 ms.
+
+This is a linear scale: every raw step is one millisecond. Use `Exponential` instead when relative precision is more important than absolute millisecond spacing.
+
 ---
 
 ## Integration Notes
 
-* **Header-only**, minimal external deps (`gcem` is used only by compile-time `fixed_math` helpers)
-* **C++20** (no C++23-only features)
-* **No exceptions** in `numeric/` — compatible with `-fno-exceptions` and embedded toolchains without `/EHsc`
-* Interoperable with Æthernet message packing
-* Designed for deterministic, low-overhead serialization on MCUs and embedded systems
-* Typical code size per instantiated type is minimal
-* Select the compiler explicitly via CMake command-line arguments (no automatic compiler selection in the build)
-* CI runs on Windows MSVC, MinGW, Ubuntu GCC, macOS Apple-Clang, plus `cpplint` on `./numeric`
+* Header-only numeric types.
+* C++20.
+* Deterministic integer runtime paths for embedded use.
+* Optional floating runtime support for `Exponential` is isolated in `numeric/exponential_floating_runtime.h`.
+* Designed for low-overhead serialization on MCUs and constrained networks.
 
 ---
 
 ## Running Tests
 
-Build and run the unit tests with CMake. Select the compiler explicitly on the command line:
+Build and run the unit tests with CMake:
 
 ```bash
-# 1) Clone the repository
 git clone https://github.com/aethernetio/aethernet-numeric.git
-
-# 2) Enter the repo and update submodules
 cd aethernet-numeric
 git submodule update --init --recursive
 
-# 3) Configure with tests enabled (example: MacPorts Clang 20)
 cmake -S . -B build-dev \
   -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_C_COMPILER=/opt/local/bin/clang-mp-20 \
-  -DCMAKE_CXX_COMPILER=/opt/local/bin/clang++-mp-20 \
   -DCMAKE_CXX_STANDARD=20 \
   -DAE_BUILD_TESTS=ON
 
-# 4) Build and run tests
-cmake --build build-dev --target test-numeric
+cmake --build build-dev
 ctest --test-dir build-dev --output-on-failure
-
-# Optional: verify no-exceptions build
-cmake -S . -B build-noexceptions \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_C_COMPILER=/opt/local/bin/clang-mp-20 \
-  -DCMAKE_CXX_COMPILER=/opt/local/bin/clang++-mp-20 \
-  -DCMAKE_CXX_STANDARD=20 \
-  -DCMAKE_CXX_FLAGS="-fno-exceptions" \
-  -DAE_BUILD_TESTS=ON
-cmake --build build-noexceptions --target test-numeric
-ctest --test-dir build-noexceptions --output-on-failure
 ```
+
+Select a specific compiler through normal CMake command-line options when needed.
 
 ---
 
