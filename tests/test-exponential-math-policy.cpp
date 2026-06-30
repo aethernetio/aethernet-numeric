@@ -30,7 +30,7 @@ namespace ae::test_exponential_math_policy {
 using RuntimeSeconds = FixedPoint<std::uint32_t, 60.0>;
 using RuntimeMillis = FixedPoint<std::uint32_t, 60000.0>;
 using RuntimeSmall = FixedPoint<std::uint16_t, 60.0>;
-using Code = TieredInt<std::uint8_t, 254>;
+using Code = TieredInt<std::uint8_t, 249, 1529>;
 
 static constexpr double kLatencyBoundarySeconds = 42.5937;
 using LatencyE =
@@ -51,7 +51,8 @@ using SecondsE =
 using MillisE = Exponential<RuntimeMillis, Code, 1.0,
                             kLatencyBoundarySeconds * 1000.0, 510>;
 
-using SmallE = Exponential<RuntimeSmall, Code, 1.0, 60.0, 255>;
+using SmallE = Exponential<RuntimeSmall, TieredInt<std::uint8_t, 254>, 1.0, 60.0,
+                           254>;
 using SmallPolicy = SmallE::math_policy;
 
 static_assert(sizeof(SmallPolicy::work_type::rep_value_type) <=

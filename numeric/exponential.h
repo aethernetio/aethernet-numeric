@@ -39,12 +39,7 @@ inline void ExponentialConstantExceedsRange() {}
 
 template <typename WireT>
 constexpr auto DefaultBoundaryCode() {
-  using WireValue = typename numeric_traits<WireT>::rep_value_type;
-  constexpr WireValue kRawMax = numeric_traits<WireT>::kRawMax;
-  if constexpr (kRawMax > WireValue{255}) {
-    return WireValue{255};
-  }
-  return kRawMax;
+  return numeric_traits<WireT>::kMaxBoundaryCode;
 }
 
 template <typename WireT>
@@ -323,9 +318,10 @@ constexpr RuntimeT LogExp2(LogT log_value) {
 //   Value() — decode code to runtime magnitude (approximate).
 //   FromRuntime() / FromDouble() — encode runtime to code.
 //
-// BoundaryCode is the highest code used by the magnitude mapping; it may be
-// less than numeric_traits<WireT>::kRawMax. When omitted, the default is
-// min(255, kRawMax) via DefaultBoundaryCode<WireT>().
+// BoundaryCode is the highest code used by the magnitude mapping. When omitted,
+// the default is numeric_traits<WireT>::kMaxBoundaryCode via
+// DefaultBoundaryCode<WireT>().
+// Pass an explicit fifth template argument to use a smaller code range.
 template <typename RuntimeT, typename WireT, auto MinMagnitude,
           auto BoundaryMagnitude,
           auto BoundaryCode =
@@ -360,7 +356,7 @@ class Exponential {
   static_assert(!numeric_traits<WireT>::kIsSigned,
                 "Exponential WireT must be unsigned for now");
   static_assert(BoundaryCode > 0, "Exponential BoundaryCode must be positive");
-  static_assert(BoundaryCode <= numeric_traits<WireT>::kRawMax,
+  static_assert(BoundaryCode <= numeric_traits<WireT>::kMaxBoundaryCode,
                 "Exponential BoundaryCode must fit in WireT range");
   static_assert(RuntimeTraits::FromDouble(MinMagnitude) >
                     RuntimeTraits::FromInteger(0),

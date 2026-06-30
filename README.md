@@ -9,13 +9,15 @@ Used across the Æthernet C++ client to efficiently represent durations, fixed-p
 
 1. [Overview](#overview)
 2. [TieredInt](#tieredint)
-3. [Fixed](#fixed)
-4. [Exponent](#exponent)
-5. [Text IO](#text-io)
-6. [Wire IO](#wire-io)
-7. [Combined Types](#combined-types)
-8. [Integration Notes](#integration-notes)
-9. [Running Tests](#running-tests)
+3. [TieredIntView](#tieredintview)
+4. [Fixed](#fixed)
+5. [Exponent](#exponent)
+6. [Text IO](#text-io)
+7. [Ostream IO](#ostream-io)
+8. [Wire IO](#wire-io)
+9. [Combined Types](#combined-types)
+10. [Integration Notes](#integration-notes)
+11. [Running Tests](#running-tests)
 
 ---
 
@@ -71,6 +73,38 @@ using Bad2 = ae::TieredInt<std::uint8_t, 249, 1000000>;
 
 All standard C++ numeric limits and type traits are supported.
 
+**Validation (no exceptions):** out-of-range values fail at compile time in constant evaluation. At runtime, invalid preconditions use `assert` (for example null buffers or truncated wire data). The library does not use `throw` or `<stdexcept>` and builds cleanly with `-fno-exceptions`.
+
+Useful members:
+
+* `kNumTiers`, `kMaxWireBytes` — compile-time wire layout
+* `WireBytesNeeded(data, available)` — returns `0` when the buffer is too short to hold even the next encoded value; otherwise returns the byte length of the next complete value
+* `Serialize(buf)` / `Deserialize(data, len)` — read/write one value on the wire
+
+---
+
+## TieredIntView
+
+`numeric/tiered_int_view.h` provides a lightweight, non-owning view over a contiguous byte span of encoded `TieredInt` values. It supports range-for iteration and C++20 `std::ranges` (sentinel end).
+
+The view does not throw. Invalid iterator use (for example dereferencing at end) asserts in debug builds.
+
+```cpp
+#include "numeric/tiered_int_view.h"
+
+using T = ae::TieredInt<std::uint8_t, 249, 1529>;
+
+std::vector<std::uint8_t> bytes = /* serialized values */;
+for (T const value : ae::MakeTieredIntView<T>(bytes)) {
+  // use value
+}
+
+// Check truncated input before deserialize:
+if (T::WireBytesNeeded(bytes.data(), bytes.size()) == 0) {
+  // buffer too short
+}
+```
+
 ---
 
 ## Fixed
@@ -123,7 +157,7 @@ Code `0` is zero. For unsigned runtime types, code `1` is `MinMagnitude` and cod
 using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
 using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
 
-using E = ae::Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
+using E = ae::Exponential<Runtime, Wire, 0.001, 60.0>;
 
 constexpr auto encoded = E::FromDouble(1.0);
 constexpr auto decoded = encoded.ToRuntime();
@@ -135,9 +169,11 @@ Here:
 * `Wire` — compact serialized code type (1 byte for codes ≤249; larger codes add extension bytes)
 * `0.001` — smallest non-zero magnitude
 * `60.0` — magnitude at the boundary code
-* `1529` — highest code used by the magnitude mapping
+* default boundary code — `numeric_traits<Wire>::kMaxBoundaryCode` (1529 for this wire type)
 
-`BoundaryCode` is the **used code range**, not necessarily `numeric_traits<Wire>::kRawMax`. When omitted, the default is `min(255, kRawMax)` (`DefaultBoundaryCode<Wire>()`). Pass an explicit fifth template argument when you need a smaller boundary, e.g. `Exponential<Runtime, Wire, 0.001, 60.0, 200>`.
+When `BoundaryCode` is omitted, `Exponential` uses `numeric_traits<WireT>::kMaxBoundaryCode`. For `TieredInt<std::uint8_t, 249, 1529>`, the default boundary code is **1529**. For built-in `std::uint8_t` wire storage, the default is **255**.
+
+Pass the fifth template parameter only when you intentionally want a smaller used code range, e.g. `Exponential<Runtime, Wire, 0.001, 60.0, 200>`.
 
 Ideal for durations between **1 ms** and **60 s**.
 
@@ -149,7 +185,7 @@ Use `FixedPoint` or integral runtime types. No floating-point runtime is pulled 
 using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
 using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
 
-using E = ae::Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
+using E = ae::Exponential<Runtime, Wire, 0.001, 60.0>;
 ```
 
 ### Optional floating runtime
@@ -161,8 +197,8 @@ For desktop, server, debug, or reference use, include the optional header before
 
 using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
 
-using EFloat = ae::Exponential<float, Wire, 0.001f, 60.0f, 1529>;
-using EDouble = ae::Exponential<double, Wire, 0.001, 60.0, 1529>;
+using EFloat = ae::Exponential<float, Wire, 0.001f, 60.0f>;
+using EDouble = ae::Exponential<double, Wire, 0.001, 60.0>;
 ```
 
 `float` and `double` are **not** valid storage types for `TieredInt` or `FixedPoint`. Wire representation is unchanged: `Exponential` still stores only the `WireT` code.
@@ -218,11 +254,13 @@ std::cout << F::FromRaw(1);                         // 0.5
 `numeric/exponential_wire_io.h` adds `wire_traits` for `Exponential` (include it when serializing exponential values).
 
 * **Built-in integers** — fixed-width little-endian (`sizeof(T)` bytes); signed types use two's-complement (not ZigZag).
-* **TieredInt** — existing compact variable-length encoding (delegates to `TieredInt::Serialize` / `Deserialize`).
+* **TieredInt** — compact variable-length encoding (delegates to `TieredInt::Serialize` / `Deserialize`).
 * **FixedPoint** — serializes only the raw `Rep` storage.
 * **Exponential** — serializes only the `WireT` code (no runtime decode).
 
-Short buffers throw `std::out_of_range` on deserialize.
+`Deserialize` returns `{value, BytesRead}`. For `TieredInt`, `Deserialize` returns `0` bytes read when the buffer is truncated; use `WireBytesNeeded` to probe safely without hitting assert paths.
+
+Short buffers on built-in integer deserialize assert in debug builds (`assert(len >= sizeof(T))` under `NDEBUG` returns zero-initialized value). Prefer checking `len >= sizeof(T)` or `WireBytesNeeded` before calling deserialize on tiered data.
 
 ```cpp
 #include "numeric/wire_io.h"
@@ -230,8 +268,9 @@ Short buffers throw `std::out_of_range` on deserialize.
 using F = ae::FixedPoint<ae::TieredInt<std::uint8_t, 254>, 60.0>;
 
 std::uint8_t buf[ae::MaxWireBytes<F>()];
-auto n = ae::Serialize(F::FromInteger(30), buf);
-auto restored = ae::Deserialize<F>(buf, n).value;
+auto const n = ae::Serialize(F::FromInteger(30), buf);
+auto const result = ae::Deserialize<F>(buf, n);
+auto restored = result.value;
 ```
 
 For exponential wire IO:
@@ -241,7 +280,7 @@ For exponential wire IO:
 
 using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
 using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
-using E = ae::Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
+using E = ae::Exponential<Runtime, Wire, 0.001, 60.0>;
 
 std::uint8_t buf[ae::MaxWireBytes<E>()];
 auto n = ae::Serialize(E::FromDouble(1.0), buf);
@@ -259,7 +298,7 @@ You can combine `TieredInt`, `FixedPoint`, and `Exponential` for compact storage
 ```cpp
 using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
 using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
-using Duration = ae::Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
+using Duration = ae::Exponential<Runtime, Wire, 0.001, 60.0>;
 
 constexpr auto one_second = Duration::FromDouble(1.0);
 auto runtime = one_second.ToRuntime();
@@ -273,11 +312,13 @@ auto n = ae::Serialize(one_second, buf);
 ## Integration Notes
 
 * **Header-only**, minimal external deps (`gcem` is used only by compile-time `fixed_math` helpers)
-* C++20
+* **C++20** (no C++23-only features)
+* **No exceptions** in `numeric/` — compatible with `-fno-exceptions` and embedded toolchains without `/EHsc`
 * Interoperable with Æthernet message packing
 * Designed for deterministic, low-overhead serialization on MCUs and embedded systems
 * Typical code size per instantiated type is minimal
 * Select the compiler explicitly via CMake command-line arguments (no automatic compiler selection in the build)
+* CI runs on Windows MSVC, MinGW, Ubuntu GCC, macOS Apple-Clang, plus `cpplint` on `./numeric`
 
 ---
 
@@ -302,8 +343,19 @@ cmake -S . -B build-dev \
   -DAE_BUILD_TESTS=ON
 
 # 4) Build and run tests
-cmake --build build-dev
+cmake --build build-dev --target test-numeric
 ctest --test-dir build-dev --output-on-failure
+
+# Optional: verify no-exceptions build
+cmake -S . -B build-noexceptions \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_C_COMPILER=/opt/local/bin/clang-mp-20 \
+  -DCMAKE_CXX_COMPILER=/opt/local/bin/clang++-mp-20 \
+  -DCMAKE_CXX_STANDARD=20 \
+  -DCMAKE_CXX_FLAGS="-fno-exceptions" \
+  -DAE_BUILD_TESTS=ON
+cmake --build build-noexceptions --target test-numeric
+ctest --test-dir build-noexceptions --output-on-failure
 ```
 
 ---

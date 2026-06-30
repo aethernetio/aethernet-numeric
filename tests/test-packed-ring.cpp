@@ -95,7 +95,7 @@ void test_FixedPointLogicalValues() {
 void test_ExponentialCodes() {
   using Runtime = FixedPoint<std::uint32_t, 60.0>;
   using Wire = TieredInt<std::uint8_t, 249, 1529>;
-  using E = Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
+  using E = Exponential<Runtime, Wire, 0.001, 60.0>;
   PackedRing<E, 64> ring;
 
   TEST_ASSERT_TRUE(ring.push(E::Code(Wire{10})));

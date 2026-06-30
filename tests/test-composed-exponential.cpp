@@ -52,7 +52,7 @@ bool ExponentialCodeWireRoundTrip(const E& value) {
 
 using IntRuntime = FixedPoint<std::uint32_t, 60.0>;
 using Code = TieredInt<std::uint8_t, 249, 1529>;
-using E = Exponential<IntRuntime, Code, 0.001, 60.0, 1529>;
+using E = Exponential<IntRuntime, Code, 0.001, 60.0>;
 
 static_assert(MaxWireBytes<E>() == MaxWireBytes<Code>());
 static_assert(sizeof(E) == sizeof(Code));
@@ -90,7 +90,7 @@ void test_TwoByteBoundaryCode() {
 }
 
 using SignedRuntime = FixedPoint<std::int32_t, 60.0>;
-using SE = Exponential<SignedRuntime, Code, 0.001, 60.0, 1529>;
+using SE = Exponential<SignedRuntime, Code, 0.001, 60.0>;
 
 void test_SignedExponentialRuntime() {
   const SE se_neg = SE::FromDouble(-1.0);

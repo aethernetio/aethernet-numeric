@@ -124,7 +124,7 @@ void test_FixedPointTieredIntRep() {
 void test_Exponential() {
   using Runtime = FixedPoint<std::uint32_t, 60.0>;
   using Wire = TieredInt<std::uint8_t, 249, 1529>;
-  using E = Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
+  using E = Exponential<Runtime, Wire, 0.001, 60.0>;
 
   const auto value = E::FromDouble(1.0);
   std::uint8_t buf[MaxWireBytes<E>()] = {};
@@ -167,7 +167,7 @@ void test_ShortBufferFixedPointTieredIntRep() {
 void test_ShortBufferExponential() {
   using Runtime = FixedPoint<std::uint32_t, 60.0>;
   using Wire = TieredInt<std::uint8_t, 249, 1529>;
-  using E = Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
+  using E = Exponential<Runtime, Wire, 0.001, 60.0>;
 
   const auto value = E::FromDouble(60.0);
   std::uint8_t buf[MaxWireBytes<E>()] = {};

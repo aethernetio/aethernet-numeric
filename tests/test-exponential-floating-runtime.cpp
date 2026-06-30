@@ -30,8 +30,8 @@ static_assert(runtime_numeric_traits<float>::kIsSupported);
 static_assert(runtime_numeric_traits<double>::kIsSupported);
 
 using Wire = TieredInt<std::uint8_t, 249, 1529>;
-using EFloat = Exponential<float, Wire, 0.001f, 60.0f, 1529>;
-using EDouble = Exponential<double, Wire, 0.001, 60.0, 1529>;
+using EFloat = Exponential<float, Wire, 0.001f, 60.0f>;
+using EDouble = Exponential<double, Wire, 0.001, 60.0>;
 
 static_assert(EFloat::kIsSigned);
 static_assert(EFloat::kBoundaryCode == 1529);

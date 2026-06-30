@@ -19,6 +19,7 @@
 #include <cstdint>
 
 #include "numeric/exponential.h"
+#include "numeric/exponential_floating_runtime.h"
 #include "numeric/fixed_point.h"
 #include "numeric/runtime_numeric_traits.h"
 #include "numeric/tiered_int.h"
@@ -34,16 +35,32 @@ static_assert(!runtime_numeric_traits<F>::kIsSigned);
 
 using Runtime = FixedPoint<std::uint32_t, 60.0>;
 using Code = TieredInt<std::uint8_t, 249, 1529>;
-using E = Exponential<Runtime, Code, 0.001, 60.0, 1529>;
+using E = Exponential<Runtime, Code, 0.001, 60.0>;
+using EExplicit = Exponential<Runtime, Code, 0.001, 60.0, 1529>;
 
 static_assert(E::kBoundaryCode == 1529);
+static_assert(EExplicit::kBoundaryCode == 1529);
+static_assert(E::FromDouble(60.0).CodeValue() ==
+              EExplicit::FromDouble(60.0).CodeValue());
 
 using DefaultE = Exponential<Runtime, Code, 0.001, 60.0>;
-static_assert(DefaultE::kBoundaryCode == 255);
-static_assert(DefaultE::kBoundaryCode <= 255);
+static_assert(DefaultE::kBoundaryCode == 1529);
 
 using Partial = Exponential<Runtime, Code, 0.001, 60.0, 200>;
 static_assert(Partial::kBoundaryCode == 200);
+
+using ESmall = Exponential<float, Code, 0.001f, 60.0f, 1000>;
+static_assert(ESmall::kBoundaryCode == 1000);
+
+using EDefaultFloat = Exponential<float, Code, 0.001f, 60.0f>;
+using EExplicitFloat = Exponential<float, Code, 0.001f, 60.0f, 1529>;
+static_assert(EDefaultFloat::kBoundaryCode == 1529);
+static_assert(EExplicitFloat::kBoundaryCode == 1529);
+static_assert(EDefaultFloat::FromDouble(60.0f).CodeValue() ==
+              EExplicitFloat::FromDouble(60.0f).CodeValue());
+
+using EUint8 = Exponential<float, std::uint8_t, 0.001f, 60.0f>;
+static_assert(EUint8::kBoundaryCode == 255);
 
 static_assert(numeric_traits<E>::kIsExponential);
 static_assert(!numeric_traits<E>::kIsSigned);
@@ -68,7 +85,7 @@ static_assert(r1 < Runtime::FromDouble(1.15));
 static_assert(E::FromDouble(1000.0).CodeValue() == E::kBoundaryCode);
 
 using SRuntime = FixedPoint<std::int32_t, 60.0>;
-using SE = Exponential<SRuntime, Code, 0.001, 60.0, 1529>;
+using SE = Exponential<SRuntime, Code, 0.001, 60.0>;
 
 static_assert(numeric_traits<SE>::kIsSigned);
 

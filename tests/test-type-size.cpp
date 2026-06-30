@@ -44,7 +44,7 @@ static_assert(alignof(Compact) == alignof(Raw));
 
 using Runtime = FixedPoint<std::uint32_t, 60.0>;
 using Wire = TieredInt<std::uint8_t, 249, 1529>;
-using E = Exponential<Runtime, Wire, 0.001, 60.0, 1529>;
+using E = Exponential<Runtime, Wire, 0.001, 60.0>;
 
 static_assert(sizeof(E) == sizeof(Wire));
 static_assert(alignof(E) == alignof(Wire));

@@ -196,6 +196,19 @@ struct FirstOf {
 };
 
 template <std::uint32_t... Vals>
+struct LastOf;
+
+template <std::uint32_t V>
+struct LastOf<V> {
+  static constexpr std::uint32_t value = V;
+};
+
+template <std::uint32_t First, std::uint32_t... Rest>
+struct LastOf<First, Rest...> {
+  static constexpr std::uint32_t value = LastOf<Rest...>::value;
+};
+
+template <std::uint32_t... Vals>
 struct IsStrictlyIncreasing;
 
 template <>
@@ -353,6 +366,9 @@ struct TieredInt {
           ? static_cast<ValueType>(
                 tiered_int_internal::SignedLowerFromWireMax<kMaxEncodable>())
           : static_cast<ValueType>(0);
+  static constexpr ValueType kMaxBoundaryCode = static_cast<ValueType>(
+      tiered_int_internal::WireTierThreshold<
+          WireCell, tiered_int_internal::LastOf<TierMaxVals...>::value>());
 
   ValueType value_ = 0;
 

@@ -29,16 +29,14 @@ namespace ae::test_exponential_arithmetic {
 using Runtime = FixedPoint<std::uint32_t, 60.0>;
 // Two-byte max wire tier (not 4- or 8-byte TieredInt exponential configs).
 using Code = TieredInt<std::uint8_t, 249>;
-using E = Exponential<Runtime, Code, 0.001, 60.0, 255>;
-
+using E = Exponential<Runtime, Code, 0.001, 60.0, 249>;
 // Tiered runtime: MinMagnitude must fit runtime precision (0.001 rounds to
 // zero).
 using TieredRuntime = FixedPoint<Code, 60.0>;
-using TieredE = Exponential<TieredRuntime, Code, 0.25, 60.0, 255>;
+using TieredE = Exponential<TieredRuntime, Code, 0.25, 60.0, 249>;
 
-static_assert(E::kBoundaryCode == 255);
-static_assert(E::kBoundaryCode < Code::kUpper);
-static_assert(E::kBoundaryCode <= numeric_traits<Code>::kRawMax);
+static_assert(E::kBoundaryCode == 249);
+static_assert(E::kBoundaryCode <= numeric_traits<Code>::kMaxBoundaryCode);
 
 static_assert(E::Code(1).Value().RawValue() > 0);
 static_assert(E::FromDouble(0.001).CodeValue() != 0);
@@ -64,7 +62,7 @@ int CodeRoundTripTolerance(int code) {
 }
 
 void test_SelectedCodeDecodeMonotonicity() {
-  const int codes[] = {0, 1, 2, 5, 10, 50, 100, 200, 249, 250, 255};
+  const int codes[] = {0, 1, 2, 5, 10, 50, 100, 200, 248, 249};
   Runtime prev = Runtime::FromInteger(0);
   for (const int code : codes) {
     const Runtime current = E::Code(code).Value();
@@ -74,7 +72,7 @@ void test_SelectedCodeDecodeMonotonicity() {
 }
 
 void test_CodeValueCodeRoundTrip() {
-  const int codes[] = {1, 2, 10, 50, 100, 200, 249, 250, 255};
+  const int codes[] = {1, 2, 10, 50, 100, 200, 248, 249};
   for (const int code : codes) {
     const E encoded = E::Code(code);
     const E roundtrip = E::FromRuntime(encoded.Value());
@@ -87,8 +85,7 @@ void test_CodeValueCodeRoundTrip() {
 
 void test_AdjacentCodeMidpointBoundaries() {
   const int pairs[][2] = {{1, 2},     {2, 3},     {10, 11},   {50, 51},
-                          {100, 101}, {200, 201}, {248, 249}, {249, 250},
-                          {250, 251}, {254, 255}};
+                          {100, 101}, {200, 201}, {247, 248}, {248, 249}};
   for (const auto& pair : pairs) {
     const int lo = pair[0];
     const int hi = pair[1];
@@ -133,8 +130,6 @@ void test_WireTierByteCounts() {
 
   check(10, 1);
   check(249, 1);
-  check(250, 2);
-  check(255, 2);
 }
 
 void test_NoWideWireExponentialConfigs() {

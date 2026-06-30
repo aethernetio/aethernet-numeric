@@ -48,6 +48,7 @@ struct numeric_traits<T> {
   static constexpr rep_value_type kRawMax =
       kIsSigned ? static_cast<rep_value_type>(std::numeric_limits<T>::max())
                 : std::numeric_limits<T>::max();
+  static constexpr rep_value_type kMaxBoundaryCode = kRawMax;
   static constexpr rep_value_type kRawMin = std::invoke([]() constexpr {
     if constexpr (kIsSigned) {
       return static_cast<rep_value_type>(-static_cast<std::int64_t>(kRawMax));
@@ -81,6 +82,7 @@ struct numeric_traits<TieredInt<WireCell, TierMaxVals...>> {
 
   static constexpr rep_value_type kRawMax = Rep::kUpper;
   static constexpr rep_value_type kRawMin = Rep::kLower;
+  static constexpr rep_value_type kMaxBoundaryCode = Rep::kMaxBoundaryCode;
 };
 
 template <typename WireCell, std::uint32_t... TierMaxVals>

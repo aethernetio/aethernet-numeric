@@ -46,13 +46,13 @@ using IntRuntime = FixedPoint<std::uint32_t, 60.0>;
 using Code = TieredInt<std::uint8_t, 249, 1529>;
 using RawRuntime = TieredInt<std::uint8_t, 254>;
 using TieredRuntime = FixedPoint<RawRuntime, 60.0>;
-using TieredE = Exponential<TieredRuntime, Code, 0.25, 60.0, 1529>;
+using TieredE = Exponential<TieredRuntime, Code, 0.25, 60.0>;
 
 static_assert(MaxWireBytes<TieredE>() == MaxWireBytes<Code>());
 static_assert(sizeof(TieredE) == sizeof(Code));
 static_assert(TieredE::Code(10).CodeValue() == 10);
 
-using FutureE = Exponential<IntRuntime, Code, 0.001, 60.0, 1529>;
+using FutureE = Exponential<IntRuntime, Code, 0.001, 60.0>;
 
 static_assert(MaxWireBytes<FutureE>() == MaxWireBytes<Code>());
 
