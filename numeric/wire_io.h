@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Aethernet Inc.
+ * Copyright 2026 Aethernet Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <stdexcept>
+#include <cassert>
 #include <type_traits>
 
 #include "numeric/fixed_point.h"
@@ -34,10 +34,6 @@ struct DeserializeResult {
 };
 
 namespace wire_io_internal {
-
-[[noreturn]] inline void ThrowBufferTooShort() {
-  throw std::out_of_range("wire deserialize buffer is too short");
-}
 
 template <typename T>
   requires(std::is_integral_v<T> && !std::is_same_v<T, bool>)
@@ -53,9 +49,7 @@ constexpr std::size_t SerializeLittleEndian(T value, std::uint8_t* out) {
 template <typename T>
   requires(std::is_integral_v<T> && !std::is_same_v<T, bool>)
 constexpr T DeserializeLittleEndian(const std::uint8_t* in, std::size_t len) {
-  if (len < sizeof(T)) {
-    ThrowBufferTooShort();
-  }
+  assert(len >= sizeof(T));
   using Unsigned = std::make_unsigned_t<T>;
   Unsigned bits = 0;
   for (std::size_t i = 0; i < sizeof(T); ++i) {

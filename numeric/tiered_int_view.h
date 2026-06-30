@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Aethernet Inc.
+ * Copyright 2026 Aethernet Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,12 @@
 #ifndef NUMERIC_TIERED_INT_VIEW_H_
 #define NUMERIC_TIERED_INT_VIEW_H_
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <ranges>
 #include <span>
-#include <stdexcept>
 
 #include "numeric/tiered_int.h"
 
@@ -83,17 +83,15 @@ class TieredIntView
         return;
       }
 
-      if (current_ == end_) {
-        throw std::out_of_range("TieredIntView iterator dereferenced at end");
-      }
+      assert(current_ != end_);
 
       value_type value{};
-      const auto remaining = static_cast<std::size_t>(end_ - current_);
-      const auto consumed = value.Deserialize(current_, remaining);
+      std::size_t const remaining =
+          static_cast<std::size_t>(end_ - current_);
+      std::size_t const consumed = value.Deserialize(current_, remaining);
 
-      if (consumed == 0 || consumed > remaining) {
-        throw std::out_of_range("Invalid or truncated TieredIntView data");
-      }
+      assert(consumed != 0);
+      assert(consumed <= remaining);
 
       cached_value_ = value;
       cached_size_ = consumed;

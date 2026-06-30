@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Aethernet Inc.
+ * Copyright 2026 Aethernet Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
-#include <stdexcept>
 #include <type_traits>
 #include <utility>
 
@@ -33,6 +32,22 @@ namespace ae {
 namespace tiered_int_internal {
 
 inline constexpr std::size_t kAbsoluteMaxWireBytes = 8;
+
+inline void ConstexprValidationFailure(char const* message) noexcept {
+  (void)message;
+  assert(false);
+}
+
+constexpr void ValidateOrFail(bool condition, char const* message) noexcept {
+  if (condition) {
+    return;
+  }
+  if (std::is_constant_evaluated()) {
+    ConstexprValidationFailure(message);
+  } else {
+    assert(condition);
+  }
+}
 
 template <typename WireCell>
 struct WireCellTraits {
@@ -98,7 +113,7 @@ struct MaxEncodableValue {
   static constexpr std::uint64_t kHeaderMax =
       WireCellTraits<WireCell>::kHeaderMax;
 
-  static constexpr std::uint64_t kValue = std::invoke([]() constexpr {
+  static constexpr std::uint64_t value = std::invoke([]() constexpr {
     constexpr std::uint32_t kTiers[] = {
         WireTierThreshold<WireCell, TierMaxVals>()...};
     if constexpr (kNumTiers == 2) {
@@ -205,7 +220,7 @@ struct TierConfigValidator {
   template <std::uint32_t Next>
   static consteval bool ValidateNext() {
     constexpr std::uint64_t kMaxEnc =
-        MaxEncodableValue<WireCell, Prefix...>::kValue;
+        MaxEncodableValue<WireCell, Prefix...>::value;
     constexpr std::uint32_t wire_next = WireTierThreshold<WireCell, Next>();
     return wire_next <= kMaxEnc;
   }
@@ -273,7 +288,7 @@ struct TieredInt {
 
   static constexpr bool kIsSigned =
       tiered_int_internal::WireCellTraits<WireCell>::kIsSigned;
-  static constexpr int NumTiers = sizeof...(TierMaxVals) + 1;
+  static constexpr int kNumTiers = sizeof...(TierMaxVals) + 1;
   static constexpr int kBaseBytes =
       tiered_int_internal::WireCellTraits<WireCell>::kBytes;
   static constexpr std::uint64_t kWord =
@@ -284,9 +299,9 @@ struct TieredInt {
       tiered_int_internal::WireTierThreshold<
           WireCell, tiered_int_internal::FirstOf<TierMaxVals...>::value>();
   static constexpr std::size_t kMaxWireBytes =
-      static_cast<std::size_t>(kBaseBytes) * (1u << (NumTiers - 1));
+      static_cast<std::size_t>(kBaseBytes) * (1u << (kNumTiers - 1));
 
-  static_assert(NumTiers <= 4, "At most 4 tiers are supported");
+  static_assert(kNumTiers <= 4, "At most 4 tiers are supported");
   static_assert(sizeof...(TierMaxVals) >= 1,
                 "At least one tier maximum is required");
   static_assert(kMaxWireBytes <= tiered_int_internal::kAbsoluteMaxWireBytes,
@@ -301,7 +316,7 @@ struct TieredInt {
       "header space.");
 
   static constexpr std::uint64_t kMaxEncodable =
-      tiered_int_internal::MaxEncodableValue<WireCell, TierMaxVals...>::kValue;
+      tiered_int_internal::MaxEncodableValue<WireCell, TierMaxVals...>::value;
 
   static_assert(
       !kIsSigned ||
@@ -361,33 +376,18 @@ struct TieredInt {
   template <typename U>
   static constexpr ValueType CheckSignedValue(U v) {
     if constexpr (std::is_signed_v<U>) {
-      if (v < kLower || v > kUpper) {
-        if (std::is_constant_evaluated()) {
-          throw std::out_of_range(
-              "TieredInt value is outside the encodable range");
-        } else {
-          assert(v >= kLower && v <= kUpper);
-        }
-      }
+      tiered_int_internal::ValidateOrFail(
+          v >= kLower && v <= kUpper,
+          "TieredInt value is outside the encodable range");
     } else {
       std::uint64_t const u = static_cast<std::uint64_t>(v);
-      if (u > static_cast<std::uint64_t>(kUpper)) {
-        if (std::is_constant_evaluated()) {
-          throw std::out_of_range(
-              "TieredInt value is outside the encodable range");
-        } else {
-          assert(u <= static_cast<std::uint64_t>(kUpper));
-        }
-      }
+      tiered_int_internal::ValidateOrFail(
+          u <= static_cast<std::uint64_t>(kUpper),
+          "TieredInt value is outside the encodable range");
       if constexpr (kLower > 0) {
-        if (u < static_cast<std::uint64_t>(kLower)) {
-          if (std::is_constant_evaluated()) {
-            throw std::out_of_range(
-                "TieredInt value is outside the encodable range");
-          } else {
-            assert(u >= static_cast<std::uint64_t>(kLower));
-          }
-        }
+        tiered_int_internal::ValidateOrFail(
+            u >= static_cast<std::uint64_t>(kLower),
+            "TieredInt value is outside the encodable range");
       }
     }
     return static_cast<ValueType>(v);
@@ -396,23 +396,13 @@ struct TieredInt {
   template <typename U>
   static constexpr ValueType CheckUnsignedValue(U v) {
     if constexpr (std::is_signed_v<U>) {
-      if (v < 0) {
-        if (std::is_constant_evaluated()) {
-          throw std::invalid_argument("TieredInt value must be non-negative");
-        } else {
-          assert(v >= 0);
-        }
-      }
+      tiered_int_internal::ValidateOrFail(
+          v >= 0, "TieredInt value must be non-negative");
     }
     std::uint64_t const u = static_cast<std::uint64_t>(v);
-    if (u > static_cast<std::uint64_t>(kUpper)) {
-      if (std::is_constant_evaluated()) {
-        throw std::out_of_range(
-            "TieredInt value exceeds the maximum encodable value");
-      } else {
-        assert(u <= static_cast<std::uint64_t>(kUpper));
-      }
-    }
+    tiered_int_internal::ValidateOrFail(
+        u <= static_cast<std::uint64_t>(kUpper),
+        "TieredInt value exceeds the maximum encodable value");
     return static_cast<ValueType>(v);
   }
 
@@ -445,7 +435,7 @@ struct TieredInt {
     if (available < kTwoBaseSize) {
       return 0;
     }
-    if constexpr (NumTiers < 3) {
+    if constexpr (kNumTiers < 3) {
       return kTwoBaseSize;
     } else {
       std::uint64_t low = tiered_int_internal::ReadLittleEndianU64(
@@ -459,7 +449,7 @@ struct TieredInt {
       if (available < kFourBaseSize) {
         return 0;
       }
-      if constexpr (NumTiers < 4) {
+      if constexpr (kNumTiers < 4) {
         return kFourBaseSize;
       } else {
         low = tiered_int_internal::ReadLittleEndianU64(
@@ -498,11 +488,11 @@ struct TieredInt {
     if (wire_bytes == kBaseSize * 2) {
       return v;
     }
-    if constexpr (NumTiers < 3) {
+    if constexpr (kNumTiers < 3) {
       return v;
     }
 
-    if constexpr (NumTiers >= 3) {
+    if constexpr (kNumTiers >= 3) {
       low = tiered_int_internal::ReadLittleEndianU64(in + kBaseSize * 2,
                                                      kBaseSize * 2);
       constexpr auto kWord2 = tiered_int_internal::kWordPow<WireCell>(1);
@@ -511,11 +501,11 @@ struct TieredInt {
     if (wire_bytes == kBaseSize * 4) {
       return v;
     }
-    if constexpr (NumTiers < 4) {
+    if constexpr (kNumTiers < 4) {
       return v;
     }
 
-    if constexpr (NumTiers == 4) {
+    if constexpr (kNumTiers == 4) {
       low = tiered_int_internal::ReadLittleEndianU64(in + kBaseSize * 4,
                                                      kBaseSize * 4);
       constexpr auto kWord4 = tiered_int_internal::kWordPow<WireCell>(2);
@@ -531,7 +521,7 @@ struct TieredInt {
     std::size_t const kBaseSize = static_cast<std::size_t>(kBaseBytes);
     std::size_t ret = 0;
 
-    if constexpr (NumTiers == 4) {
+    if constexpr (kNumTiers == 4) {
       if (v > kTiers[2]) {
         constexpr auto kMod = tiered_int_internal::kWordPow<WireCell>(2);
         auto b2 = (v - kTiers[2] - 1) % kMod;
@@ -541,7 +531,7 @@ struct TieredInt {
         ret = kBaseSize * 8;
       }
     }
-    if constexpr (NumTiers >= 3) {
+    if constexpr (kNumTiers >= 3) {
       if (v > kTiers[1]) {
         constexpr auto kMod = tiered_int_internal::kWordPow<WireCell>(1);
         auto b2 = (v - kTiers[1] - 1) % kMod;
@@ -561,10 +551,6 @@ struct TieredInt {
     return std::max(ret, kBaseSize);
   }
 
-  static void ThrowOrAssertBufferTooShort() {
-    throw std::out_of_range("TieredInt deserialize buffer is too short");
-  }
-
  public:
   std::size_t Serialize(std::uint8_t* out) const noexcept {
     if constexpr (kIsSigned) {
@@ -578,10 +564,7 @@ struct TieredInt {
   std::size_t Deserialize(std::uint8_t const* in, std::size_t len) {
     assert(in != nullptr);
     std::size_t const wire_bytes = WireBytesNeeded(in, len);
-    if (wire_bytes == 0) {
-      assert(len > 0);
-      ThrowOrAssertBufferTooShort();
-    }
+    assert(wire_bytes != 0);
     std::uint64_t const u = DeserializeUnsignedMagnitude(in, wire_bytes);
     if constexpr (kIsSigned) {
       value_ = static_cast<ValueType>(tiered_int_internal::ZigZagDecode64(u));
