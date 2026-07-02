@@ -153,7 +153,7 @@ Pass the fifth template parameter only when you intentionally want to use a smal
 Use `FixedPoint` or an integral runtime type for embedded builds. For desktop, server, tests, or reference code, include the optional floating runtime header before using `float` or `double` as `RuntimeT`:
 
 ```cpp
-#include "numeric/exponential_floating_runtime.h"
+#include <ae-numeric/exponential_floating_runtime.h>
 
 using EFloat = ae::Exponential<float, std::uint8_t, 0.001f, 1.0f>;
 ```
@@ -164,11 +164,11 @@ using EFloat = ae::Exponential<float, std::uint8_t, 0.001f, 1.0f>;
 
 ## Text IO
 
-`numeric/text_io.h` provides integer-only decimal conversion for `TieredInt`, `FixedPoint`, and `Exponential`.
+`ae-numeric/text_io.h` provides integer-only decimal conversion for `TieredInt`, `FixedPoint`, and `Exponential`.
 `FixedPoint` formatting derives the logical value from `raw * 2^kScaleExp` using shifts and exact rational fraction expansion.
 
 ```cpp
-#include "numeric/text_io.h"
+#include <ae-numeric/text_io.h>
 
 using F = ae::FixedPoint<std::uint8_t, 100.0>;
 
@@ -189,11 +189,11 @@ Core APIs:
 
 ## Ostream IO
 
-`numeric/ostream_io.h` provides optional `operator<<` for `TieredInt` and `FixedPoint`.
+`ae-numeric/ostream_io.h` provides optional `operator<<` for `TieredInt` and `FixedPoint`.
 Include it only where stream output is actually needed; core numeric headers do not pull in `<ostream>`.
 
 ```cpp
-#include "numeric/ostream_io.h"
+#include <ae-numeric/ostream_io.h>
 
 using F = ae::FixedPoint<std::uint8_t, 100.0>;
 
@@ -205,11 +205,11 @@ std::cout << F::FromRaw(1);                          // 0.5
 
 ## Wire IO
 
-`numeric/wire_io.h` provides a uniform serialization API for built-in integers, `TieredInt`, and `FixedPoint` through `wire_traits<T>` and convenience functions.
-`numeric/exponential_wire_io.h` adds wire traits for `Exponential`.
+`ae-numeric/wire_io.h` provides a uniform serialization API for built-in integers, `TieredInt`, and `FixedPoint` through `wire_traits<T>` and convenience functions.
+`ae-numeric/exponential_wire_io.h` adds wire traits for `Exponential`.
 
 ```cpp
-#include "numeric/wire_io.h"
+#include <ae-numeric/wire_io.h>
 
 using F = ae::FixedPoint<ae::TieredInt<std::uint8_t, 254>, 60.0>;
 
@@ -238,7 +238,7 @@ You can combine `TieredInt`, `FixedPoint`, and `Exponential` to get compact wire
 This maps durations from 1 ms to 60 s onto exponential codes stored in a packed integer:
 
 ```cpp
-#include "numeric/exponential_wire_io.h"
+#include <ae-numeric/exponential_wire_io.h>
 
 using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
 using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;
@@ -302,7 +302,7 @@ This is a linear scale: every raw step is one millisecond. Use `Exponential` ins
 * Header-only numeric types.
 * C++20.
 * Deterministic integer runtime paths for embedded use.
-* Optional floating runtime support for `Exponential` is isolated in `numeric/exponential_floating_runtime.h`.
+* Optional floating runtime support for `Exponential` is isolated in `ae-numeric/exponential_floating_runtime.h`.
 * Designed for low-overhead serialization on MCUs and constrained networks.
 
 ---

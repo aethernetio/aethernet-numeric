@@ -112,4 +112,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v1
       - run: pip install cpplint
-      - run: cpplint --recursive ./numeric
+      - run: cpplint --recursive ./ae-numeric

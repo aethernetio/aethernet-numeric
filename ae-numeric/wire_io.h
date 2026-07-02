@@ -14,23 +14,23 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_WIRE_IO_H_
-#define NUMERIC_WIRE_IO_H_
+#ifndef AE_NUMERIC_WIRE_IO_H_
+#define AE_NUMERIC_WIRE_IO_H_
 
+#include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <cassert>
 #include <type_traits>
 
-#include "numeric/fixed_point.h"
+#include "ae-numeric/fixed_point.h"
 
 namespace ae {
 
 template <typename T>
 struct DeserializeResult {
   T value;
-  std::size_t BytesRead;
+  std::size_t bytes_read;
 };
 
 namespace wire_io_internal {
@@ -107,8 +107,8 @@ struct wire_traits<TieredInt<WireCell, TierMaxVals...>> {
   static DeserializeResult<T> Deserialize(std::uint8_t const* in,
                                           std::size_t len) {
     T value{};
-    const std::size_t BytesRead = value.Deserialize(in, len);
-    return {value, BytesRead};
+    const std::size_t bytes_read = value.Deserialize(in, len);
+    return {value, bytes_read};
   }
 };
 
@@ -128,7 +128,7 @@ struct wire_traits<FixedPoint<Rep, Max>> {
   static DeserializeResult<T> Deserialize(std::uint8_t const* in,
                                           std::size_t len) {
     auto const rep_result = RepTraits::Deserialize(in, len);
-    return {T::FromRaw(rep_result.value), rep_result.BytesRead};
+    return {T::FromRaw(rep_result.value), rep_result.bytes_read};
   }
 };
 
@@ -153,9 +153,9 @@ DeserializeResult<T> Deserialize(std::uint8_t const* in, std::size_t len) {
 // self-delimiting on the wire (the same property that lets it be skipped).
 template <WireSerializable T>
 std::size_t SerializedSizeAt(std::uint8_t const* in, std::size_t len) {
-  return wire_traits<T>::Deserialize(in, len).BytesRead;
+  return wire_traits<T>::Deserialize(in, len).bytes_read;
 }
 
 }  // namespace ae
 
-#endif  // NUMERIC_WIRE_IO_H_
+#endif  // AE_NUMERIC_WIRE_IO_H_

@@ -20,9 +20,9 @@
 
 #include <cstdint>
 
-#include "numeric/exponential.h"
-#include "numeric/fixed_point.h"
-#include "numeric/tiered_int.h"
+#include <ae-numeric/exponential.h>
+#include <ae-numeric/fixed_point.h>
+#include <ae-numeric/tiered_int.h>
 
 using Runtime = ae::FixedPoint<std::uint32_t, 60.0>;
 using Wire = ae::TieredInt<std::uint8_t, 249, 1529>;

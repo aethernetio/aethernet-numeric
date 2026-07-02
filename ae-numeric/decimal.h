@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_DECIMAL_H_
-#define NUMERIC_DECIMAL_H_
+#ifndef AE_NUMERIC_DECIMAL_H_
+#define AE_NUMERIC_DECIMAL_H_
 
 #include <cstdint>
 #include <type_traits>
@@ -136,4 +136,4 @@ struct DecimalTraits<Decimal<M, E>> {
 
 }  // namespace ae
 
-#endif  // NUMERIC_DECIMAL_H_
+#endif  // AE_NUMERIC_DECIMAL_H_

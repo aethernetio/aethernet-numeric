@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_EXPONENTIAL_MATH_POLICY_H_
-#define NUMERIC_EXPONENTIAL_MATH_POLICY_H_
+#ifndef AE_NUMERIC_EXPONENTIAL_MATH_POLICY_H_
+#define AE_NUMERIC_EXPONENTIAL_MATH_POLICY_H_
 
 #include <cstdint>
 #include <limits>
@@ -23,9 +23,9 @@
 
 #include <gcem.hpp>
 
-#include "numeric/fixed_point.h"
-#include "numeric/numeric_traits.h"
-#include "numeric/runtime_numeric_traits.h"
+#include "ae-numeric/fixed_point.h"
+#include "ae-numeric/numeric_traits.h"
+#include "ae-numeric/runtime_numeric_traits.h"
 
 namespace ae {
 namespace exponential_internal {
@@ -80,7 +80,7 @@ struct WorkCandidateOk {
   static constexpr bool kQuantumOk = kStep <= MinQuantum;
   static constexpr bool kMinRepresentable =
       Candidate::FromDouble(MinMag).RawValue() >
-          typename Candidate::rep_value_type {0} &&
+          static_cast<typename Candidate::rep_value_type>(0) &&
       Candidate::FromDouble(MinMag * 10.0) > Candidate::FromDouble(MinMag);
   static constexpr bool kRepWidthOk =
       sizeof(Rep) >= sizeof(std::uint32_t) || MinMag >= 0.01;
@@ -219,4 +219,4 @@ struct ExponentialMathPolicy {
 }  // namespace exponential_internal
 }  // namespace ae
 
-#endif  // NUMERIC_EXPONENTIAL_MATH_POLICY_H_
+#endif  // AE_NUMERIC_EXPONENTIAL_MATH_POLICY_H_

@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_EXPONENTIAL_FLOATING_RUNTIME_H_
-#define NUMERIC_EXPONENTIAL_FLOATING_RUNTIME_H_
+#ifndef AE_NUMERIC_EXPONENTIAL_FLOATING_RUNTIME_H_
+#define AE_NUMERIC_EXPONENTIAL_FLOATING_RUNTIME_H_
 
-#include "numeric/runtime_numeric_traits.h"
+#include "ae-numeric/runtime_numeric_traits.h"
 
 namespace ae {
 
@@ -55,4 +55,4 @@ struct runtime_numeric_traits<double> {
 
 }  // namespace ae
 
-#endif  // NUMERIC_EXPONENTIAL_FLOATING_RUNTIME_H_
+#endif  // AE_NUMERIC_EXPONENTIAL_FLOATING_RUNTIME_H_

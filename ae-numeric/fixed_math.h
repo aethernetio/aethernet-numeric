@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_FIXED_MATH_H_
-#define NUMERIC_FIXED_MATH_H_
+#ifndef AE_NUMERIC_FIXED_MATH_H_
+#define AE_NUMERIC_FIXED_MATH_H_
 
 #include <array>
 #include <cassert>
@@ -24,8 +24,8 @@
 
 #include <gcem.hpp>
 
-#include "numeric/fixed_point.h"
-#include "numeric/numeric_traits.h"
+#include "ae-numeric/fixed_point.h"
+#include "ae-numeric/numeric_traits.h"
 
 namespace ae::fixed_math {
 
@@ -163,7 +163,7 @@ constexpr Mant NormalizeMantissa(X x, int& exponent_out) {
   }
   for (int guard = 0;
        guard < 64 &&
-           m.RawValue() != typename X::rep_value_type {0} && m < one_x;
+       m.RawValue() != static_cast<typename X::rep_value_type>(0) && m < one_x;
        ++guard) {
     m = MulTo<X>(m, two_x);
     --e;
@@ -344,4 +344,4 @@ constexpr Target Exp2To(X y) {
 
 }  // namespace ae::fixed_math
 
-#endif  // NUMERIC_FIXED_MATH_H_
+#endif  // AE_NUMERIC_FIXED_MATH_H_

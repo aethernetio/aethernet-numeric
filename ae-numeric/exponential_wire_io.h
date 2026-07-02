@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_EXPONENTIAL_WIRE_IO_H_
-#define NUMERIC_EXPONENTIAL_WIRE_IO_H_
+#ifndef AE_NUMERIC_EXPONENTIAL_WIRE_IO_H_
+#define AE_NUMERIC_EXPONENTIAL_WIRE_IO_H_
 
 #include <cassert>
-#include "numeric/exponential.h"
-#include "numeric/wire_io.h"
+#include "ae-numeric/exponential.h"
+#include "ae-numeric/wire_io.h"
 
 namespace ae {
 
@@ -41,10 +41,10 @@ struct wire_traits<Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
   static DeserializeResult<T> Deserialize(std::uint8_t const* in,
                                           std::size_t len) {
     auto const wire_result = WireTraits::Deserialize(in, len);
-    return {T::FromCode(wire_result.value), wire_result.BytesRead};
+    return {T::FromCode(wire_result.value), wire_result.bytes_read};
   }
 };
 
 }  // namespace ae
 
-#endif  // NUMERIC_EXPONENTIAL_WIRE_IO_H_
+#endif  // AE_NUMERIC_EXPONENTIAL_WIRE_IO_H_

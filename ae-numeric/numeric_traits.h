@@ -64,7 +64,7 @@ inline constexpr bool kIntegralStorageV<T> = true;
 
 }  // namespace ae
 
-#include "numeric/tiered_int.h"
+#include "ae-numeric/tiered_int.h"
 
 namespace ae {
 

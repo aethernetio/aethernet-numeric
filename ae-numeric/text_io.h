@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_TEXT_IO_H_
-#define NUMERIC_TEXT_IO_H_
+#ifndef AE_NUMERIC_TEXT_IO_H_
+#define AE_NUMERIC_TEXT_IO_H_
 
 #include <charconv>
 #include <cstdint>
@@ -25,10 +25,10 @@
 #include <system_error>
 #include <type_traits>
 
-#include "numeric/exponential.h"
-#include "numeric/fixed_point.h"
-#include "numeric/numeric_traits.h"
-#include "numeric/tiered_int.h"
+#include "ae-numeric/exponential.h"
+#include "ae-numeric/fixed_point.h"
+#include "ae-numeric/numeric_traits.h"
+#include "ae-numeric/tiered_int.h"
 
 namespace ae {
 namespace text_io_internal {
@@ -261,7 +261,7 @@ inline std::to_chars_result WriteChar(char* first, char* last, char c) {
     return {first, std::errc::value_too_large};
   }
   *first = c;
-  return {first + 1, std::errc{}};
+  return {first + 1, std::errc()};
 }
 
 inline std::to_chars_result WriteChars(char* first, char* last,
@@ -272,7 +272,7 @@ inline std::to_chars_result WriteChars(char* first, char* last,
   for (char c : text) {
     *first++ = c;
   }
-  return {first, std::errc{}};
+  return {first, std::errc()};
 }
 
 template <typename Int>
@@ -284,7 +284,7 @@ inline std::to_chars_result WriteUnsignedDecimal(char* first, char* last,
                                                  std::uint64_t value) {
   char buffer[32];
   auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
-  if (result.ec != std::errc{}) {
+  if (result.ec != std::errc()) {
     return {first, result.ec};
   }
   return WriteChars(
@@ -296,7 +296,7 @@ inline std::to_chars_result WriteSignedDecimal(char* first, char* last,
                                                std::int64_t value) {
   char buffer[32];
   auto const result = std::to_chars(buffer, buffer + sizeof(buffer), value);
-  if (result.ec != std::errc{}) {
+  if (result.ec != std::errc()) {
     return {first, result.ec};
   }
   return WriteChars(
@@ -363,24 +363,24 @@ inline std::to_chars_result FormatFixedPointScaled(char* first, char* last,
   char* cursor = first;
   if (negative) {
     auto const sign_result = WriteChar(cursor, last, '-');
-    if (sign_result.ec != std::errc{}) {
+    if (sign_result.ec != std::errc()) {
       return sign_result;
     }
     cursor = sign_result.ptr;
   }
 
   auto const integer_result = WriteUnsignedDecimal(cursor, last, integer_part);
-  if (integer_result.ec != std::errc{}) {
+  if (integer_result.ec != std::errc()) {
     return integer_result;
   }
   cursor = integer_result.ptr;
 
   if (fraction_len == 0) {
-    return {cursor, std::errc{}};
+    return {cursor, std::errc()};
   }
 
   auto const dot_result = WriteChar(cursor, last, '.');
-  if (dot_result.ec != std::errc{}) {
+  if (dot_result.ec != std::errc()) {
     return dot_result;
   }
   cursor = dot_result.ptr;
@@ -414,7 +414,7 @@ template <typename T>
 std::string ToString(T value) {
   char buffer[TextIO<T>::kMaxTextSize];
   auto const result = ToChars(buffer, buffer + sizeof(buffer), value);
-  if (result.ec != std::errc{}) {
+  if (result.ec != std::errc()) {
     return {};
   }
   return std::string(buffer, static_cast<std::size_t>(result.ptr - buffer));
@@ -423,7 +423,7 @@ std::string ToString(T value) {
 template <typename T>
 bool FromString(std::string_view text, T& value) {
   auto const result = FromChars(text.data(), text.data() + text.size(), value);
-  return result.ec == std::errc {} && result.ptr == text.data() + text.size();
+  return result.ec == std::errc() && result.ptr == text.data() + text.size();
 }
 
 template <typename WireCell, std::uint32_t... TierMaxVals>
@@ -451,8 +451,7 @@ struct TextIO<TieredInt<WireCell, TierMaxVals...>> {
     if constexpr (T::kIsSigned) {
       std::int64_t parsed = 0;
       auto const result = text_io_internal::ParseInteger(text, parsed);
-      if (result.ec != std::errc {} ||
-          result.ptr != text.data() + text.size()) {
+      if (result.ec != std::errc() || result.ptr != text.data() + text.size()) {
         return {first, std::errc::invalid_argument};
       }
       if (parsed < static_cast<std::int64_t>(T::kLower) ||
@@ -460,12 +459,12 @@ struct TextIO<TieredInt<WireCell, TierMaxVals...>> {
         return {first, std::errc::result_out_of_range};
       }
       value = T{static_cast<ValueType>(parsed)};
-      return {last, std::errc{}};
+      return {last, std::errc()};
     }
 
     std::int64_t parsed = 0;
     auto const result = text_io_internal::ParseInteger(text, parsed);
-    if (result.ec != std::errc {} || result.ptr != text.data() + text.size() ||
+    if (result.ec != std::errc() || result.ptr != text.data() + text.size() ||
         parsed < 0) {
       return {first, std::errc::invalid_argument};
     }
@@ -473,7 +472,7 @@ struct TextIO<TieredInt<WireCell, TierMaxVals...>> {
       return {first, std::errc::result_out_of_range};
     }
     value = T{static_cast<ValueType>(parsed)};
-    return {last, std::errc{}};
+    return {last, std::errc()};
   }
 };
 
@@ -512,7 +511,7 @@ struct TextIO<FixedPoint<Rep, Max>> {
     }
 
     value = T::FromRaw(raw);
-    return {last, std::errc{}};
+    return {last, std::errc()};
   }
 };
 
@@ -534,14 +533,14 @@ struct TextIO<Exponential<RuntimeT, WireT, MinMagnitude, BoundaryMagnitude,
     RuntimeT runtime = RuntimeT::FromInteger(0);
     auto const runtime_result =
         TextIO<RuntimeT>::FromChars(first, last, runtime);
-    if (runtime_result.ec != std::errc{}) {
+    if (runtime_result.ec != std::errc()) {
       return runtime_result;
     }
     value = T::FromRuntime(runtime);
-    return {last, std::errc{}};
+    return {last, std::errc()};
   }
 };
 
 }  // namespace ae
 
-#endif  // NUMERIC_TEXT_IO_H_
+#endif  // AE_NUMERIC_TEXT_IO_H_

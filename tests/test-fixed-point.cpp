@@ -20,8 +20,8 @@
 #include <limits>
 #include <type_traits>
 
-#include "numeric/fixed_point.h"
-#include "numeric/tiered_int.h"
+#include <ae-numeric/fixed_point.h>
+#include <ae-numeric/tiered_int.h>
 
 namespace ae::test_fixed_point {
 
@@ -123,6 +123,14 @@ static_assert(cast_back.RawValue() == Small::kRawMin);
 // PromoteRep same-rep
 static_assert(
     std::is_same_v<PromoteRep<std::uint8_t, std::uint8_t>::type, std::uint8_t>);
+static_assert(std::is_same_v<PromoteRep<std::uint8_t, std::uint16_t>::type,
+                             std::uint16_t>);
+static_assert(
+    std::is_same_v<PromoteRep<std::uint8_t, std::int8_t>::type, std::int16_t>);
+static_assert(std::is_same_v<PromoteRep<std::uint16_t, std::int16_t>::type,
+                             std::int32_t>);
+static_assert(
+    std::is_same_v<PromoteRep<std::uint8_t, std::int16_t>::type, std::int16_t>);
 
 void test_LogicalConstructors() {
   TEST_ASSERT_EQUAL_UINT8(20, F{10}.RawValue());

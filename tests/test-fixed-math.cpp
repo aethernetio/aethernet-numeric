@@ -18,8 +18,8 @@
 
 #include <cstdint>
 
-#include "numeric/fixed_math.h"
-#include "numeric/fixed_point.h"
+#include <ae-numeric/fixed_math.h>
+#include <ae-numeric/fixed_point.h>
 
 namespace ae::test_fixed_math {
 

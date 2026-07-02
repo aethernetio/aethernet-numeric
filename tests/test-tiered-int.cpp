@@ -25,7 +25,7 @@
 #include <iostream>
 #include <type_traits>
 
-#include "numeric/tiered_int.h"
+#include <ae-numeric/tiered_int.h>
 
 #include "mstream.h"
 

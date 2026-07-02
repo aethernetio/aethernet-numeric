@@ -14,15 +14,20 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_PACKED_RING_H_
-#define NUMERIC_PACKED_RING_H_
+#ifndef AE_NUMERIC_PACKED_RING_H_
+#define AE_NUMERIC_PACKED_RING_H_
 
+#include <algorithm>
+#include <array>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
+#include <span>
 #include <type_traits>
 
-#include "numeric/wire_io.h"
+#include "ae-numeric/wire_io.h"
 
 namespace ae {
 
@@ -58,6 +63,9 @@ class PackedRing {
 
   static constexpr std::size_t kCapacity = StorageBytes;
   static constexpr std::size_t kMaxRecordBytes = wire_traits<T>::kMaxWireBytes;
+  static constexpr Index kEndPos = static_cast<Index>(kCapacity);
+
+  static_assert(kCapacity > 0, "PackedRing capacity must be positive");
 
   // Forward/input iterator yielding decoded T values by value. It never exposes
   // a reference into the byte storage, since records do not live there as T.
@@ -69,17 +77,24 @@ class PackedRing {
     using difference_type = std::ptrdiff_t;
     using iterator_category = std::input_iterator_tag;
 
-    iterator() = default;
-    iterator(const PackedRing* ring, Index pos, Index ordinal)
-        : ring_(ring), pos_(pos), ordinal_(ordinal) {}
+    constexpr iterator() = default;
+    constexpr iterator(PackedRing const* ring, Index pos, Index remaining)
+        : ring_(ring), pos_(pos), remaining_(remaining) {}
 
     T operator*() const {
+      assert(ring_ != nullptr);
+      assert(pos_ != kEndPos);
       return ring_->ReadValueAt(pos_);
     }
 
     iterator& operator++() {
+      if (remaining_ <= Index{1}) {
+        pos_ = kEndPos;
+        remaining_ = 0;
+        return *this;
+      }
       pos_ = ring_->NextPos(pos_);
-      ++ordinal_;
+      --remaining_;
       return *this;
     }
     iterator operator++(int) {
@@ -88,38 +103,38 @@ class PackedRing {
       return tmp;
     }
 
-    bool operator==(const iterator& other) const {
-      return ordinal_ == other.ordinal_;
+    constexpr bool operator==(iterator const& other) const {
+      return ring_ == other.ring_ && pos_ == other.pos_;
     }
-    bool operator!=(const iterator& other) const {
+    constexpr bool operator!=(iterator const& other) const {
       return !(*this == other);
     }
 
    private:
-    const PackedRing* ring_ = nullptr;
-    Index pos_ = 0;
-    Index ordinal_ = 0;
+    PackedRing const* ring_ = nullptr;
+    Index pos_ = kEndPos;
+    Index remaining_ = 0;
   };
 
   PackedRing() = default;
 
-  bool empty() const {
+  constexpr bool empty() const {
     return count_ == 0;
   }
-  Index size() const {
+  constexpr Index size() const {
     return count_;
   }
-  Index CapacityBytes() const {
+  constexpr Index CapacityBytes() const {
     return static_cast<Index>(kCapacity);
   }
-  Index UsedBytes() const {
+  constexpr Index UsedBytes() const {
     return used_;
   }
-  Index FreeBytes() const {
+  constexpr Index FreeBytes() const {
     return static_cast<Index>(kCapacity - static_cast<std::size_t>(used_));
   }
 
-  void clear() {
+  constexpr void clear() {
     head_ = 0;
     tail_ = 0;
     used_ = 0;
@@ -131,8 +146,9 @@ class PackedRing {
   }
 
   bool push(T value) {
-    std::uint8_t temp[kMaxRecordBytes];
-    const std::size_t n = Serialize<T>(value, temp);
+    std::array<std::uint8_t, kMaxRecordBytes> temp{};
+    std::span<std::uint8_t> temp_bytes(temp);
+    std::size_t const n = Serialize<T>(value, temp_bytes.data());
     if (n > kCapacity) {
       return false;
     }
@@ -142,9 +158,7 @@ class PackedRing {
     if (static_cast<std::size_t>(FreeBytes()) < n) {
       return false;
     }
-    for (std::size_t i = 0; i < n; ++i) {
-      storage_[Wrap(static_cast<std::size_t>(tail_) + i)] = temp[i];
-    }
+    WriteAt(tail_, std::span<std::uint8_t const>(temp_bytes.data(), n));
     tail_ = Wrap(static_cast<std::size_t>(tail_) + n);
     used_ = static_cast<Index>(static_cast<std::size_t>(used_) + n);
     ++count_;
@@ -162,11 +176,11 @@ class PackedRing {
     return true;
   }
 
-  iterator begin() const {
-    return iterator(this, head_, 0);
+  constexpr iterator begin() const {
+    return iterator(this, empty() ? kEndPos : head_, count_);
   }
-  iterator end() const {
-    return iterator(this, tail_, count_);
+  constexpr iterator end() const {
+    return iterator(this, kEndPos, 0);
   }
 
  private:
@@ -175,29 +189,55 @@ class PackedRing {
   }
 
   // Number of valid bytes from pos forward, in logical (front-to-back) order.
-  std::size_t AvailFrom(Index pos) const {
+  constexpr std::size_t AvailFrom(Index pos) const {
     const std::size_t offset = (static_cast<std::size_t>(pos) + kCapacity -
                                 static_cast<std::size_t>(head_)) %
                                kCapacity;
     return static_cast<std::size_t>(used_) - offset;
   }
 
-  DeserializeResult<T> ReadAt(Index pos) const {
-    std::uint8_t temp[kMaxRecordBytes];
-    const std::size_t avail = AvailFrom(pos);
-    const std::size_t to_copy =
-        avail < kMaxRecordBytes ? avail : kMaxRecordBytes;
-    for (std::size_t i = 0; i < to_copy; ++i) {
-      temp[i] = storage_[Wrap(static_cast<std::size_t>(pos) + i)];
+  void CopyFrom(Index pos, std::span<std::uint8_t> out) const {
+    std::size_t const n = out.size();
+    if (n == 0) {
+      return;
     }
-    return Deserialize<T>(temp, to_copy);
+
+    std::size_t const offset = static_cast<std::size_t>(pos);
+    std::size_t const first = std::min(n, kCapacity - offset);
+    std::memcpy(out.data(), storage_ + offset, first);
+    if (first < n) {
+      std::memcpy(out.data() + first, storage_, n - first);
+    }
+  }
+
+  void WriteAt(Index pos, std::span<std::uint8_t const> bytes) {
+    std::size_t const n = bytes.size();
+    if (n == 0) {
+      return;
+    }
+
+    std::size_t const offset = static_cast<std::size_t>(pos);
+    std::size_t const first = std::min(n, kCapacity - offset);
+    std::memcpy(storage_ + offset, bytes.data(), first);
+    if (first < n) {
+      std::memcpy(storage_, bytes.data() + first, n - first);
+    }
+  }
+
+  DeserializeResult<T> ReadAt(Index pos) const {
+    std::array<std::uint8_t, kMaxRecordBytes> temp{};
+    std::size_t const avail = AvailFrom(pos);
+    std::size_t const to_copy = std::min(avail, kMaxRecordBytes);
+    std::span<std::uint8_t> bytes(temp.data(), to_copy);
+    CopyFrom(pos, bytes);
+    return Deserialize<T>(bytes.data(), bytes.size());
   }
 
   T ReadValueAt(Index pos) const {
     return ReadAt(pos).value;
   }
   std::size_t SizeAt(Index pos) const {
-    return ReadAt(pos).BytesRead;
+    return ReadAt(pos).bytes_read;
   }
   Index NextPos(Index pos) const {
     return Wrap(static_cast<std::size_t>(pos) + SizeAt(pos));
@@ -212,4 +252,4 @@ class PackedRing {
 
 }  // namespace ae
 
-#endif  // NUMERIC_PACKED_RING_H_
+#endif  // AE_NUMERIC_PACKED_RING_H_

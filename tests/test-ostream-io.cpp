@@ -18,7 +18,7 @@
 
 #include <sstream>
 
-#include "numeric/ostream_io.h"
+#include <ae-numeric/ostream_io.h>
 
 namespace ae::test_ostream_io {
 

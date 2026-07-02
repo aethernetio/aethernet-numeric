@@ -18,11 +18,11 @@
 
 #include <cstdint>
 
-#include "numeric/exponential.h"
-#include "numeric/exponential_wire_io.h"
-#include "numeric/fixed_point.h"
-#include "numeric/tiered_int.h"
-#include "numeric/wire_io.h"
+#include <ae-numeric/exponential.h>
+#include <ae-numeric/exponential_wire_io.h>
+#include <ae-numeric/fixed_point.h>
+#include <ae-numeric/tiered_int.h>
+#include <ae-numeric/wire_io.h>
 
 namespace ae::test_wire_io {
 
@@ -36,7 +36,7 @@ void test_BuiltinIntegerUnsigned() {
 
   const auto r = Deserialize<std::uint16_t>(buf, n);
   TEST_ASSERT_EQUAL(0x1234, r.value);
-  TEST_ASSERT_EQUAL(2, r.BytesRead);
+  TEST_ASSERT_EQUAL(2, r.bytes_read);
 }
 
 void test_BuiltinIntegerSigned() {
@@ -48,7 +48,7 @@ void test_BuiltinIntegerSigned() {
 
     const auto r = Deserialize<std::int8_t>(buf, n);
     TEST_ASSERT_EQUAL(-1, r.value);
-    TEST_ASSERT_EQUAL(1, r.BytesRead);
+    TEST_ASSERT_EQUAL(1, r.bytes_read);
   }
 
   {
@@ -60,7 +60,7 @@ void test_BuiltinIntegerSigned() {
 
     const auto r = Deserialize<std::int16_t>(buf, n);
     TEST_ASSERT_EQUAL(-2, r.value);
-    TEST_ASSERT_EQUAL(2, r.BytesRead);
+    TEST_ASSERT_EQUAL(2, r.bytes_read);
   }
 
   {
@@ -74,7 +74,7 @@ void test_BuiltinIntegerSigned() {
 
     const auto r = Deserialize<std::int32_t>(buf, n);
     TEST_ASSERT_EQUAL(-123456, r.value);
-    TEST_ASSERT_EQUAL(4, r.BytesRead);
+    TEST_ASSERT_EQUAL(4, r.bytes_read);
   }
 }
 
@@ -90,7 +90,7 @@ void test_TieredInt() {
 
   const auto r = Deserialize<T>(buf, n);
   TEST_ASSERT_EQUAL(123, r.value.value_);
-  TEST_ASSERT_EQUAL(n, r.BytesRead);
+  TEST_ASSERT_EQUAL(n, r.bytes_read);
 }
 
 void test_FixedPointBuiltinRep() {

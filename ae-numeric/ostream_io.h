@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_OSTREAM_IO_H_
-#define NUMERIC_OSTREAM_IO_H_
+#ifndef AE_NUMERIC_OSTREAM_IO_H_
+#define AE_NUMERIC_OSTREAM_IO_H_
 
 #include <ios>
 #include <ostream>
 #include <system_error>
 
-#include "numeric/text_io.h"
+#include "ae-numeric/text_io.h"
 
 namespace ae {
 namespace ostream_io_internal {
@@ -30,7 +30,7 @@ template <typename T>
 std::ostream& WriteNumeric(std::ostream& os, T const& value) {
   char buf[MaxTextSize<T>()];
   auto const result = ToChars(buf, buf + sizeof(buf), value);
-  if (result.ec == std::errc{}) {
+  if (result.ec == std::errc()) {
     os.write(buf, static_cast<std::streamsize>(result.ptr - buf));
   } else {
     os.setstate(std::ios_base::badbit);
@@ -54,4 +54,4 @@ std::ostream& operator<<(std::ostream& os, FixedPoint<Rep, Max> const& value) {
 
 }  // namespace ae
 
-#endif  // NUMERIC_OSTREAM_IO_H_
+#endif  // AE_NUMERIC_OSTREAM_IO_H_

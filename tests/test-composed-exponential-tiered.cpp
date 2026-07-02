@@ -19,12 +19,12 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "numeric/exponential.h"
-#include "numeric/exponential_wire_io.h"
-#include "numeric/fixed_point.h"
-#include "numeric/packed_ring.h"
-#include "numeric/tiered_int.h"
-#include "numeric/wire_io.h"
+#include <ae-numeric/exponential.h>
+#include <ae-numeric/exponential_wire_io.h>
+#include <ae-numeric/fixed_point.h>
+#include <ae-numeric/packed_ring.h>
+#include <ae-numeric/tiered_int.h>
+#include <ae-numeric/wire_io.h>
 
 namespace ae::test_composed_exponential_tiered {
 
@@ -39,7 +39,7 @@ bool ExponentialCodeWireRoundTrip(const E& value) {
   std::uint8_t buf[MaxWireBytes<E>()] = {};
   const auto n = Serialize(value, buf);
   const auto r = Deserialize<E>(buf, n);
-  return r.BytesRead == n && r.value.CodeValue() == value.CodeValue();
+  return r.bytes_read == n && r.value.CodeValue() == value.CodeValue();
 }
 
 using IntRuntime = FixedPoint<std::uint32_t, 60.0>;

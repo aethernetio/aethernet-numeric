@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_FIXED_POINT_H_
-#define NUMERIC_FIXED_POINT_H_
+#ifndef AE_NUMERIC_FIXED_POINT_H_
+#define AE_NUMERIC_FIXED_POINT_H_
 
+#include <concepts>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -24,9 +25,9 @@
 #include <type_traits>
 #include <utility>
 
-#include "numeric/decimal.h"
-#include "numeric/numeric_traits.h"
-#include "numeric/runtime_numeric_traits.h"
+#include "ae-numeric/decimal.h"
+#include "ae-numeric/numeric_traits.h"
+#include "ae-numeric/runtime_numeric_traits.h"
 
 namespace ae {
 
@@ -461,6 +462,45 @@ MakeRawFromLogicalConstexpr(std::integral_constant<std::int64_t, Num>,
   return MakeRawFromLogical<Rep, Max, kIsSigned>(Num, Den);
 }
 
+template <bool kSigned, int kDigits>
+struct StorageForDigits;
+
+template <int kDigits>
+struct StorageForDigits<false, kDigits> {
+  static_assert(kDigits <= 64,
+                "PromoteRep: unsigned result requires more than 64 bits");
+
+  using type = std::conditional_t<
+      (kDigits <= 8), std::uint8_t,
+      std::conditional_t<
+          (kDigits <= 16), std::uint16_t,
+          std::conditional_t<(kDigits <= 32), std::uint32_t, std::uint64_t>>>;
+};
+
+template <int kDigits>
+struct StorageForDigits<true, kDigits> {
+  static_assert(kDigits <= 63,
+                "PromoteRep: signed result requires more than 64 bits");
+
+  using type = std::conditional_t<
+      (kDigits <= 7), std::int8_t,
+      std::conditional_t<
+          (kDigits <= 15), std::int16_t,
+          std::conditional_t<(kDigits <= 31), std::int32_t, std::int64_t>>>;
+};
+
+template <typename RepA, typename RepB>
+struct PromoteIntegralRep {
+  static constexpr bool kIsSigned =
+      std::is_signed_v<RepA> || std::is_signed_v<RepB>;
+  static constexpr int kDigits =
+      std::numeric_limits<RepA>::digits > std::numeric_limits<RepB>::digits
+          ? std::numeric_limits<RepA>::digits
+          : std::numeric_limits<RepB>::digits;
+
+  using type = typename StorageForDigits<kIsSigned, kDigits>::type;
+};
+
 }  // namespace fixed_point_internal
 
 template <auto V>
@@ -477,85 +517,12 @@ struct PromoteRep<Rep, Rep> {
   using type = Rep;
 };
 
-template <>
-struct PromoteRep<std::uint8_t, std::uint8_t> {
-  using type = std::uint8_t;
-};
-template <>
-struct PromoteRep<std::uint8_t, std::uint16_t> {
-  using type = std::uint16_t;
-};
-template <>
-struct PromoteRep<std::uint16_t, std::uint8_t> {
-  using type = std::uint16_t;
-};
-template <>
-struct PromoteRep<std::uint16_t, std::uint16_t> {
-  using type = std::uint16_t;
-};
-template <>
-struct PromoteRep<std::uint16_t, std::uint32_t> {
-  using type = std::uint32_t;
-};
-template <>
-struct PromoteRep<std::uint32_t, std::uint16_t> {
-  using type = std::uint32_t;
-};
-template <>
-struct PromoteRep<std::uint32_t, std::uint32_t> {
-  using type = std::uint32_t;
-};
-template <>
-struct PromoteRep<std::int8_t, std::int8_t> {
-  using type = std::int8_t;
-};
-template <>
-struct PromoteRep<std::int8_t, std::int16_t> {
-  using type = std::int16_t;
-};
-template <>
-struct PromoteRep<std::int16_t, std::int8_t> {
-  using type = std::int16_t;
-};
-template <>
-struct PromoteRep<std::int16_t, std::int16_t> {
-  using type = std::int16_t;
-};
-template <>
-struct PromoteRep<std::int16_t, std::int32_t> {
-  using type = std::int32_t;
-};
-template <>
-struct PromoteRep<std::int32_t, std::int16_t> {
-  using type = std::int32_t;
-};
-template <>
-struct PromoteRep<std::int32_t, std::int32_t> {
-  using type = std::int32_t;
-};
-template <>
-struct PromoteRep<std::uint8_t, std::int8_t> {
-  using type = std::int16_t;
-};
-template <>
-struct PromoteRep<std::int8_t, std::uint8_t> {
-  using type = std::int16_t;
-};
-template <>
-struct PromoteRep<std::uint16_t, std::int16_t> {
-  using type = std::int32_t;
-};
-template <>
-struct PromoteRep<std::int16_t, std::uint16_t> {
-  using type = std::int32_t;
-};
-template <>
-struct PromoteRep<std::uint32_t, std::int32_t> {
-  using type = std::int64_t;
-};
-template <>
-struct PromoteRep<std::int32_t, std::uint32_t> {
-  using type = std::int64_t;
+template <typename RepA, typename RepB>
+  requires(std::is_integral_v<RepA> && std::is_integral_v<RepB> &&
+           !std::is_same_v<RepA, bool> && !std::is_same_v<RepB, bool>)
+struct PromoteRep<RepA, RepB> {
+  using type =
+      typename fixed_point_internal::PromoteIntegralRep<RepA, RepB>::type;
 };
 
 template <typename Rep, auto Max>
@@ -840,9 +807,9 @@ constexpr Target DivTo(L lhs, R rhs) {
   const auto lhs_raw = lhs.RawValue();
   const auto rhs_raw = rhs.RawValue();
 
-  if (rhs_raw == typename Target::rep_value_type {0}) {
+  if (rhs_raw == static_cast<typename Target::rep_value_type>(0)) {
     if constexpr (Target::kIsSigned) {
-      return lhs_raw >= typename Target::rep_value_type {0}
+      return lhs_raw >= static_cast<typename Target::rep_value_type>(0)
                  ? Target::FromRaw(Target::kRawMax)
                  : Target::FromRaw(Target::kRawMin);
     }
@@ -901,4 +868,4 @@ struct numeric_traits<FixedPoint<Rep, Max>> {
 
 }  // namespace ae
 
-#endif  // NUMERIC_FIXED_POINT_H_
+#endif  // AE_NUMERIC_FIXED_POINT_H_

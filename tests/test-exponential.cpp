@@ -18,11 +18,11 @@
 
 #include <cstdint>
 
-#include "numeric/exponential.h"
-#include "numeric/exponential_floating_runtime.h"
-#include "numeric/fixed_point.h"
-#include "numeric/runtime_numeric_traits.h"
-#include "numeric/tiered_int.h"
+#include <ae-numeric/exponential.h>
+#include <ae-numeric/exponential_floating_runtime.h>
+#include <ae-numeric/fixed_point.h>
+#include <ae-numeric/runtime_numeric_traits.h>
+#include <ae-numeric/tiered_int.h>
 
 namespace ae::test_exponential {
 

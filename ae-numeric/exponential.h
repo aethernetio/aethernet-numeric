@@ -14,20 +14,21 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_EXPONENTIAL_H_
-#define NUMERIC_EXPONENTIAL_H_
+#ifndef AE_NUMERIC_EXPONENTIAL_H_
+#define AE_NUMERIC_EXPONENTIAL_H_
 
 #include <bit>
+#include <concepts>
 #include <cstdint>
 #include <optional>
 #include <type_traits>
 #include <utility>
 
-#include "numeric/exponential_math_policy.h"
-#include "numeric/fixed_math.h"
-#include "numeric/fixed_point.h"
-#include "numeric/numeric_traits.h"
-#include "numeric/runtime_numeric_traits.h"
+#include "ae-numeric/exponential_math_policy.h"
+#include "ae-numeric/fixed_math.h"
+#include "ae-numeric/fixed_point.h"
+#include "ae-numeric/numeric_traits.h"
+#include "ae-numeric/runtime_numeric_traits.h"
 
 namespace ae {
 namespace exponential_internal {
@@ -43,7 +44,7 @@ constexpr auto DefaultBoundaryCode() {
 }
 
 template <typename WireT>
-constexpr auto WireRawValue(const WireT& wire) {
+constexpr auto WireRawValue(WireT const& wire) {
   if constexpr (requires { wire.value_; }) {
     return wire.value_;
   } else {
@@ -83,7 +84,7 @@ constexpr WireValue ClampIndex(WireValue index, WireValue max_index) {
 }
 
 template <typename RuntimeT>
-constexpr RuntimeT RuntimeSub(const RuntimeT& lhs, const RuntimeT& rhs) {
+constexpr RuntimeT RuntimeSub(RuntimeT const& lhs, RuntimeT const& rhs) {
   if constexpr (std::is_floating_point_v<RuntimeT>) {
     return lhs - rhs;
   } else if constexpr (numeric_traits<RuntimeT>::kIsFixedPoint) {
@@ -144,142 +145,138 @@ constexpr WireValue EncodeMagnitudeIndexRaw(LogT log_min,
   return ClampIndex(static_cast<WireValue>(index_offset + 1), max_index);
 }
 
-template <typename WorkT>
-constexpr WorkT FloatToWork(float value) {
-  const auto bits = std::bit_cast<std::uint32_t>(value);
-  if (bits == 0U) {
-    return WorkT::FromInteger(0);
-  }
+template <typename FloatingT>
+struct FloatingWorkCodec;
 
-  const int exponent = static_cast<int>((bits >> 23U) & 0xFFU) - 127;
-  std::uint64_t mantissa =
-      (static_cast<std::uint64_t>(bits & 0x7FFFFFU) | std::uint64_t{0x800000U});
-  const int shift =
-      exponent + (WorkT::kScaleExp < 0 ? -WorkT::kScaleExp : 0) - 23;
+inline constexpr std::int32_t kMaxMantissaShift = 62;
+
+template <typename WorkT>
+constexpr WorkT WorkFromMantissa(std::uint64_t mantissa, std::int32_t exponent,
+                                 std::int32_t mantissa_bits) {
+  std::int32_t const scale_bits = WorkT::kScaleExp < 0 ? -WorkT::kScaleExp : 0;
+  std::int32_t const shift = exponent + scale_bits - mantissa_bits;
 
   if (shift >= 0) {
-    for (int i = 0; i < shift && i < 62; ++i) {
+    for (std::int32_t i = 0; i < shift && i < kMaxMantissaShift; ++i) {
       mantissa <<= 1U;
     }
   } else {
-    for (int i = 0; i < -shift && i < 62; ++i) {
+    for (std::int32_t i = 0; i < -shift && i < kMaxMantissaShift; ++i) {
       mantissa =
           static_cast<std::uint64_t>(fixed_point_internal::RoundDivNearest(
               static_cast<std::int64_t>(mantissa), std::int64_t{2}));
     }
   }
 
+  using RepValue = typename WorkT::rep_value_type;
+  RepValue const raw = mantissa > static_cast<std::uint64_t>(WorkT::kRawMax)
+                           ? WorkT::kRawMax
+                           : static_cast<RepValue>(mantissa);
   return WorkT::FromRaw(
       fixed_point_internal::RepFromRawValue<typename WorkT::rep_type>(
-          WorkT::ClampRaw(
-              static_cast<typename WorkT::rep_value_type>(mantissa))));
+          WorkT::ClampRaw(raw)));
 }
 
-template <typename WorkT>
-constexpr WorkT DoubleToWork(double value) {
-  const auto bits = std::bit_cast<std::uint64_t>(value);
-  if (bits == 0ULL) {
-    return WorkT::FromInteger(0);
+constexpr std::int32_t HighestSetBit(std::uint64_t value) noexcept {
+  if (value == 0U) {
+    return -1;
   }
-  const int exponent = static_cast<int>((bits >> 52U) & 0x7FFU) - 1023;
-  std::uint64_t mantissa =
-      (bits & 0xFFFFFFFFFFFFFULL) | (std::uint64_t{1} << 52U);
-  const int shift =
-      exponent + (WorkT::kScaleExp < 0 ? -WorkT::kScaleExp : 0) - 52;
-  if (shift >= 0) {
-    for (int i = 0; i < shift && i < 62; ++i) {
-      mantissa <<= 1U;
-    }
-  } else {
-    for (int i = 0; i < -shift && i < 62; ++i) {
-      mantissa =
-          static_cast<std::uint64_t>(fixed_point_internal::RoundDivNearest(
-              static_cast<std::int64_t>(mantissa), std::int64_t{2}));
-    }
-  }
-  return WorkT::FromRaw(
-      fixed_point_internal::RepFromRawValue<typename WorkT::rep_type>(
-          WorkT::ClampRaw(
-              static_cast<typename WorkT::rep_value_type>(mantissa))));
+  return static_cast<std::int32_t>(63U - std::countl_zero(value));
 }
 
-constexpr int HighestSetBit(std::uint64_t value) {
-  int bit = -1;
-  for (int i = 63; i >= 0; --i) {
-    if ((value >> static_cast<unsigned>(i)) & 1U) {
-      bit = i;
-      break;
-    }
-  }
-  return bit;
-}
-
-template <typename WorkT>
-constexpr float WorkToFloat(WorkT value) {
-  if (value.RawValue() == typename WorkT::rep_value_type{0}) {
-    return 0.0f;
+template <typename WorkT, typename FloatingT>
+constexpr FloatingT MantissaToFloating(std::uint64_t mantissa,
+                                       std::int32_t exponent_bias,
+                                       std::int32_t mantissa_bits) {
+  if (mantissa == 0U) {
+    return FloatingT{0};
   }
 
-  std::uint64_t mantissa = value.RawValue();
-  const int msb = HighestSetBit(mantissa);
-  const int scale_bits = WorkT::kScaleExp < 0 ? -WorkT::kScaleExp : 0;
-  const int exponent = msb - scale_bits + 127;
-  const int shift = msb - 23;
+  std::int32_t const msb = HighestSetBit(mantissa);
+  std::int32_t const scale_bits = WorkT::kScaleExp < 0 ? -WorkT::kScaleExp : 0;
+  std::int32_t const exponent = msb - scale_bits + exponent_bias;
+  std::int32_t const shift = msb - mantissa_bits;
   if (shift >= 0) {
     mantissa >>= static_cast<unsigned>(shift);
   } else {
     mantissa <<= static_cast<unsigned>(-shift);
   }
-  const std::uint32_t bits = (static_cast<std::uint32_t>(exponent) << 23U) |
-                             (static_cast<std::uint32_t>(mantissa) & 0x7FFFFFU);
-  return std::bit_cast<float>(bits);
-}
 
-template <typename WorkT>
-constexpr double WorkToDouble(WorkT value) {
-  if (value.RawValue() == typename WorkT::rep_value_type{0}) {
-    return 0.0;
-  }
-
-  std::uint64_t mantissa = value.RawValue();
-  const int msb = HighestSetBit(mantissa);
-  const int scale_bits = WorkT::kScaleExp < 0 ? -WorkT::kScaleExp : 0;
-  const int exponent = msb - scale_bits + 1023;
-  const int shift = msb - 52;
-  if (shift >= 0) {
-    mantissa >>= static_cast<unsigned>(shift);
+  if constexpr (std::same_as<FloatingT, float>) {
+    std::uint32_t const bits =
+        (static_cast<std::uint32_t>(exponent) << 23U) |
+        (static_cast<std::uint32_t>(mantissa) & 0x7FFFFFU);
+    return std::bit_cast<float>(bits);
   } else {
-    mantissa <<= static_cast<unsigned>(-shift);
-  }
-  const std::uint64_t bits = (static_cast<std::uint64_t>(exponent) << 52U) |
-                             (mantissa & 0xFFFFFFFFFFFFFULL);
-  return std::bit_cast<double>(bits);
-}
-
-template <typename WorkT, typename FloatT>
-  requires std::is_floating_point_v<FloatT>
-constexpr WorkT PositiveFloatToWork(FloatT value) {
-  if constexpr (std::same_as<FloatT, double>) {
-    return DoubleToWork<WorkT>(value);
-  } else {
-    return FloatToWork<WorkT>(static_cast<float>(value));
+    std::uint64_t const bits = (static_cast<std::uint64_t>(exponent) << 52U) |
+                               (mantissa & 0xFFFFFFFFFFFFFULL);
+    return std::bit_cast<double>(bits);
   }
 }
 
-template <typename WorkT, typename FloatT>
-  requires std::is_floating_point_v<FloatT>
-constexpr FloatT WorkToPositiveFloat(WorkT value) {
-  if constexpr (std::same_as<FloatT, double>) {
-    return WorkToDouble(value);
-  } else {
-    return WorkToFloat(value);
+template <>
+struct FloatingWorkCodec<float> {
+  template <typename WorkT>
+  static constexpr WorkT ToWork(float value) {
+    std::uint32_t const bits = std::bit_cast<std::uint32_t>(value);
+    if (bits == 0U) {
+      return WorkT::FromInteger(0);
+    }
+
+    std::int32_t const exponent =
+        static_cast<std::int32_t>((bits >> 23U) & 0xFFU) - 127;
+    std::uint64_t const mantissa =
+        (static_cast<std::uint64_t>(bits & 0x7FFFFFU) |
+         std::uint64_t{0x800000U});
+    return WorkFromMantissa<WorkT>(mantissa, exponent, 23);
   }
+
+  template <typename WorkT>
+  static constexpr float FromWork(WorkT value) {
+    return MantissaToFloating<WorkT, float>(
+        static_cast<std::uint64_t>(value.RawValue()), 127, 23);
+  }
+};
+
+template <>
+struct FloatingWorkCodec<double> {
+  template <typename WorkT>
+  static constexpr WorkT ToWork(double value) {
+    std::uint64_t const bits = std::bit_cast<std::uint64_t>(value);
+    if (bits == 0ULL) {
+      return WorkT::FromInteger(0);
+    }
+
+    std::int32_t const exponent =
+        static_cast<std::int32_t>((bits >> 52U) & 0x7FFU) - 1023;
+    std::uint64_t const mantissa =
+        (bits & 0xFFFFFFFFFFFFFULL) | (std::uint64_t{1} << 52U);
+    return WorkFromMantissa<WorkT>(mantissa, exponent, 52);
+  }
+
+  template <typename WorkT>
+  static constexpr double FromWork(WorkT value) {
+    return MantissaToFloating<WorkT, double>(
+        static_cast<std::uint64_t>(value.RawValue()), 1023, 52);
+  }
+};
+
+template <typename WorkT, typename FloatingT>
+  requires std::is_floating_point_v<FloatingT>
+constexpr WorkT FloatingToWork(FloatingT value) {
+  return FloatingWorkCodec<FloatingT>::template ToWork<WorkT>(value);
+}
+
+template <typename FloatingT, typename WorkT>
+  requires std::is_floating_point_v<FloatingT>
+constexpr FloatingT WorkToFloating(WorkT value) {
+  return FloatingWorkCodec<FloatingT>::template FromWork<WorkT>(value);
 }
 
 template <typename WorkT, typename RuntimeT>
 constexpr WorkT ToWorkRuntime(RuntimeT value) {
   if constexpr (std::is_floating_point_v<RuntimeT>) {
-    return PositiveFloatToWork<WorkT>(value);
+    return FloatingToWork<WorkT>(value);
   } else if constexpr (numeric_traits<RuntimeT>::kIsFixedPoint) {
     return fixed_math::internal::cast_fixed<WorkT>(value);
   } else {
@@ -290,7 +287,7 @@ constexpr WorkT ToWorkRuntime(RuntimeT value) {
 template <typename RuntimeT, typename WorkT>
 constexpr RuntimeT FromWorkRuntime(WorkT value) {
   if constexpr (std::is_floating_point_v<RuntimeT>) {
-    return WorkToPositiveFloat<WorkT, RuntimeT>(value);
+    return WorkToFloating<RuntimeT>(value);
   } else if constexpr (numeric_traits<RuntimeT>::kIsFixedPoint) {
     return fixed_math::internal::cast_fixed<RuntimeT>(value);
   } else {
@@ -350,7 +347,7 @@ class Exponential {
   static_assert(RuntimeTraits::kIsSupported,
                 "Exponential RuntimeT is not supported. "
                 "Use FixedPoint/integer runtime, or include "
-                "numeric/exponential_floating_runtime.h for float/double.");
+                "ae-numeric/exponential_floating_runtime.h for float/double.");
   static_assert(numeric_traits<WireT>::kIsIntegerLike,
                 "Exponential WireT must be integer-like");
   static_assert(!numeric_traits<WireT>::kIsSigned,
@@ -365,8 +362,9 @@ class Exponential {
   static constexpr wire_value_type kPositiveBoundaryCode =
       kBoundaryCode - (kBoundaryCode % wire_value_type{2});
   static constexpr wire_value_type kNegativeBoundaryCode =
-      kBoundaryCode % wire_value_type {2} == wire_value_type {0}
-          ? static_cast<wire_value_type>(kBoundaryCode - wire_value_type {1})
+      (kBoundaryCode % static_cast<wire_value_type>(2) ==
+       static_cast<wire_value_type>(0))
+          ? static_cast<wire_value_type>(kBoundaryCode - wire_value_type{1})
           : kBoundaryCode;
   static constexpr wire_value_type kMaxMagnitudeIndex =
       kIsSigned ? static_cast<wire_value_type>(kPositiveBoundaryCode /
@@ -646,7 +644,7 @@ class Exponential {
     return FromCode(exponential_internal::WireFromValue<WireT>(code));
   }
 
-  constexpr Exponential operator-() const requires kIsSigned {
+  constexpr Exponential operator-() const requires(kIsSigned) {
     if (IsZero()) {
       return *this;
     }
@@ -768,4 +766,4 @@ struct numeric_traits<
 
 }  // namespace ae
 
-#endif  // NUMERIC_EXPONENTIAL_H_
+#endif  // AE_NUMERIC_EXPONENTIAL_H_

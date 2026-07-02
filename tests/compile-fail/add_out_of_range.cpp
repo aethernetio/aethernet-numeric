@@ -19,7 +19,7 @@
 
 #include <cstdint>
 
-#include "numeric/fixed_point.h"
+#include <ae-numeric/fixed_point.h>
 
 using F = ae::FixedPoint<std::uint8_t, 100.0>;
 

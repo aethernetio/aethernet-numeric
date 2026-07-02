@@ -17,7 +17,7 @@ cmake_minimum_required(VERSION 3.16)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project(test-numeric LANGUAGES CXX)
+project(test-ae-numeric LANGUAGES CXX)
 
 include(../cmake/CPM.cmake)
 
@@ -49,7 +49,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-type-size.cpp
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE numeric unity)
+target_link_libraries(${PROJECT_NAME} PRIVATE ae-numeric unity)
 
 # enable warnings and werror
 target_compile_options(${PROJECT_NAME} PRIVATE
@@ -70,7 +70,7 @@ foreach(fail_case
     exp_float_runtime)
   add_executable(fail-${fail_case} EXCLUDE_FROM_ALL
     compile-fail/${fail_case}.cpp)
-  target_link_libraries(fail-${fail_case} PRIVATE numeric)
+  target_link_libraries(fail-${fail_case} PRIVATE ae-numeric)
   add_test(NAME fail-${fail_case}
     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
       --target fail-${fail_case} --config $<CONFIG>)

@@ -21,8 +21,8 @@
 #include <type_traits>
 #include <vector>
 
-#include "numeric/tiered_int.h"
-#include "numeric/tiered_int_view.h"
+#include <ae-numeric/tiered_int.h>
+#include <ae-numeric/tiered_int_view.h>
 
 namespace ae::test_tiered_int_view {
 

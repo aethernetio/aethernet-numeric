@@ -20,12 +20,12 @@
 #include <cstdint>
 #include <type_traits>
 
-#include "numeric/exponential.h"
-#include "numeric/exponential_wire_io.h"
-#include "numeric/fixed_point.h"
-#include "numeric/packed_ring.h"
-#include "numeric/tiered_int.h"
-#include "numeric/wire_io.h"
+#include <ae-numeric/exponential.h>
+#include <ae-numeric/exponential_wire_io.h>
+#include <ae-numeric/fixed_point.h>
+#include <ae-numeric/packed_ring.h>
+#include <ae-numeric/tiered_int.h>
+#include <ae-numeric/wire_io.h>
 
 namespace ae::test_packed_ring {
 

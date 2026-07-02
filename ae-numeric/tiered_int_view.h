@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_TIERED_INT_VIEW_H_
-#define NUMERIC_TIERED_INT_VIEW_H_
+#ifndef AE_NUMERIC_TIERED_INT_VIEW_H_
+#define AE_NUMERIC_TIERED_INT_VIEW_H_
 
 #include <cassert>
 #include <cstddef>
@@ -24,7 +24,7 @@
 #include <ranges>
 #include <span>
 
-#include "numeric/tiered_int.h"
+#include "ae-numeric/tiered_int.h"
 
 namespace ae {
 
@@ -86,8 +86,7 @@ class TieredIntView
       assert(current_ != end_);
 
       value_type value{};
-      std::size_t const remaining =
-          static_cast<std::size_t>(end_ - current_);
+      std::size_t const remaining = static_cast<std::size_t>(end_ - current_);
       std::size_t const consumed = value.Deserialize(current_, remaining);
 
       assert(consumed != 0);
@@ -150,4 +149,4 @@ inline constexpr bool enable_borrowed_range<ae::TieredIntView<TieredIntT>> =
 
 }  // namespace std::ranges
 
-#endif  // NUMERIC_TIERED_INT_VIEW_H_
+#endif  // AE_NUMERIC_TIERED_INT_VIEW_H_

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_RUNTIME_NUMERIC_TRAITS_H_
-#define NUMERIC_RUNTIME_NUMERIC_TRAITS_H_
+#ifndef AE_NUMERIC_RUNTIME_NUMERIC_TRAITS_H_
+#define AE_NUMERIC_RUNTIME_NUMERIC_TRAITS_H_
 
 #include <concepts>
 #include <cstdint>
@@ -102,4 +102,4 @@ struct runtime_numeric_traits<T> {
 
 }  // namespace ae
 
-#endif  // NUMERIC_RUNTIME_NUMERIC_TRAITS_H_
+#endif  // AE_NUMERIC_RUNTIME_NUMERIC_TRAITS_H_

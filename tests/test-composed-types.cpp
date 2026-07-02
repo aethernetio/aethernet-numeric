@@ -20,10 +20,10 @@
 #include <cstdint>
 #include <type_traits>
 
-#include "numeric/fixed_point.h"
-#include "numeric/packed_ring.h"
-#include "numeric/tiered_int.h"
-#include "numeric/wire_io.h"
+#include <ae-numeric/fixed_point.h>
+#include <ae-numeric/packed_ring.h>
+#include <ae-numeric/tiered_int.h>
+#include <ae-numeric/wire_io.h>
 
 namespace ae::test_composed_types {
 
@@ -38,7 +38,7 @@ bool WireRoundTripEqual(const T& value) {
   std::uint8_t buf[MaxWireBytes<T>()] = {};
   const auto n = Serialize(value, buf);
   const auto r = Deserialize<T>(buf, n);
-  return r.BytesRead == n && r.value == value;
+  return r.bytes_read == n && r.value == value;
 }
 
 // ---------------------------------------------------------------------------

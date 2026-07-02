@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef NUMERIC_TIERED_INT_H_
-#define NUMERIC_TIERED_INT_H_
+#ifndef AE_NUMERIC_TIERED_INT_H_
+#define AE_NUMERIC_TIERED_INT_H_
 
 #include <algorithm>
 #include <cassert>
@@ -385,7 +385,9 @@ struct TieredInt {
     return *this;
   }
 
-  constexpr operator ValueType() const noexcept { return value_; }
+  constexpr operator ValueType() const noexcept {
+    return value_;
+  }
 
  private:
   template <typename U>
@@ -394,8 +396,8 @@ struct TieredInt {
       tiered_int_internal::ValidateOrAssert(v >= kLower && v <= kUpper);
     } else {
       std::uint64_t const u = static_cast<std::uint64_t>(v);
-      tiered_int_internal::ValidateOrAssert(
-          u <= static_cast<std::uint64_t>(kUpper));
+      tiered_int_internal::ValidateOrAssert(u <=
+                                            static_cast<std::uint64_t>(kUpper));
       if constexpr (kLower > 0) {
         tiered_int_internal::ValidateOrAssert(
             u >= static_cast<std::uint64_t>(kLower));
@@ -410,8 +412,8 @@ struct TieredInt {
       tiered_int_internal::ValidateOrAssert(v >= 0);
     }
     std::uint64_t const u = static_cast<std::uint64_t>(v);
-    tiered_int_internal::ValidateOrAssert(
-        u <= static_cast<std::uint64_t>(kUpper));
+    tiered_int_internal::ValidateOrAssert(u <=
+                                          static_cast<std::uint64_t>(kUpper));
     return static_cast<ValueType>(v);
   }
 
@@ -427,21 +429,19 @@ struct TieredInt {
   static constexpr std::uint32_t kWireTiers[] = {
       tiered_int_internal::WireTierThreshold<WireCell, TierMaxVals>()...};
 
-  std::uint64_t DeserializeUnsignedMagnitude(std::uint8_t const* in,
-                                             std::size_t wire_bytes) const
-      noexcept {
+  std::uint64_t DeserializeUnsignedMagnitude(
+      std::uint8_t const* in, std::size_t wire_bytes) const noexcept {
     constexpr std::uint32_t kTiers[] = {
         tiered_int_internal::WireTierThreshold<WireCell, TierMaxVals>()...};
     std::size_t const kBaseSize = static_cast<std::size_t>(kBaseBytes);
 
-    std::uint64_t v =
-        tiered_int_internal::ReadLittleEndianU64(in, kBaseSize);
+    std::uint64_t v = tiered_int_internal::ReadLittleEndianU64(in, kBaseSize);
     if (wire_bytes == kBaseSize) {
       return v;
     }
 
-    std::uint64_t low = tiered_int_internal::ReadLittleEndianU64(
-        in + kBaseSize, kBaseSize);
+    std::uint64_t low =
+        tiered_int_internal::ReadLittleEndianU64(in + kBaseSize, kBaseSize);
     v = (v - kTiers[0] - 1) * kWord + kTiers[0] + 1 + low;
     if (wire_bytes == kBaseSize * 2) {
       return v;
@@ -473,7 +473,7 @@ struct TieredInt {
   }
 
   std::size_t SerializeUnsignedMagnitude(std::uint64_t v,
-                                       std::uint8_t* out) const noexcept {
+                                         std::uint8_t* out) const noexcept {
     assert(out != nullptr);
     constexpr std::uint32_t kTiers[] = {
         tiered_int_internal::WireTierThreshold<WireCell, TierMaxVals>()...};
@@ -486,7 +486,7 @@ struct TieredInt {
         auto b2 = (v - kTiers[2] - 1) % kMod;
         v = ((v - kTiers[2] - 1 - b2) / kMod) + kTiers[2] + 1;
         tiered_int_internal::WriteLittleEndianU64(out + kBaseSize * 4, b2,
-                                                    kBaseSize * 4);
+                                                  kBaseSize * 4);
         ret = kBaseSize * 8;
       }
     }
@@ -518,8 +518,7 @@ struct TieredInt {
       return 0;
     }
 
-    std::uint64_t v =
-        tiered_int_internal::ReadLittleEndianU64(in, kBaseSize);
+    std::uint64_t v = tiered_int_internal::ReadLittleEndianU64(in, kBaseSize);
     if (v <= kWireTiers[0]) {
       return kBaseSize;
     }
@@ -531,8 +530,8 @@ struct TieredInt {
     if constexpr (kNumTiers < 3) {
       return kTwoBaseSize;
     } else {
-      std::uint64_t low = tiered_int_internal::ReadLittleEndianU64(
-          in + kBaseSize, kBaseSize);
+      std::uint64_t low =
+          tiered_int_internal::ReadLittleEndianU64(in + kBaseSize, kBaseSize);
       v = (v - kWireTiers[0] - 1) * kWord + kWireTiers[0] + 1 + low;
       if (v <= kWireTiers[1]) {
         return kTwoBaseSize;
@@ -545,8 +544,8 @@ struct TieredInt {
       if constexpr (kNumTiers < 4) {
         return kFourBaseSize;
       } else {
-        low = tiered_int_internal::ReadLittleEndianU64(
-            in + kBaseSize * 2, kBaseSize * 2);
+        low = tiered_int_internal::ReadLittleEndianU64(in + kBaseSize * 2,
+                                                       kBaseSize * 2);
         constexpr auto kWord2 = tiered_int_internal::kWordPow<WireCell>(1);
         v = (v - kWireTiers[1] - 1) * kWord2 + kWireTiers[1] + 1 + low;
         if (v <= kWireTiers[2]) {
@@ -625,9 +624,9 @@ struct TieredInt {
 
 template <typename WireCell1, std::uint32_t... TierMaxVals1, typename WireCell2,
           std::uint32_t... TierMaxVals2>
-int TieredIntCompare(TieredInt<WireCell1, TierMaxVals1...> const& left,
-                     TieredInt<WireCell2, TierMaxVals2...> const& right)
-    noexcept {
+int TieredIntCompare(
+    TieredInt<WireCell1, TierMaxVals1...> const& left,
+    TieredInt<WireCell2, TierMaxVals2...> const& right) noexcept {
   using LeftValue = typename TieredInt<WireCell1, TierMaxVals1...>::ValueType;
   using RightValue = typename TieredInt<WireCell2, TierMaxVals2...>::ValueType;
   LeftValue const& l = left.value_;
@@ -684,8 +683,12 @@ class numeric_limits<ae::TieredInt<WireCell, TierMaxVals...>> {
   static constexpr typename T::ValueType lowest() noexcept {
     return T::kLower;
   }
-  static constexpr typename T::ValueType min() noexcept { return T::kLower; }
-  static constexpr typename T::ValueType max() noexcept { return T::kUpper; }
+  static constexpr typename T::ValueType min() noexcept {
+    return T::kLower;
+  }
+  static constexpr typename T::ValueType max() noexcept {
+    return T::kUpper;
+  }
 };
 
 template <typename WireCell, std::uint32_t... TierMaxVals>
@@ -701,4 +704,4 @@ struct hash<ae::TieredInt<WireCell, TierMaxVals...>> {
 
 }  // namespace std
 
-#endif  // NUMERIC_TIERED_INT_H_
+#endif  // AE_NUMERIC_TIERED_INT_H_

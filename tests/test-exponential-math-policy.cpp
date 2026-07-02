@@ -19,11 +19,11 @@
 #include <cstdint>
 #include <type_traits>
 
-#include "numeric/exponential.h"
-#include "numeric/exponential_math_policy.h"
-#include "numeric/fixed_math.h"
-#include "numeric/fixed_point.h"
-#include "numeric/tiered_int.h"
+#include <ae-numeric/exponential.h>
+#include <ae-numeric/exponential_math_policy.h>
+#include <ae-numeric/fixed_math.h>
+#include <ae-numeric/fixed_point.h>
+#include <ae-numeric/tiered_int.h>
 
 namespace ae::test_exponential_math_policy {
 
@@ -51,8 +51,8 @@ using SecondsE =
 using MillisE = Exponential<RuntimeMillis, Code, 1.0,
                             kLatencyBoundarySeconds * 1000.0, 510>;
 
-using SmallE = Exponential<RuntimeSmall, TieredInt<std::uint8_t, 254>, 1.0, 60.0,
-                           254>;
+using SmallE =
+    Exponential<RuntimeSmall, TieredInt<std::uint8_t, 254>, 1.0, 60.0, 254>;
 using SmallPolicy = SmallE::math_policy;
 
 static_assert(sizeof(SmallPolicy::work_type::rep_value_type) <=
