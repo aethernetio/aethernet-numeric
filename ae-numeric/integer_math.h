@@ -32,7 +32,8 @@
 namespace ae::integer_math {
 
 // Absolute value for int64 without signed negation UB at INT64_MIN.
-AE_INTEGER_MATH_CONSTEXPR std::uint64_t AbsI64ToU64(std::int64_t value) noexcept {
+AE_INTEGER_MATH_CONSTEXPR std::uint64_t AbsI64ToU64(
+    std::int64_t value) noexcept {
   if (value >= 0) {
     return static_cast<std::uint64_t>(value);
   }
@@ -94,9 +95,9 @@ AE_INTEGER_MATH_CONSTEXPR bool RoundDivU64(std::uint64_t a, std::uint64_t b,
 }
 
 // round_nearest((a * f) / d) for non-negative a,f,d with uint64-only math.
-AE_INTEGER_MATH_CONSTEXPR bool MulDivU64Nearest(std::uint64_t a, std::uint64_t f,
-                                                std::uint64_t d,
-                                                std::uint64_t& out) noexcept {
+AE_INTEGER_MATH_CONSTEXPR bool MulDivU64Nearest(
+    std::uint64_t a, std::uint64_t f, std::uint64_t d,
+    std::uint64_t& out) noexcept {
   if (d == 0) {
     return false;
   }
