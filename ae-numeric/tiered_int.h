@@ -22,6 +22,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <limits>
 #include <type_traits>
@@ -33,7 +34,14 @@ namespace tiered_int_internal {
 
 inline constexpr std::size_t kAbsoluteMaxWireBytes = 8;
 
-void ConstexprValidationFailure() noexcept;
+// Intentionally non-constexpr. Under C++20, `if (std::is_constant_evaluated())`
+// ODR-uses both branches (unlike C++23 `if consteval`), so this must be
+// defined. Calling it during constant evaluation still fails CE, which is how
+// out-of-range consteval/constexpr construction is rejected.
+[[noreturn]] inline void ConstexprValidationFailure() noexcept {
+  assert(false);
+  std::abort();
+}
 
 constexpr void ValidateOrAssert(bool condition) noexcept {
   if (condition) {
