@@ -52,6 +52,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-composed-exponential-tiered.cpp
   test-fixed-math.cpp
   test-integer-math.cpp
+  test-tiered-int-aether-compat.cpp
   test-type-size.cpp
 )
 
