@@ -27,6 +27,7 @@
 
 #include "ae-numeric/exponential.h"
 #include "ae-numeric/fixed_point.h"
+#include "ae-numeric/integer_math.h"
 #include "ae-numeric/numeric_traits.h"
 #include "ae-numeric/tiered_int.h"
 
@@ -177,9 +178,9 @@ constexpr bool RawFromRatioInRange(std::int64_t num, std::int64_t den,
     return false;
   }
 
-  const bool negative = (num < 0) ^ (den < 0);
-  num = num < 0 ? -num : num;
-  den = den < 0 ? -den : den;
+  bool const negative = (num < 0) ^ (den < 0);
+  std::uint64_t abs_num = integer_math::AbsI64ToU64(num);
+  std::uint64_t abs_den = integer_math::AbsI64ToU64(den);
 
   if constexpr (!std::is_signed_v<RepValue>) {
     if (negative) {
@@ -187,73 +188,51 @@ constexpr bool RawFromRatioInRange(std::int64_t num, std::int64_t den,
     }
   }
 
-#ifdef __SIZEOF_INT128__
-  using Wide = __int128_t;
-  Wide wnum = num;
-  Wide wden = den;
-
+  std::uint64_t magnitude = 0;
   if (scale_exp < 0) {
-    const unsigned shift = static_cast<unsigned>(-scale_exp);
-    for (unsigned i = 0; i < shift; ++i) {
-      wnum *= Wide{2};
+    unsigned const shift = static_cast<unsigned>(-scale_exp);
+    if (!integer_math::RoundMulPow2DivU64(abs_num, abs_den, shift, magnitude)) {
+      return false;
     }
   } else if (scale_exp > 0) {
-    const unsigned shift = static_cast<unsigned>(scale_exp);
-    for (unsigned i = 0; i < shift; ++i) {
-      wden *= Wide{2};
+    unsigned const shift = static_cast<unsigned>(scale_exp);
+    if (!integer_math::RoundDivPow2U64(abs_num, abs_den, shift, magnitude)) {
+      return false;
     }
+  } else if (!integer_math::RoundDivU64(abs_num, abs_den, magnitude)) {
+    return false;
   }
 
-  const Wide rounded = (wnum + wden / Wide{2}) / wden;
-  const Wide signed_rounded = negative ? -rounded : rounded;
+  std::int64_t signed_rounded = 0;
+  if (negative) {
+    if (magnitude >
+        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) +
+            1U) {
+      return false;
+    }
+    if (magnitude ==
+        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) +
+            1U) {
+      signed_rounded = std::numeric_limits<std::int64_t>::min();
+    } else {
+      signed_rounded = -static_cast<std::int64_t>(magnitude);
+    }
+  } else {
+    if (magnitude >
+        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+      return false;
+    }
+    signed_rounded = static_cast<std::int64_t>(magnitude);
+  }
 
-  if (signed_rounded < static_cast<Wide>(raw_min) ||
-      signed_rounded > static_cast<Wide>(raw_max)) {
+  auto const min64 = static_cast<std::int64_t>(raw_min);
+  auto const max64 = static_cast<std::int64_t>(raw_max);
+  if (signed_rounded < min64 || signed_rounded > max64) {
     return false;
   }
 
   raw_out = static_cast<RepValue>(signed_rounded);
   return true;
-#else
-  if (scale_exp < 0) {
-    const unsigned shift = static_cast<unsigned>(-scale_exp);
-    std::int64_t factor = 1;
-    for (unsigned i = 0; i < shift; ++i) {
-      if (factor > std::numeric_limits<std::int64_t>::max() / 2) {
-        return false;
-      }
-      factor *= 2;
-    }
-    if (num > std::numeric_limits<std::int64_t>::max() / factor) {
-      return false;
-    }
-    num *= factor;
-  } else if (scale_exp > 0) {
-    const unsigned shift = static_cast<unsigned>(scale_exp);
-    std::int64_t factor = 1;
-    for (unsigned i = 0; i < shift; ++i) {
-      if (factor > std::numeric_limits<std::int64_t>::max() / 2) {
-        return false;
-      }
-      factor *= 2;
-    }
-    if (den > std::numeric_limits<std::int64_t>::max() / factor) {
-      return false;
-    }
-    den *= factor;
-  }
-
-  const std::int64_t rounded = ((num + den / 2) / den);
-  const std::int64_t signed_rounded = negative ? -rounded : rounded;
-
-  if (signed_rounded < static_cast<std::int64_t>(raw_min) ||
-      signed_rounded > static_cast<std::int64_t>(raw_max)) {
-    return false;
-  }
-
-  raw_out = static_cast<RepValue>(signed_rounded);
-  return true;
-#endif
 }
 
 inline std::to_chars_result WriteChar(char* first, char* last, char c) {

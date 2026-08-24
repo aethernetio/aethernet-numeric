@@ -34,6 +34,7 @@ extern int test_composed_types();
 extern int test_composed_exponential();
 extern int test_composed_exponential_tiered();
 extern int test_fixed_math();
+extern int test_integer_math();
 extern int test_type_size();
 
 int main() {
@@ -53,6 +54,7 @@ int main() {
   res += test_composed_exponential();
   res += test_composed_exponential_tiered();
   res += test_fixed_math();
+  res += test_integer_math();
   res += test_type_size();
   return res;
 }

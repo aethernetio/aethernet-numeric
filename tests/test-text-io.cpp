@@ -17,6 +17,7 @@
 #include <unity.h>
 
 #include <cstdint>
+#include <limits>
 
 #include <ae-numeric/exponential.h>
 #include <ae-numeric/fixed_point.h>
@@ -94,6 +95,94 @@ void test_Exponential() {
   TEST_ASSERT(parsed < E::FromDouble(1.1));
 }
 
+void test_RawFromRatioNearInt64Bounds() {
+  std::uint8_t raw_u = 0;
+  // 9223372036854775807 / 1 with scale 0 -> INT64_MAX, out of uint8 range.
+  TEST_ASSERT_FALSE(text_io_internal::RawFromRatioInRange<std::uint8_t>(
+      std::numeric_limits<std::int64_t>::max(), 1, 0, 0, 255, raw_u));
+
+  std::int64_t raw64 = 0;
+  TEST_ASSERT(text_io_internal::RawFromRatioInRange<std::int64_t>(
+      std::numeric_limits<std::int64_t>::min(), 1, 0,
+      std::numeric_limits<std::int64_t>::min(),
+      std::numeric_limits<std::int64_t>::max(), raw64));
+  TEST_ASSERT_EQUAL(std::numeric_limits<std::int64_t>::min(), raw64);
+
+  // Positive scale: divide by large power of two near the edge.
+  std::uint16_t raw16 = 0;
+  TEST_ASSERT(text_io_internal::RawFromRatioInRange<std::uint16_t>(
+      1000, 1, 3, 0, 65535, raw16));  // round(1000/8) = 125
+  TEST_ASSERT_EQUAL(125, raw16);
+}
+
+void test_RawFromRatioLargeScaleExp() {
+  std::uint32_t raw = 0;
+  // scale_exp = -40: naive num<<40 overflows int64 for large num, but
+  // round(3 * 2^40 / 2^40) = 3 still fits.
+  TEST_ASSERT(text_io_internal::RawFromRatioInRange<std::uint32_t>(
+      3, 1LL << 40, -40, 0, 1000, raw));
+  TEST_ASSERT_EQUAL(3, raw);
+
+  // scale_exp = +40: round(5 / 2^40) = 0
+  TEST_ASSERT(text_io_internal::RawFromRatioInRange<std::uint32_t>(
+      5, 1, 40, 0, 1000, raw));
+  TEST_ASSERT_EQUAL(0, raw);
+
+  // Half-up at large positive scale: round(1 / 2) with scale +1 => round(1/2)=1
+  TEST_ASSERT(text_io_internal::RawFromRatioInRange<std::uint32_t>(
+      1, 1, 1, 0, 1000, raw));
+  TEST_ASSERT_EQUAL(1, raw);
+}
+
+void test_RawFromRatioNaiveMulOverflowButResultFits() {
+  std::uint8_t raw = 0;
+  // num close to INT64_MAX/2, shift 2: naive num*4 overflows signed 64-bit,
+  // but round((INT64_MAX/2)*4 / (INT64_MAX/2)) = 4.
+  constexpr std::int64_t kHalfMax =
+      std::numeric_limits<std::int64_t>::max() / 2;
+  TEST_ASSERT(text_io_internal::RawFromRatioInRange<std::uint8_t>(
+      kHalfMax, kHalfMax, -2, 0, 255, raw));
+  TEST_ASSERT_EQUAL(4, raw);
+
+  // Same pattern for signed rep with negative value.
+  std::int8_t sraw = 0;
+  TEST_ASSERT(text_io_internal::RawFromRatioInRange<std::int8_t>(
+      -kHalfMax, kHalfMax, -2, -128, 127, sraw));
+  TEST_ASSERT_EQUAL(-4, sraw);
+}
+
+void test_RawFromRatioTrueOutOfRange() {
+  std::uint8_t raw = 0;
+  TEST_ASSERT_FALSE(text_io_internal::RawFromRatioInRange<std::uint8_t>(
+      1000, 1, 0, 0, 255, raw));
+
+  std::int8_t sraw = 0;
+  TEST_ASSERT_FALSE(text_io_internal::RawFromRatioInRange<std::int8_t>(
+      -1000, 1, 0, -50, 50, sraw));
+
+  // Unsigned rejects negatives.
+  TEST_ASSERT_FALSE(text_io_internal::RawFromRatioInRange<std::uint8_t>(
+      -1, 1, 0, 0, 255, raw));
+}
+
+void test_RawFromRatioSignedUnsignedRep() {
+  std::uint16_t u = 0;
+  TEST_ASSERT(text_io_internal::RawFromRatioInRange<std::uint16_t>(
+      3, 2, 0, 0, 65535, u));  // round(1.5) = 2
+  TEST_ASSERT_EQUAL(2, u);
+
+  std::int16_t s = 0;
+  TEST_ASSERT(text_io_internal::RawFromRatioInRange<std::int16_t>(
+      -3, 2, 0, -100, 100, s));  // round(-1.5) = -2
+  TEST_ASSERT_EQUAL(-2, s);
+
+  using F = FixedPoint<std::uint8_t, 100.0>;
+  F parsed = F::FromInteger(0);
+  TEST_ASSERT(FromString("10.25", parsed));
+  TEST_ASSERT_EQUAL(F::FromDouble(10.5).RawValue(),
+                    parsed.RawValue());  // Q7.1 step 0.5
+}
+
 }  // namespace ae::test_text_io
 
 int test_text_io() {
@@ -104,5 +193,10 @@ int test_text_io() {
   RUN_TEST(ae::test_text_io::test_SignedFixedPoint);
   RUN_TEST(ae::test_text_io::test_LargePositiveScale);
   RUN_TEST(ae::test_text_io::test_Exponential);
+  RUN_TEST(ae::test_text_io::test_RawFromRatioNearInt64Bounds);
+  RUN_TEST(ae::test_text_io::test_RawFromRatioLargeScaleExp);
+  RUN_TEST(ae::test_text_io::test_RawFromRatioNaiveMulOverflowButResultFits);
+  RUN_TEST(ae::test_text_io::test_RawFromRatioTrueOutOfRange);
+  RUN_TEST(ae::test_text_io::test_RawFromRatioSignedUnsignedRep);
   return UNITY_END();
 }

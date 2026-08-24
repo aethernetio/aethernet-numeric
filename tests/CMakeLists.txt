@@ -28,6 +28,11 @@ if (CMAKE_COLOR_DIAGNOSTICS)
 endif()
 CPMAddPackage("https://github.com/ThrowTheSwitch/Unity.git#master")
 
+option(AE_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer for tests" OFF)
+option(AE_ENABLE_COVERAGE
+  "Build a separate gcov target for integer_math (AE_COVERAGE_BUILD)"
+  OFF)
+
 add_executable(${PROJECT_NAME})
 target_sources(${PROJECT_NAME} PRIVATE
   main.cpp
@@ -46,6 +51,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-composed-exponential.cpp
   test-composed-exponential-tiered.cpp
   test-fixed-math.cpp
+  test-integer-math.cpp
   test-type-size.cpp
 )
 
@@ -58,7 +64,47 @@ target_compile_options(${PROJECT_NAME} PRIVATE
   $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /MP /constexpr:steps16777216 /wd4530 /wd4702 /wd4127>
 )
 
+if(AE_ENABLE_UBSAN)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # Prefer trap-on-error so MinGW builds do not require libubsan.
+    target_compile_options(${PROJECT_NAME} PRIVATE
+      -fsanitize=undefined -fsanitize-undefined-trap-on-error)
+    target_link_options(${PROJECT_NAME} PRIVATE
+      -fsanitize=undefined -fsanitize-undefined-trap-on-error)
+  else()
+    message(WARNING "AE_ENABLE_UBSAN ignored: unsupported compiler")
+  endif()
+endif()
+
+if(AE_ENABLE_COVERAGE)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # Full suite gets gcov arcs (constexpr helpers stay constexpr here).
+    target_compile_options(${PROJECT_NAME} PRIVATE --coverage -O0 -g)
+    target_link_options(${PROJECT_NAME} PRIVATE --coverage)
+
+    # Isolated target: AE_COVERAGE_BUILD strips constexpr only here so gcov can
+    # instrument integer_math.h without breaking constexpr fixed_math callers.
+    add_executable(test-integer-math-coverage
+      test-integer-math-coverage-main.cpp
+      test-integer-math.cpp)
+    target_link_libraries(test-integer-math-coverage PRIVATE ae-numeric unity)
+    target_compile_definitions(test-integer-math-coverage PRIVATE AE_COVERAGE_BUILD=1)
+    target_compile_options(test-integer-math-coverage PRIVATE
+      --coverage -O0 -g
+      $<$<CXX_COMPILER_ID:GNU>: -Wall -Wextra -Werror>
+      $<$<CXX_COMPILER_ID:Clang>: -Wall -Wextra -Werror>)
+    target_link_options(test-integer-math-coverage PRIVATE --coverage)
+    add_test(NAME test-integer-math-coverage
+      COMMAND $<TARGET_FILE:test-integer-math-coverage>)
+  else()
+    message(WARNING "AE_ENABLE_COVERAGE ignored: unsupported compiler")
+  endif()
+endif()
+
 add_test(NAME ${PROJECT_NAME} COMMAND $<TARGET_FILE:${PROJECT_NAME}>)
+
+add_test(NAME check-no-int128
+  COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/check_no_int128.cmake)
 
 # Compile-fail tests: each target must fail to compile. They are excluded from
 # the default build; ctest builds them on demand and treats a build failure as
@@ -67,7 +113,8 @@ foreach(fail_case
     construct_out_of_range
     add_out_of_range
     exp_construct_out_of_range
-    exp_float_runtime)
+    exp_float_runtime
+    wide_mul_intermediate)
   add_executable(fail-${fail_case} EXCLUDE_FROM_ALL
     compile-fail/${fail_case}.cpp)
   target_link_libraries(fail-${fail_case} PRIVATE ae-numeric)

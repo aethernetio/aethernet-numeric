@@ -32,15 +32,14 @@ namespace exponential_internal {
 
 template <typename Raw>
 struct MulIntermediate {
+  static_assert(
+      sizeof(Raw) <= 4,
+      "ae-numeric: Exponential/fixed_math mul_intermediate requires the "
+      "work-type Raw width to be at most 32 bits so products fit in "
+      "checked uint64 arithmetic. Provide a custom policy with a safe "
+      "mul path if you need a wider work type.");
   using type =
-      std::conditional_t<(sizeof(Raw) <= 2), std::int32_t,
-                         std::conditional_t<(sizeof(Raw) <= 4), std::int64_t,
-#ifdef __SIZEOF_INT128__
-                                            __int128_t
-#else
-                                            std::int64_t
-#endif
-                                            >>;
+      std::conditional_t<(sizeof(Raw) <= 2), std::int32_t, std::int64_t>;
 };
 
 inline constexpr int ClampInt(int value, int lo, int hi) {

@@ -20,11 +20,13 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 
 #include <gcem.hpp>
 
 #include "ae-numeric/fixed_point.h"
+#include "ae-numeric/integer_math.h"
 #include "ae-numeric/numeric_traits.h"
 
 namespace ae::fixed_math {
@@ -188,36 +190,52 @@ constexpr std::int64_t align_raw_to_target(Source x) {
       static_cast<std::int64_t>(Target::kRawMax));
 }
 
-template <typename Intermediate>
-constexpr std::int64_t RoundDivNearestWide(Intermediate num, Intermediate den) {
-  if (den == Intermediate{0}) {
-    return static_cast<std::int64_t>(num);
-  }
-
-  if constexpr (std::is_signed_v<Intermediate>) {
-    if (num >= 0 && den > 0) {
-      return static_cast<std::int64_t>((num + den / 2) / den);
-    }
-    if (num < 0 && den > 0) {
-      return static_cast<std::int64_t>((num - den / 2) / den);
-    }
-    if (num >= 0 && den < 0) {
-      return static_cast<std::int64_t>((num - den / 2) / den);
-    }
-    return static_cast<std::int64_t>((num + den / 2) / den);
-  } else {
-    return static_cast<std::int64_t>((num + den / 2) / den);
-  }
-}
-
 template <typename Target, typename Policy>
   requires is_fixed_point_v<Target>
 constexpr std::int64_t mul_raw_fixed(std::int64_t acc, std::int64_t factor) {
   using Intermediate = typename Policy::mul_intermediate_type;
-  const Intermediate product =
-      static_cast<Intermediate>(acc) * static_cast<Intermediate>(factor);
-  const Intermediate one = static_cast<Intermediate>(raw_one<Target>());
-  return RoundDivNearestWide(product, one);
+  static_assert(sizeof(Intermediate) <= sizeof(std::int64_t),
+                "ae-numeric: mul_intermediate_type must be at most 64 bits");
+  static_assert(
+      sizeof(typename Target::rep_value_type) <= 4,
+      "ae-numeric: fixed_math::Exp2/Mul path requires Target rep width "
+      "<= 32 bits; wider reps need an overflow-safe custom policy");
+
+  std::int64_t const one = raw_one<Target>();
+  if (one == 0) {
+    return 0;
+  }
+
+  bool const negative = (acc < 0) ^ (factor < 0) ^ (one < 0);
+  std::uint64_t const a = integer_math::AbsI64ToU64(acc);
+  std::uint64_t const f = integer_math::AbsI64ToU64(factor);
+  std::uint64_t const d = integer_math::AbsI64ToU64(one);
+
+  std::uint64_t magnitude = 0;
+  if (!integer_math::MulDivU64Nearest(a, f, d, magnitude)) {
+    return negative ? static_cast<std::int64_t>(Target::kRawMin)
+                    : static_cast<std::int64_t>(Target::kRawMax);
+  }
+
+  if (!negative) {
+    if (magnitude >
+        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+      return static_cast<std::int64_t>(Target::kRawMax);
+    }
+    return static_cast<std::int64_t>(magnitude);
+  }
+
+  if (magnitude >
+      static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) +
+          1U) {
+    return static_cast<std::int64_t>(Target::kRawMin);
+  }
+  if (magnitude ==
+      static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) +
+          1U) {
+    return std::numeric_limits<std::int64_t>::min();
+  }
+  return -static_cast<std::int64_t>(magnitude);
 }
 
 template <typename Target>
