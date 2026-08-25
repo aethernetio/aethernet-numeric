@@ -690,6 +690,84 @@ void test_Range() {
   TestRange<T4>();
 }
 
+using PackedCompat = TieredInt<std::uint8_t, 250, 1514, 1049834>;
+
+void test_ArithmeticAddAssignAndPlus() {
+  // += ValueType within the first tier.
+  PackedCompat a{10};
+  a += typename PackedCompat::ValueType{5};
+  TEST_ASSERT_EQUAL(static_cast<PackedCompat::ValueType>(15),
+                    static_cast<PackedCompat::ValueType>(a));
+
+  // Tier boundary transitions via +=.
+  PackedCompat b{249};
+  b += typename PackedCompat::ValueType{1};
+  TEST_ASSERT_EQUAL(static_cast<PackedCompat::ValueType>(250),
+                    static_cast<PackedCompat::ValueType>(b));
+  b += typename PackedCompat::ValueType{1};
+  TEST_ASSERT_EQUAL(static_cast<PackedCompat::ValueType>(251),
+                    static_cast<PackedCompat::ValueType>(b));
+
+  PackedCompat c{1513};
+  c += typename PackedCompat::ValueType{1};
+  TEST_ASSERT_EQUAL(static_cast<PackedCompat::ValueType>(1514),
+                    static_cast<PackedCompat::ValueType>(c));
+  c += typename PackedCompat::ValueType{1};
+  TEST_ASSERT_EQUAL(static_cast<PackedCompat::ValueType>(1515),
+                    static_cast<PackedCompat::ValueType>(c));
+
+  PackedCompat d{1049833};
+  d += typename PackedCompat::ValueType{1};
+  TEST_ASSERT_EQUAL(static_cast<PackedCompat::ValueType>(1049834),
+                    static_cast<PackedCompat::ValueType>(d));
+  d += typename PackedCompat::ValueType{1};
+  TEST_ASSERT_EQUAL(static_cast<PackedCompat::ValueType>(1049835),
+                    static_cast<PackedCompat::ValueType>(d));
+
+  // += another TieredInt (converts through ValueType).
+  PackedCompat e{100};
+  PackedCompat f{25};
+  e += f;
+  TEST_ASSERT_EQUAL(static_cast<PackedCompat::ValueType>(125),
+                    static_cast<PackedCompat::ValueType>(e));
+  TEST_ASSERT_EQUAL(static_cast<PackedCompat::ValueType>(25),
+                    static_cast<PackedCompat::ValueType>(f));
+
+  // operator+ does not mutate lhs.
+  PackedCompat g{40};
+  PackedCompat const h = g + typename PackedCompat::ValueType{2};
+  TEST_ASSERT_EQUAL(static_cast<PackedCompat::ValueType>(40),
+                    static_cast<PackedCompat::ValueType>(g));
+  TEST_ASSERT_EQUAL(static_cast<PackedCompat::ValueType>(42),
+                    static_cast<PackedCompat::ValueType>(h));
+
+  // Exact bounds.
+  PackedCompat upper{PackedCompat::kUpper};
+  TEST_ASSERT_EQUAL(PackedCompat::kUpper,
+                    static_cast<PackedCompat::ValueType>(
+                        upper + typename PackedCompat::ValueType{0}));
+  PackedCompat lower{PackedCompat::kLower};
+  TEST_ASSERT_EQUAL(PackedCompat::kLower,
+                    static_cast<PackedCompat::ValueType>(
+                        lower + typename PackedCompat::ValueType{0}));
+
+  // Signed positive and negative addition.
+  S2 sp{5};
+  sp += typename S2::ValueType{3};
+  TEST_ASSERT_EQUAL(static_cast<S2::ValueType>(8),
+                    static_cast<S2::ValueType>(sp));
+  S2 sn{-5};
+  sn += typename S2::ValueType{-3};
+  TEST_ASSERT_EQUAL(static_cast<S2::ValueType>(-8),
+                    static_cast<S2::ValueType>(sn));
+  TEST_ASSERT_EQUAL(static_cast<S2::ValueType>(S2::kUpper),
+                    static_cast<S2::ValueType>(S2{S2::kUpper} +
+                                              typename S2::ValueType{0}));
+  TEST_ASSERT_EQUAL(static_cast<S2::ValueType>(S2::kLower),
+                    static_cast<S2::ValueType>(S2{S2::kLower} +
+                                              typename S2::ValueType{0}));
+}
+
 }  // namespace ae::test_tiered_int
 
 int test_tiered_int() {
@@ -708,5 +786,6 @@ int test_tiered_int() {
   RUN_TEST(ae::test_tiered_int::test_SignedFourTier);
   RUN_TEST(ae::test_tiered_int::test_CrossSignedUnsignedCompare);
   RUN_TEST(ae::test_tiered_int::test_Range);
+  RUN_TEST(ae::test_tiered_int::test_ArithmeticAddAssignAndPlus);
   return UNITY_END();
 }

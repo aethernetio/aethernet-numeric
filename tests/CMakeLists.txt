@@ -65,6 +65,7 @@ target_compile_options(${PROJECT_NAME} PRIVATE
   $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /MP /constexpr:steps16777216 /wd4530 /wd4702 /wd4127>
 )
 
+
 if(AE_ENABLE_UBSAN)
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     # Prefer trap-on-error so MinGW builds do not require libubsan.
@@ -115,7 +116,9 @@ foreach(fail_case
     add_out_of_range
     exp_construct_out_of_range
     exp_float_runtime
-    wide_mul_intermediate)
+    wide_mul_intermediate
+    tiered_add_overflow
+    tiered_add_underflow)
   add_executable(fail-${fail_case} EXCLUDE_FROM_ALL
     compile-fail/${fail_case}.cpp)
   target_link_libraries(fail-${fail_case} PRIVATE ae-numeric)

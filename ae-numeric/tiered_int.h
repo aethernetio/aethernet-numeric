@@ -397,7 +397,52 @@ struct TieredInt {
     return value_;
   }
 
+  // Checked addition: result stays in [kLower, kUpper]. Overflow/underflow
+  // fails constant evaluation or asserts at runtime (no wrap).
+  constexpr TieredInt& operator+=(ValueType rhs) noexcept {
+    value_ = AddChecked(value_, rhs);
+    return *this;
+  }
+
+  constexpr TieredInt operator+(ValueType rhs) const noexcept {
+    return TieredInt{AddChecked(value_, rhs)};
+  }
+
  private:
+  static constexpr ValueType AddChecked(ValueType lhs,
+                                        ValueType rhs) noexcept {
+    if constexpr (kIsSigned) {
+      std::int64_t const a = static_cast<std::int64_t>(lhs);
+      std::int64_t const b = static_cast<std::int64_t>(rhs);
+      std::int64_t const upper = static_cast<std::int64_t>(kUpper);
+      std::int64_t const lower = static_cast<std::int64_t>(kLower);
+      if (b > 0) {
+        tiered_int_internal::ValidateOrAssert(a <= upper);
+        tiered_int_internal::ValidateOrAssert(
+            static_cast<std::uint64_t>(b) <=
+            static_cast<std::uint64_t>(upper - a));
+      } else if (b < 0) {
+        tiered_int_internal::ValidateOrAssert(a >= lower);
+        // Two's-complement absolute value; safe for INT64_MIN.
+        std::uint64_t const abs_b =
+            static_cast<std::uint64_t>(0) - static_cast<std::uint64_t>(b);
+        tiered_int_internal::ValidateOrAssert(
+            abs_b <= static_cast<std::uint64_t>(a - lower));
+      }
+      return static_cast<ValueType>(a + b);
+    } else {
+      std::uint64_t const a = static_cast<std::uint64_t>(lhs);
+      std::uint64_t const b = static_cast<std::uint64_t>(rhs);
+      std::uint64_t const upper = static_cast<std::uint64_t>(kUpper);
+      std::uint64_t const lower = static_cast<std::uint64_t>(kLower);
+      tiered_int_internal::ValidateOrAssert(a <= upper);
+      tiered_int_internal::ValidateOrAssert(b <= upper - a);
+      std::uint64_t const sum = a + b;
+      tiered_int_internal::ValidateOrAssert(sum >= lower);
+      return static_cast<ValueType>(sum);
+    }
+  }
+
   template <typename U>
   static constexpr ValueType CheckSignedValue(U v) {
     if constexpr (std::is_signed_v<U>) {
@@ -454,30 +499,29 @@ struct TieredInt {
     if (wire_bytes == kBaseSize * 2) {
       return v;
     }
+
+    // Nested if constexpr / else so MSVC does not see an unreachable fallback
+    // return after a always-taken branch when kNumTiers == 4 (C4702 under /WX).
     if constexpr (kNumTiers < 3) {
       return v;
-    }
-
-    if constexpr (kNumTiers >= 3) {
+    } else {
       low = tiered_int_internal::ReadLittleEndianU64(in + kBaseSize * 2,
                                                      kBaseSize * 2);
       constexpr auto kWord2 = tiered_int_internal::kWordPow<WireCell>(1);
       v = (v - kTiers[1] - 1) * kWord2 + kTiers[1] + 1 + low;
-    }
-    if (wire_bytes == kBaseSize * 4) {
-      return v;
-    }
-    if constexpr (kNumTiers < 4) {
-      return v;
-    }
+      if (wire_bytes == kBaseSize * 4) {
+        return v;
+      }
 
-    if constexpr (kNumTiers == 4) {
-      low = tiered_int_internal::ReadLittleEndianU64(in + kBaseSize * 4,
-                                                     kBaseSize * 4);
-      constexpr auto kWord4 = tiered_int_internal::kWordPow<WireCell>(2);
-      return (v - kTiers[2] - 1) * kWord4 + kTiers[2] + 1 + low;
+      if constexpr (kNumTiers < 4) {
+        return v;
+      } else {
+        low = tiered_int_internal::ReadLittleEndianU64(in + kBaseSize * 4,
+                                                       kBaseSize * 4);
+        constexpr auto kWord4 = tiered_int_internal::kWordPow<WireCell>(2);
+        return (v - kTiers[2] - 1) * kWord4 + kTiers[2] + 1 + low;
+      }
     }
-    return v;
   }
 
   std::size_t SerializeUnsignedMagnitude(std::uint64_t v,
