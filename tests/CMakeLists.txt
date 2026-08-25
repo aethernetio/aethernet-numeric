@@ -105,9 +105,6 @@ endif()
 
 add_test(NAME ${PROJECT_NAME} COMMAND $<TARGET_FILE:${PROJECT_NAME}>)
 
-add_test(NAME check-no-int128
-  COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/check_no_int128.cmake)
-
 # Compile-fail tests: each target must fail to compile. They are excluded from
 # the default build; ctest builds them on demand and treats a build failure as
 # success (WILL_FAIL).

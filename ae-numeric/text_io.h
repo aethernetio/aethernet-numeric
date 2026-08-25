@@ -140,17 +140,6 @@ constexpr DecimalParseResult ParseDecimal(std::string_view text) {
   return result;
 }
 
-constexpr std::int64_t Gcd64(std::int64_t a, std::int64_t b) {
-  a = a < 0 ? -a : a;
-  b = b < 0 ? -b : b;
-  while (b != 0) {
-    auto const t = a % b;
-    a = b;
-    b = t;
-  }
-  return a;
-}
-
 constexpr DecimalParseResult NormalizeDecimal(DecimalParseResult value) {
   if (!value.ok) {
     return value;
@@ -160,7 +149,9 @@ constexpr DecimalParseResult NormalizeDecimal(DecimalParseResult value) {
     value.den = 1;
     return value;
   }
-  auto const g = Gcd64(value.num, value.den);
+  auto const g = static_cast<std::int64_t>(integer_math::GcdU64(
+      static_cast<std::uint64_t>(value.num),
+      static_cast<std::uint64_t>(value.den)));
   value.num /= g;
   value.den /= g;
   if (value.den < 0) {

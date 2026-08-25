@@ -71,24 +71,6 @@ constexpr Target cast_fixed(Source x) {
           static_cast<typename Target::rep_value_type>(aligned)));
 }
 
-template <typename T>
-  requires is_fixed_point_v<T>
-constexpr T one() {
-  return T{1};
-}
-
-template <typename T>
-  requires is_fixed_point_v<T>
-constexpr T two() {
-  return T{2};
-}
-
-template <typename T>
-  requires is_fixed_point_v<T>
-constexpr T half() {
-  return T{0.5};
-}
-
 template <typename Log, int I>
 consteval Log InvPow2LogEntry() {
   return Log::FromDouble(1.0 / static_cast<double>(std::uint64_t{1} << I));
@@ -156,8 +138,8 @@ template <typename Mant, typename X>
 constexpr Mant NormalizeMantissa(X x, int& exponent_out) {
   int e = 0;
   X m = x;
-  const X one_x = one<X>();
-  const X two_x = two<X>();
+  const X one_x = X{1};
+  const X two_x = X{2};
 
   for (int guard = 0; guard < 64 && m >= two_x; ++guard) {
     m = DivTo<X>(m, two_x);
@@ -293,7 +275,7 @@ constexpr Target Log2To(X x) {
   Mant mantissa = NormalizeMantissa<Mant>(x, exponent);
 
   Log result = Log::FromRuntimeInteger(exponent);
-  const Mant two_m = two<Mant>();
+  const Mant two_m = Mant{2};
 
   for (int i = 1; i <= Policy::kLogIterations; ++i) {
     mantissa = MulTo<Mant>(mantissa, mantissa);

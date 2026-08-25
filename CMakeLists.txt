@@ -16,17 +16,6 @@ cmake_minimum_required(VERSION 3.16)
 
 project(ae-numeric CXX)
 
-if(MSVC)
-  foreach(flag_var
-      CMAKE_CXX_FLAGS
-      CMAKE_CXX_FLAGS_DEBUG
-      CMAKE_CXX_FLAGS_RELEASE
-      CMAKE_CXX_FLAGS_RELWITHDEBINFO
-      CMAKE_CXX_FLAGS_MINSIZEREL)
-    string(REPLACE "/EHsc" "" ${flag_var} "${${flag_var}}")
-  endforeach()
-endif()
-
 # define is the project is the current root project
 # root project builds tests and defines installation targets by default
 if("${CMAKE_PROJECT_NAME}" STREQUAL "${PROJECT_NAME}")
