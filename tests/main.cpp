@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Aethernet Inc.
+ * Copyright 2026 Aethernet Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,11 +20,43 @@ void setUp() {};
 void tearDown() {};
 
 extern int test_tiered_int();
+extern int test_tiered_int_view();
 extern int test_fixed_point();
+extern int test_exponential();
+extern int test_exponential_arithmetic();
+extern int test_exponential_math_policy();
+extern int test_exponential_floating_runtime();
+extern int test_text_io();
+extern int test_ostream_io();
+extern int test_wire_io();
+extern int test_packed_ring();
+extern int test_composed_types();
+extern int test_composed_exponential();
+extern int test_composed_exponential_tiered();
+extern int test_fixed_math();
+extern int test_integer_math();
+extern int test_tiered_int_aether_compat();
+extern int test_type_size();
 
 int main() {
   int res = 0;
   res += test_tiered_int();
+  res += test_tiered_int_view();
   res += test_fixed_point();
+  res += test_exponential();
+  res += test_exponential_arithmetic();
+  res += test_exponential_math_policy();
+  res += test_exponential_floating_runtime();
+  res += test_text_io();
+  res += test_ostream_io();
+  res += test_wire_io();
+  res += test_packed_ring();
+  res += test_composed_types();
+  res += test_composed_exponential();
+  res += test_composed_exponential_tiered();
+  res += test_fixed_math();
+  res += test_integer_math();
+  res += test_tiered_int_aether_compat();
+  res += test_type_size();
   return res;
 }

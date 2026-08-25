@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Aethernet Inc.
+ * Copyright 2026 Aethernet Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,158 +16,211 @@
 
 #include <unity.h>
 
-#include "numeric/tiered_int.h"
-#include "numeric/fixed_point.h"
+#include <cstdint>
+#include <limits>
+#include <type_traits>
+
+#include <ae-numeric/fixed_point.h>
+#include <ae-numeric/tiered_int.h>
 
 namespace ae::test_fixed_point {
-static_assert(CalculateIntegerBits<uint8_t>(0.000975) == -11);
-static_assert(CalculateIntegerBits<uint32_t>(0.000975) == -10);
-static_assert(CalculateIntegerBits<uint8_t>(0.4) == -1);
-static_assert(CalculateIntegerBits<uint8_t>(0.499) == 0);
-static_assert(CalculateIntegerBits<uint8_t>(0.996) == 0);
-static_assert(CalculateIntegerBits<uint16_t>(0.997) == 0);
-static_assert(CalculateIntegerBits<uint8_t>(0.997) == 1);
-static_assert(CalculateIntegerBits<uint8_t>(122.0) == 7);
-static_assert(CalculateIntegerBits<uint8_t>(222.0) == 8);
-static_assert(CalculateIntegerBits<uint8_t>(16300.001) == 14);
-static_assert(CalculateIntegerBits<uint32_t>(16380.001) == 14);
-static_assert(CalculateIntegerBits<uint8_t>(16380.001) == 15);
-static_assert(CalculateIntegerBits<uint8_t>(1363148.8) == 21);
 
-template <typename Type, int int_bits>
-void TestConversion(double value) {
-  using F = FixedPoint<Type, 0, int_bits>;
-  F f(value);
-  // auto min_value = F::kMinValue;
-  double diff = std::abs(static_cast<double>(f) - value);
-  TEST_ASSERT_LESS_THAN_DOUBLE(std::numeric_limits<F>::min(), diff);
+using F = FixedPoint<std::uint8_t, 100.0>;
+
+static_assert(F::kScaleExp == -1);
+static_assert(F::kFractionBits == 1);
+
+// 1. logical constructors from integers
+static_assert(F{10}.RawValue() == 20);
+static_assert(F{20}.RawValue() == 40);
+static_assert(F::FromInteger(100).RawValue() == 200);
+
+// 2. consteval floating constructors
+static_assert(F{0.5}.RawValue() == 1);
+
+// 3. raw constructor
+static_assert(F::FromRaw(10).RawValue() == 10);
+static_assert(F::Raw(10).RawValue() == 10);
+
+// 4. declared Max bound checks (compile-time ok / fail)
+static_assert(F{100}.RawValue() == 200);
+static_assert(
+    fixed_point_internal::LogicalBoundChecker<100.0, false, 100, 1>::kOk);
+
+// 5. F{10} + F{20} -> FixedPoint<uint8_t, 200.0>
+constexpr auto sum_same = F{10} + F{20};
+static_assert(std::is_same_v<std::remove_cv_t<decltype(sum_same)>,
+                             FixedPoint<std::uint8_t, 200.0>>);
+static_assert(sum_same.RawValue() == 30);
+static_assert(decltype(sum_same)::kScaleExp == 0);
+
+// integer literal operations
+constexpr auto sum_int = F{45} + 55;
+static_assert(std::is_same_v<std::remove_cv_t<decltype(sum_int)>,
+                             FixedPoint<std::uint8_t, 200.0>>);
+static_assert(sum_int.RawValue() == 100);
+
+// 6. A{10} + B{100} -> FixedPoint<uint16_t, 1030.0>
+using A = FixedPoint<std::uint8_t, 30.0>;
+using B = FixedPoint<std::uint16_t, 1000.0>;
+constexpr auto mixed = A{10} + B{100};
+static_assert(std::is_same_v<std::remove_cv_t<decltype(mixed)>,
+                             FixedPoint<std::uint16_t, 1030.0>>);
+static_assert((mixed.RawValue() >> (-decltype(mixed)::kScaleExp)) == 110);
+
+// 7. multiplication result MaxA * MaxB
+using MulA = FixedPoint<std::uint16_t, 1000.0>;
+using MulB = FixedPoint<std::uint16_t, 0.001>;
+constexpr auto product = MulA{1000} * MulB{0.001};
+static_assert(std::is_same_v<std::remove_cv_t<decltype(product)>,
+                             FixedPoint<std::uint16_t, 1.0>>);
+
+// 8. MulTo<Target>
+using MulTarget = FixedPoint<std::uint16_t, 1.0>;
+constexpr auto mul_target = MulTo<MulTarget>(MulA{1000}, MulB{0.001});
+static_assert(
+    std::is_same_v<std::remove_cv_t<decltype(mul_target)>, MulTarget>);
+
+// scale / cast / div
+using F30 = FixedPoint<std::uint8_t, 30.0>;
+using F100 = FixedPoint<std::uint8_t, 100.0>;
+static_assert(F30::kScaleExp == -3);
+static_assert(F100::kScaleExp == -1);
+
+using F130 = FixedPoint<std::uint8_t, 130.0>;
+static_assert(F130::kScaleExp == 0);
+
+using S100 = FixedPoint<std::int8_t, 100.0>;
+static_assert(S100::kRawMin == -127);
+static_assert(S100::kRawMax == 127);
+
+using S = FixedPoint<std::int8_t, 10.0>;
+static_assert(S::FromRaw(std::numeric_limits<std::int8_t>::min()).RawValue() ==
+              S::kRawMin);
+
+constexpr auto b_as_a = F100::Cast<F30>(F100{10});
+static_assert(b_as_a == F30{10});
+
+using Dst = FixedPoint<std::uint8_t, 20.0>;
+constexpr auto div = DivTo<Dst>(F100{100}, F100{10});
+static_assert(div == Dst{10});
+
+using Raw = TieredInt<std::uint8_t, 254>;
+using Compact = FixedPoint<Raw, 60.0>;
+static_assert(numeric_traits<Compact>::kIsFixedPoint);
+static_assert(Compact{60}.RawValue() <= Raw::kUpper);
+
+using Small = FixedPoint<std::uint8_t, 0.0000000001>;
+using Large = FixedPoint<std::uint8_t, 1000000000.0>;
+
+constexpr auto s = Small::FromRaw(255);
+constexpr auto l = Small::Cast<Large>(s);
+static_assert(l.RawValue() == Large::kRawMin);
+
+constexpr auto cast_back = Large::Cast<Small>(l);
+static_assert(cast_back.RawValue() == Small::kRawMin);
+
+// PromoteRep same-rep
+static_assert(
+    std::is_same_v<PromoteRep<std::uint8_t, std::uint8_t>::type, std::uint8_t>);
+static_assert(std::is_same_v<PromoteRep<std::uint8_t, std::uint16_t>::type,
+                             std::uint16_t>);
+static_assert(
+    std::is_same_v<PromoteRep<std::uint8_t, std::int8_t>::type, std::int16_t>);
+static_assert(std::is_same_v<PromoteRep<std::uint16_t, std::int16_t>::type,
+                             std::int32_t>);
+static_assert(
+    std::is_same_v<PromoteRep<std::uint8_t, std::int16_t>::type, std::int16_t>);
+
+void test_LogicalConstructors() {
+  TEST_ASSERT_EQUAL_UINT8(20, F{10}.RawValue());
+  TEST_ASSERT_EQUAL_UINT8(40, F{20}.RawValue());
+  TEST_ASSERT_EQUAL_UINT8(10, F::FromRaw(10).RawValue());
 }
 
-void test_FixedPoint() {
-  {
-    // Runtime assignment
-    using F1 = AE_FIXED(uint8_t, 123.5);
-    static_assert(F1::kIntBits == 7);
-    static_assert(F1::kMaxValue == 247);
-    F1 f1 = F1(123.5);
-    TEST_ASSERT_EQUAL(f1.value_, 247);
-    TEST_ASSERT_EQUAL(static_cast<double>(f1), 123.5);
-    auto const& f2 = f1 = 61.5;
-    TEST_ASSERT_EQUAL(f1.value_, 123);
-    TEST_ASSERT_EQUAL(static_cast<double>(f1), 61.5);
-    TEST_ASSERT_EQUAL(&f2, &f1);
-  }
-
-  {
-    // Convert from/to double
-    constexpr double value = 0.0001;
-    constexpr auto f = AE_FIXED(uint8_t, 0.001){value};
-    using F = std::decay_t<decltype(f)>;
-    static_assert(F::kIntBits == -9);
-    static_assert(F::kMaxValue == 131);
-    static_assert(f.value_ == 13);
-    constexpr double diff = gcem::abs(static_cast<double>(f) - value);
-    static_assert(diff < std::numeric_limits<F>::min());
-  }
-  {
-    constexpr auto f2 = AE_FIXED(uint8_t, 123.5){61.5};
-    static_assert(decltype(f2)::kIntBits == 7);
-    static_assert(decltype(f2)::kMaxValue == 247);
-    static_assert(f2.value_ == 123);
-    static_assert(static_cast<double>(f2) == 61.5);
-  }
-
-  static_assert(CompareDoubles<uint8_t>(
-      std::numeric_limits<FixedPoint<uint8_t, 0, 0>>::min(), 1.0 / 256));
-  static_assert(CompareDoubles<uint16_t>(
-      std::numeric_limits<FixedPoint<uint16_t, 0, 0>>::min(), 1.0 / 65536));
-  static_assert(CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, -1>::kMinValue,
-                                        1.0 / 512));
-  static_assert(
-      CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, 0>::kMinValue, 1.0 / 256));
-  static_assert(
-      CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, 1>::kMinValue, 1.0 / 128));
-  static_assert(
-      CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, 7>::kMinValue, 1.0 / 2));
-  static_assert(
-      CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, 8>::kMinValue, 1.0));
-  static_assert(
-      CompareDoubles<uint8_t>(FixedPoint<uint8_t, 0, 9>::kMinValue, 2.0));
-  static_assert(FixedPoint<uint8_t, 0, -21>::Value(4.1e-7) ==
-                static_cast<uint8_t>(4.1e-7 * (1ul << (21 + 8))));
-  static_assert(FixedPoint<uint8_t, 0, 7>::Value(123.5) == 123.5 * 2);
-  static_assert(FixedPoint<uint8_t, 0, 8>::Value(123.0) == 123);
-  static_assert(FixedPoint<uint8_t, 0, 9>::Value(123.0) == 123 / 2);
-  static_assert(FixedPoint<uint8_t, 0, 29>::Value(123456789.0) ==
-                std::uint8_t{123456789 / (1ul << (29 - 8))});
-  static_assert(gcem::abs(FixedPoint<uint16_t, 0, 7>::Value(123.5) -
-                          123.5 * (1ul << (16 - 7))) < 2);
-  TestConversion<uint8_t, -21>(4.1e-7);
-  TestConversion<uint8_t, 0>(0.984375);
-  TestConversion<uint8_t, 7>(123.5);
-  TestConversion<uint8_t, 29>(123456789.0);
-
-  {
-    using T = std::uint16_t;
-    auto v1 = AE_FIXED(T, 3.5){3.1};
-    auto v2 = AE_FIXED(T, 100){0.5};
-    auto v3 = v1 / v2;
-    //    auto v3 = Div<T, decltype(v2)::Value(0.5)>(v1, v2);
-    [[maybe_unused]] double b0 = decltype(v3)::kTotalBits;
-    [[maybe_unused]] double b1 = decltype(v3)::kIntBits;
-    [[maybe_unused]] double b2 =
-        decltype(v3)::kMaxValue * decltype(v3)::kMinValue;
-    [[maybe_unused]] double r = v3;
-    auto v4 = v3 - AE_FIXED(T, 4){3.1};
-    [[maybe_unused]] double n0 = decltype(v4)::kTotalBits;
-    [[maybe_unused]] double n1 = decltype(v4)::kIntBits;
-    [[maybe_unused]] double n2 =
-        decltype(v4)::kMaxValue * decltype(v4)::kMinValue;
-    [[maybe_unused]] double r1 = v4;
-    [[maybe_unused]] int df = 0;
-  }
+void test_AddSameRep() {
+  const auto r = F{10} + F{20};
+  TEST_ASSERT_EQUAL_UINT8(30, r.RawValue());
+  TEST_ASSERT((std::is_same_v<std::remove_cv_t<decltype(r)>,
+                              FixedPoint<std::uint8_t, 200.0>>));
 }
 
-void test_Exponent() {
-  {
-    using P = TieredInt<std::uint16_t, std::uint8_t, 250>;
-    using E = AE_EXPONENT(P, 0.001, 60.0);
-
-    E e(60.0);
-    auto stored = e.Serialize();
-    E e2;
-    e2.Deserialize(stored);
-    // cast to double is working
-    double rr = e2;
-    TEST_ASSERT_DOUBLE_WITHIN(0.1, 60.0, rr);
-
-    e = E(0.01);
-    stored = e.Serialize();
-    e2.Deserialize(stored);
-    double rr2 = e2;
-    TEST_ASSERT_DOUBLE_WITHIN(0.1, 0.01, rr2);
-  }
-  {
-    using E = AE_EXPONENT(uint8_t, 0.001, 60.0);
-    E e(E::Value(60.0));
-    auto stored = e.Serialize();
-    E e2;
-    e2.Deserialize(stored);
-    double rr = e2;
-    TEST_ASSERT_DOUBLE_WITHIN(0.1, 60.0, rr);
-
-    e = E(E::Value(0.01));
-    stored = e.Serialize();
-    e2.Deserialize(stored);
-    double rr2 = e2;
-    TEST_ASSERT_DOUBLE_WITHIN(0.1, 0.01, rr2);
-  }
+void test_AddMixedRep() {
+  const auto r = A{10} + B{100};
+  TEST_ASSERT((std::is_same_v<std::remove_cv_t<decltype(r)>,
+                              FixedPoint<std::uint16_t, 1030.0>>));
+  TEST_ASSERT_EQUAL_UINT16(110, r.RawValue() >> (-decltype(r)::kScaleExp));
 }
+
+void test_Multiply() {
+  const auto r = MulA{1000} * MulB{0.001};
+  TEST_ASSERT((std::is_same_v<std::remove_cv_t<decltype(r)>,
+                              FixedPoint<std::uint16_t, 1.0>>));
+}
+
+void test_MulTo() {
+  const auto r = MulTo<MulTarget>(MulA{1000}, MulB{0.001});
+  TEST_ASSERT((std::is_same_v<std::remove_cv_t<decltype(r)>, MulTarget>));
+}
+
+void test_IntegerAdd() {
+  const auto ok = F{45} + 55;
+  TEST_ASSERT_EQUAL_UINT8(100, ok.RawValue());
+}
+
+void test_RuntimeRoundTrip() {
+  const auto sum = F30{10} + F100{20};
+  TEST_ASSERT((sum == FixedPoint<std::uint8_t, 130.0>{30}));
+
+  const auto cast = F100::Cast<F30>(F100{10});
+  TEST_ASSERT(cast == F30{10});
+
+  const auto quotient = DivTo<Dst>(F100{100}, F100{10});
+  TEST_ASSERT(quotient == Dst{10});
+}
+
+// 9. floating construction is consteval-only (verified by consteval ctor
+// signature)
+static_assert(F{0.5}.RawValue() == 1);
+
+// Explicit runtime conversion APIs (clamp / checked), usable with
+// non-constants.
+static_assert(F::FromRuntimeInteger(45).RawValue() == 90);
+static_assert(F::FromRuntimeInteger(123).RawValue() == 200);  // clamps to Max
+static_assert(F::Saturating(123).RawValue() == 200);          // clamps to Max
+static_assert(F::TryFromRuntimeInteger(45).has_value());
+static_assert(F::TryFromRuntimeInteger(45)->RawValue() == 90);
+static_assert(!F::TryFromRuntimeInteger(123).has_value());  // checked failure
+
+void test_RuntimeIntegerApis() {
+  std::int64_t runtime_in_range = 45;
+  std::int64_t runtime_out_of_range = 123;
+
+  TEST_ASSERT_EQUAL_UINT8(90,
+                          F::FromRuntimeInteger(runtime_in_range).RawValue());
+  TEST_ASSERT_EQUAL_UINT8(
+      200, F::FromRuntimeInteger(runtime_out_of_range).RawValue());
+  TEST_ASSERT_EQUAL_UINT8(200, F::Saturating(runtime_out_of_range).RawValue());
+
+  const auto ok = F::TryFromRuntimeInteger(runtime_in_range);
+  TEST_ASSERT(ok.has_value());
+  TEST_ASSERT_EQUAL_UINT8(90, ok->RawValue());
+
+  const auto bad = F::TryFromRuntimeInteger(runtime_out_of_range);
+  TEST_ASSERT_FALSE(bad.has_value());
+}
+
 }  // namespace ae::test_fixed_point
 
 int test_fixed_point() {
   UNITY_BEGIN();
-  RUN_TEST(ae::test_fixed_point::test_FixedPoint);
-  RUN_TEST(ae::test_fixed_point::test_Exponent);
+  RUN_TEST(ae::test_fixed_point::test_LogicalConstructors);
+  RUN_TEST(ae::test_fixed_point::test_AddSameRep);
+  RUN_TEST(ae::test_fixed_point::test_AddMixedRep);
+  RUN_TEST(ae::test_fixed_point::test_Multiply);
+  RUN_TEST(ae::test_fixed_point::test_MulTo);
+  RUN_TEST(ae::test_fixed_point::test_IntegerAdd);
+  RUN_TEST(ae::test_fixed_point::test_RuntimeRoundTrip);
+  RUN_TEST(ae::test_fixed_point::test_RuntimeIntegerApis);
   return UNITY_END();
 }

@@ -14,18 +14,18 @@
 
 cmake_minimum_required(VERSION 3.16)
 
-project(numeric CXX)
+project(ae-numeric CXX)
 
 # define is the project is the current root project
 # root project builds tests and defines installation targets by default
-if( ${CMAKE_PROJECT_NAME} STREQUAL ${PROJECT_NAME})
+if("${CMAKE_PROJECT_NAME}" STREQUAL "${PROJECT_NAME}")
   set(IS_ROOT_PROJECT ON)
 else()
   set(IS_ROOT_PROJECT OFF)
 endif()
 
 option(AE_BUILD_TESTS "Build tests" ${IS_ROOT_PROJECT} )
-option(AE_NUMERIC_INSTALL "Install numeric library" ${IS_ROOT_PROJECT} )
+option(AE_NUMERIC_INSTALL "Install ae-numeric library" ${IS_ROOT_PROJECT} )
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,6 +34,7 @@ include(cmake/CPM.cmake)
 CPMAddPackage(URI "https://github.com/aethernetio/gcem.git#master" EXCLUDE_FROM_ALL FALSE)
 
 add_library(${PROJECT_NAME} INTERFACE)
+target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_20)
 target_link_libraries(${PROJECT_NAME} INTERFACE gcem)
 
 target_include_directories(${PROJECT_NAME} INTERFACE
@@ -49,7 +50,7 @@ if (AE_NUMERIC_INSTALL)
           EXPORT ${PROJECT_NAME}Targets
   )
 
-  install(DIRECTORY numeric DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  install(DIRECTORY ae-numeric DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
   install(EXPORT ${PROJECT_NAME}Targets
           FILE ${PROJECT_NAME}Targets.cmake

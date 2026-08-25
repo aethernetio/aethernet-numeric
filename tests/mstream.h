@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Aethernet Inc.
+ * Copyright 2026 Aethernet Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,14 +25,18 @@ namespace ae::test {
 template <typename TReader>
 class Imstream {
  public:
-  void read(std::uint8_t* p, std::size_t size) { reader.read(p, size); }
+  void read(std::uint8_t* p, std::size_t size) {
+    reader.read(p, size);
+  }
   TReader& reader;
 };
 
 template <typename TWriter>
 class Omstream {
  public:
-  void write(std::uint8_t const* p, std::size_t size) { writer.write(p, size); }
+  void write(std::uint8_t const* p, std::size_t size) {
+    writer.write(p, size);
+  }
   TWriter& writer;
 };
 
