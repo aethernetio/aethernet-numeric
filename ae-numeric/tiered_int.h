@@ -84,8 +84,8 @@ constexpr std::uint64_t ZigZagEncode64(std::int64_t n) noexcept {
 }
 
 constexpr std::int64_t ZigZagDecode64(std::uint64_t u) noexcept {
-  return static_cast<std::int64_t>((u >> 1) ^
-                                   (-static_cast<std::int64_t>(u & 1)));
+  return static_cast<std::int64_t>(u >> 1) ^
+         (-static_cast<std::int64_t>(u & 1));
 }
 
 template <typename WireCell, std::uint32_t V>
@@ -409,8 +409,7 @@ struct TieredInt {
   }
 
  private:
-  static constexpr ValueType AddChecked(ValueType lhs,
-                                        ValueType rhs) noexcept {
+  static constexpr ValueType AddChecked(ValueType lhs, ValueType rhs) noexcept {
     if constexpr (kIsSigned) {
       std::int64_t const a = static_cast<std::int64_t>(lhs);
       std::int64_t const b = static_cast<std::int64_t>(rhs);
