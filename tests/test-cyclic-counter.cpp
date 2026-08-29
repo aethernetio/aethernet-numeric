@@ -257,27 +257,105 @@ void test_ExhaustiveU8() {
   }
 }
 
-void test_WireTraitsProjection() {
+void test_WireProjectionAndContextualDecode() {
+  static_assert(!WireSerializable<U8_32>,
+                "CyclicCounter must not be WireSerializable");
+  static_assert(!WireSerializable<U8_16>);
+  static_assert(!WireSerializable<U16_32>);
+
   U8_32 c{1001u};
   std::uint8_t buf[4] = {};
-  std::size_t const n = wire_traits<U8_32>::Serialize(c, buf);
+  std::size_t const n =
+      wire_traits<std::uint8_t>::Serialize(c.WireValue(), buf);
   TEST_ASSERT_EQUAL(1u, n);
   TEST_ASSERT_EQUAL_UINT8(233u, buf[0]);
 
-  auto const proj = wire_traits<U8_32>::Deserialize(buf, n);
-  TEST_ASSERT_EQUAL(1u, proj.bytes_read);
-  TEST_ASSERT_EQUAL_UINT32(233u, proj.value.Value());
-
-  U8_32 live{1001u};
-  auto adv = live.TryDeserializeAndAdvance(buf, n);
-  TEST_ASSERT_TRUE(adv.has_value());
-  TEST_ASSERT_EQUAL_UINT32(1001u, *adv);
-  TEST_ASSERT_EQUAL_UINT32(1001u, live.Value());
+  // Same wire again: restore without advancing.
+  auto const same = c.TryDeserializeAndRestore(buf, n);
+  TEST_ASSERT_TRUE(same.ok());
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(CyclicDecodeStatus::Ok),
+                        static_cast<int>(same.status));
+  TEST_ASSERT_EQUAL_UINT32(1001u, same.value);
+  TEST_ASSERT_EQUAL(1u, same.bytes_read);
+  TEST_ASSERT_EQUAL_UINT32(1001u, c.Value());
 
   buf[0] = 237u;
-  adv = live.TryDeserializeAndAdvance(buf, 1);
-  TEST_ASSERT_EQUAL_UINT32(1005u, *adv);
-  TEST_ASSERT_EQUAL_UINT32(1005u, live.Value());
+  auto const restored = c.TryDeserializeAndRestore(buf, 1);
+  TEST_ASSERT_TRUE(restored.ok());
+  TEST_ASSERT_EQUAL_UINT32(1005u, restored.value);
+  TEST_ASSERT_EQUAL_UINT32(1001u, c.Value());
+
+  auto const advanced = c.TryDeserializeAndAdvance(buf, 1);
+  TEST_ASSERT_TRUE(advanced.ok());
+  TEST_ASSERT_EQUAL_UINT32(1005u, advanced.value);
+  TEST_ASSERT_EQUAL_UINT32(1005u, c.Value());
+}
+
+void test_ContextualRestoreAdvanceOldWrapAmbiguous() {
+  U8_32 counter{1001u};
+  std::uint8_t wire237 = 237u;
+  auto r = counter.TryDeserializeAndRestore(&wire237, 1);
+  TEST_ASSERT_TRUE(r.ok());
+  TEST_ASSERT_EQUAL_UINT32(1005u, r.value);
+  TEST_ASSERT_EQUAL_UINT32(1001u, counter.Value());
+
+  counter.Set(1001u);
+  auto a = counter.TryDeserializeAndAdvance(&wire237, 1);
+  TEST_ASSERT_EQUAL_UINT32(1005u, a.value);
+  TEST_ASSERT_EQUAL_UINT32(1005u, counter.Value());
+
+  counter.Set(1008u);
+  std::uint8_t old_wire = 235u;  // 1003
+  auto old = counter.TryDeserializeAndRestore(&old_wire, 1);
+  TEST_ASSERT_EQUAL_UINT32(1003u, old.value);
+  TEST_ASSERT_EQUAL_UINT32(1008u, counter.Value());
+  auto old_adv = counter.TryDeserializeAndAdvance(&old_wire, 1);
+  TEST_ASSERT_EQUAL_UINT32(1003u, old_adv.value);
+  TEST_ASSERT_EQUAL_UINT32(1008u, counter.Value());
+
+  counter.Set(1023u);
+  std::uint8_t wrap = 0u;
+  auto w = counter.TryDeserializeAndRestore(&wrap, 1);
+  TEST_ASSERT_EQUAL_UINT32(1024u, w.value);
+
+  counter.Set(0u);
+  std::uint8_t amb = 128u;
+  auto bad = counter.TryDeserializeAndRestore(&amb, 1);
+  TEST_ASSERT_FALSE(bad.ok());
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(CyclicDecodeStatus::Ambiguous),
+                        static_cast<int>(bad.status));
+  TEST_ASSERT_EQUAL(1u, bad.bytes_read);
+  TEST_ASSERT_EQUAL_UINT32(0u, counter.Value());
+}
+
+void test_TruncatedInputU16() {
+  U16_32 c{1000u};
+  std::uint8_t one_byte[1] = {0x01};
+  auto r = c.TryDeserializeAndRestore(one_byte, 1);
+  TEST_ASSERT_FALSE(r.ok());
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(CyclicDecodeStatus::TruncatedInput),
+                        static_cast<int>(r.status));
+  TEST_ASSERT_EQUAL(0u, r.bytes_read);
+
+  auto a = c.TryDeserializeAndAdvance(one_byte, 1);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(CyclicDecodeStatus::TruncatedInput),
+                        static_cast<int>(a.status));
+  TEST_ASSERT_EQUAL_UINT32(1000u, c.Value());
+}
+
+void test_DecodeOutOfRangeNearBounds() {
+  U8_16 near0{0u};
+  std::uint8_t back = 255u;
+  auto u = near0.TryDeserializeAndRestore(&back, 1);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(CyclicDecodeStatus::OutOfRange),
+                        static_cast<int>(u.status));
+  TEST_ASSERT_EQUAL(1u, u.bytes_read);
+
+  U8_16 near_max{std::numeric_limits<std::uint16_t>::max()};
+  std::uint8_t fwd = static_cast<std::uint8_t>(near_max.WireValue() + 1u);
+  auto o = near_max.TryDeserializeAndRestore(&fwd, 1);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(CyclicDecodeStatus::OutOfRange),
+                        static_cast<int>(o.status));
 }
 
 void test_CompareWire() {
@@ -320,7 +398,11 @@ int test_cyclic_counter() {
   RUN_TEST(ae::test_cyclic_counter::test_MultipleEpochs);
   RUN_TEST(ae::test_cyclic_counter::test_OldServer);
   RUN_TEST(ae::test_cyclic_counter::test_ExhaustiveU8);
-  RUN_TEST(ae::test_cyclic_counter::test_WireTraitsProjection);
+  RUN_TEST(ae::test_cyclic_counter::test_WireProjectionAndContextualDecode);
+  RUN_TEST(
+      ae::test_cyclic_counter::test_ContextualRestoreAdvanceOldWrapAmbiguous);
+  RUN_TEST(ae::test_cyclic_counter::test_TruncatedInputU16);
+  RUN_TEST(ae::test_cyclic_counter::test_DecodeOutOfRangeNearBounds);
   RUN_TEST(ae::test_cyclic_counter::test_CompareWire);
   RUN_TEST(ae::test_cyclic_counter::test_IncrementAndCompare);
   return UNITY_END();

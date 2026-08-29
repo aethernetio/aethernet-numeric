@@ -382,11 +382,21 @@ Release footprint binaries (section GC, volatile sinks) are the `footprint-*` / 
 wire = value mod (max(WireType) + 1)
 ```
 
-Example with `CyclicCounter<std::uint8_t, std::uint32_t>`: value `1001` → wire `233`. Dropped messages do not matter: if the receiver held `1001` and next sees wire `237`, it restores `1005`. Wire wrap is the same rule: `1023`/`255` then wire `0` restores `1024`.
+Example with `CyclicCounter<std::uint8_t, std::uint32_t>`:
 
-Restoration is relative to the current full value and unambiguous only for absolute distances strictly less than half the wire space (`127` for `uint8_t`, `32767` for `uint16_t`). Distance exactly half (`128` / `32768`) is ambiguous — `TryRestore` returns empty; `Restore` is a contract failure. `TryAdvance` updates the local base only when the restored value is strictly newer.
+```cpp
+Counter counter{1001};
+std::uint8_t wire = counter.WireValue();  // 233
+// ... later, after gaps, peer sends wire 237 ...
+auto restored = counter.TryRestore(237);  // 1005; counter still 1001
+counter.TryAdvance(237);                  // counter becomes 1005
+```
 
-`sizeof(CyclicCounter) == sizeof(ValueType)`. Wire IO serializes `WireValue()` only; reconstructing a full counter requires a live base (`TryRestore` / `TryAdvance` / `TryDeserializeAndAdvance`).
+Wire wrap uses the same rule: `1023`/`255` then wire `0` restores `1024`.
+
+**CyclicCounter cannot be deserialized statelessly** because the truncated wire value does not contain the epoch/high bits. There is no `wire_traits<CyclicCounter>` and `Deserialize<CyclicCounter>(…)` does not compile. Deserialize the `WireType` first (or use `TryDeserializeAndRestore` / `TryDeserializeAndAdvance` on an existing counter) and restore relative to a live full value.
+
+Restoration is unambiguous only for absolute distances strictly less than half the wire space (`127` for `uint8_t`, `32767` for `uint16_t`). Distance exactly half (`128` / `32768`) is ambiguous. `TryAdvance` updates the local base only when the restored value is strictly newer. `sizeof(CyclicCounter) == sizeof(ValueType)`.
 
 ---
 

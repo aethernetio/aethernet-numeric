@@ -132,7 +132,8 @@ foreach(fail_case
     segmented_runtime_rep_too_small
     segmented_invalid_wire_bytes
     segmented_duplicate_runtime_value
-    segmented_impossible_continuous_step)
+    segmented_impossible_continuous_step
+    cyclic_counter_stateless_deserialize)
   add_executable(fail-${fail_case} EXCLUDE_FROM_ALL
     compile-fail/${fail_case}.cpp)
   target_link_libraries(fail-${fail_case} PRIVATE ae-numeric)

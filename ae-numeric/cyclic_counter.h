@@ -26,9 +26,41 @@
 
 namespace ae {
 
+// Outcome of restoring a truncated wire sample relative to a full counter.
+enum class CyclicRestoreStatus : std::uint8_t {
+  Ok = 0,
+  Ambiguous = 1,
+  OutOfRange = 2,
+};
+
+// Outcome of reading bytes then restoring/advancing relative to a live counter.
+enum class CyclicDecodeStatus : std::uint8_t {
+  Ok = 0,
+  TruncatedInput = 1,
+  Ambiguous = 2,
+  OutOfRange = 3,
+};
+
+template <typename ValueType>
+struct CyclicDecodeResult {
+  CyclicDecodeStatus status = CyclicDecodeStatus::TruncatedInput;
+  ValueType value{};
+  std::size_t bytes_read = 0;
+
+  constexpr bool ok() const noexcept {
+    return status == CyclicDecodeStatus::Ok;
+  }
+  constexpr explicit operator bool() const noexcept { return ok(); }
+};
+
 // Compact cyclic counter: full ValueType locally, truncated WireType on the
 // wire. Restoration is relative to the current full value (nearest unambiguous
 // neighbor). Half wire-range is ambiguous and rejected by TryRestore.
+//
+// There is no wire_traits specialization: a truncated wire value cannot form a
+// full CyclicCounter without a live base. Serialize WireValue() via
+// wire_traits<WireType>; restore with TryRestore / TryAdvance /
+// TryDeserializeAndRestore / TryDeserializeAndAdvance.
 //
 // No epoch / previous / decoder state is stored — sizeof equals sizeof(ValueType).
 template <typename WireType, typename ValueType>
@@ -40,6 +72,7 @@ class CyclicCounter {
  public:
   using wire_type = WireType;
   using value_type = ValueType;
+  using decode_result = CyclicDecodeResult<value_type>;
 
   static constexpr value_type kWireMask =
       static_cast<value_type>(std::numeric_limits<wire_type>::max());
@@ -63,33 +96,45 @@ class CyclicCounter {
   }
 
   // Nearest full value whose low bits equal `wire`, relative to value_.
-  // Returns nullopt on half-range ambiguity or ValueType overflow/underflow.
-  constexpr std::optional<value_type> TryRestore(wire_type wire) const noexcept {
+  // Distinguishes half-range ambiguity from ValueType overflow/underflow.
+  constexpr CyclicRestoreStatus TryRestoreStatus(
+      wire_type wire, value_type& out) const noexcept {
     wire_type const current = WireValue();
-    // Modular forward distance in wire space (unsigned wrap).
     wire_type const forward = static_cast<wire_type>(wire - current);
 
     if (forward == wire_type{0}) {
-      return value_;
+      out = value_;
+      return CyclicRestoreStatus::Ok;
     }
 
     value_type const forward_v = static_cast<value_type>(forward);
     if (forward_v == kHalfRange) {
-      return std::nullopt;
+      return CyclicRestoreStatus::Ambiguous;
     }
 
     if (forward_v < kHalfRange) {
       if (value_ > (std::numeric_limits<value_type>::max() - forward_v)) {
-        return std::nullopt;
+        return CyclicRestoreStatus::OutOfRange;
       }
-      return value_ + forward_v;
+      out = value_ + forward_v;
+      return CyclicRestoreStatus::Ok;
     }
 
     value_type const backward = kWireSpace - forward_v;
     if (value_ < backward) {
+      return CyclicRestoreStatus::OutOfRange;
+    }
+    out = value_ - backward;
+    return CyclicRestoreStatus::Ok;
+  }
+
+  // Returns nullopt on Ambiguous or OutOfRange.
+  constexpr std::optional<value_type> TryRestore(wire_type wire) const noexcept {
+    value_type out{};
+    if (TryRestoreStatus(wire, out) != CyclicRestoreStatus::Ok) {
       return std::nullopt;
     }
-    return value_ - backward;
+    return out;
   }
 
   // Contract: TryRestore must succeed. Debug builds assert on failure.
@@ -105,28 +150,52 @@ class CyclicCounter {
   // value_; otherwise leave value_ unchanged. Always returns restored when
   // unambiguous (including older values).
   constexpr std::optional<value_type> TryAdvance(wire_type wire) noexcept {
-    auto const restored = TryRestore(wire);
-    if (!restored.has_value()) {
+    value_type restored{};
+    if (TryRestoreStatus(wire, restored) != CyclicRestoreStatus::Ok) {
       return std::nullopt;
     }
-    if (*restored > value_) {
-      value_ = *restored;
+    if (restored > value_) {
+      value_ = restored;
     }
     return restored;
   }
 
-  // Read a little-endian WireType from the buffer and TryAdvance.
-  constexpr std::optional<value_type> TryDeserializeAndAdvance(
-      std::uint8_t const* in, std::size_t len) noexcept {
-    if (in == nullptr || len < sizeof(wire_type)) {
-      return std::nullopt;
+  // bytes -> WireType -> TryRestore. Does not modify value_.
+  constexpr decode_result TryDeserializeAndRestore(std::uint8_t const* in,
+                                                    std::size_t len) const
+      noexcept {
+    decode_result result{};
+    wire_type wire{};
+    if (!ReadWireLittleEndian(in, len, wire)) {
+      result.status = CyclicDecodeStatus::TruncatedInput;
+      result.bytes_read = 0;
+      return result;
     }
-    wire_type bits = 0;
-    for (std::size_t i = 0; i < sizeof(wire_type); ++i) {
-      bits |= static_cast<wire_type>(static_cast<wire_type>(in[i])
-                                     << (8 * i));
+    result.bytes_read = sizeof(wire_type);
+
+    value_type restored{};
+    CyclicRestoreStatus const st = TryRestoreStatus(wire, restored);
+    if (st == CyclicRestoreStatus::Ambiguous) {
+      result.status = CyclicDecodeStatus::Ambiguous;
+      return result;
     }
-    return TryAdvance(bits);
+    if (st == CyclicRestoreStatus::OutOfRange) {
+      result.status = CyclicDecodeStatus::OutOfRange;
+      return result;
+    }
+    result.status = CyclicDecodeStatus::Ok;
+    result.value = restored;
+    return result;
+  }
+
+  // bytes -> WireType -> TryAdvance. May raise value_ when restored is newer.
+  constexpr decode_result TryDeserializeAndAdvance(std::uint8_t const* in,
+                                                   std::size_t len) noexcept {
+    decode_result result = TryDeserializeAndRestore(in, len);
+    if (result.ok() && result.value > value_) {
+      value_ = result.value;
+    }
+    return result;
   }
 
   constexpr CyclicCounter& operator++() noexcept {
@@ -167,6 +236,20 @@ class CyclicCounter {
   }
 
  private:
+  static constexpr bool ReadWireLittleEndian(std::uint8_t const* in,
+                                             std::size_t len,
+                                             wire_type& out) noexcept {
+    if (in == nullptr || len < sizeof(wire_type)) {
+      return false;
+    }
+    wire_type bits = 0;
+    for (std::size_t i = 0; i < sizeof(wire_type); ++i) {
+      bits |= static_cast<wire_type>(static_cast<wire_type>(in[i]) << (8 * i));
+    }
+    out = bits;
+    return true;
+  }
+
   value_type value_{};
 };
 
@@ -203,36 +286,6 @@ constexpr WireOrder CompareWire(WireType a, WireType b) noexcept {
   }
   return WireOrder::Older;
 }
-
-}  // namespace ae
-
-#include "ae-numeric/wire_io.h"
-
-namespace ae {
-
-// Wire IO carries only the truncated WireType projection. Stateless
-// Deserialize builds CyclicCounter(wire) (high bits zero) — not a restored
-// full counter. Reconstruct with an existing base via TryRestore / TryAdvance
-// or TryDeserializeAndAdvance.
-template <typename WireType, typename ValueType>
-struct wire_traits<CyclicCounter<WireType, ValueType>> {
-  using T = CyclicCounter<WireType, ValueType>;
-  using WireTraits = wire_traits<WireType>;
-
-  static constexpr std::size_t kMaxWireBytes = WireTraits::kMaxWireBytes;
-
-  static std::size_t Serialize(T const& value, std::uint8_t* out) noexcept {
-    assert(out != nullptr);
-    return WireTraits::Serialize(value.WireValue(), out);
-  }
-
-  static DeserializeResult<T> Deserialize(std::uint8_t const* in,
-                                          std::size_t len) noexcept {
-    auto const wire_result = WireTraits::Deserialize(in, len);
-    return {T{static_cast<ValueType>(wire_result.value)},
-            wire_result.bytes_read};
-  }
-};
 
 }  // namespace ae
 
