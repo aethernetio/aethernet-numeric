@@ -44,7 +44,6 @@ void SinkOne(char const* name) {
   sink += Num::kMaxWireBytes;
   sink += Num::kSegmentCount;
   sink += Num::kFormulaCoefficientBytes;
-  sink += Num::kLookupTableBytes;
   auto const n = Num::Saturating(Num::runtime_type::FromInteger(1));
   std::uint8_t buf[8] = {};
   sink += Num::Serialize(n, buf);
@@ -52,11 +51,10 @@ void SinkOne(char const* name) {
   sink += back.bytes_read;
   std::printf(
       "%s sizeof(runtime)=%zu sizeof(number)=%zu sizeof(wire)=%zu "
-      "codes=%zu max_bytes=%zu segs=%zu formula_bytes=%zu lookup_bytes=%zu "
-      "sink=%zu\n",
+      "codes=%zu max_bytes=%zu segs=%zu formula_bytes=%zu sink=%zu\n",
       name, sizeof(typename Num::runtime_type), sizeof(Num),
       sizeof(typename Num::wire_type), Num::kCodeCount, Num::kMaxWireBytes,
-      Num::kSegmentCount, Num::kFormulaCoefficientBytes, Num::kLookupTableBytes,
+      Num::kSegmentCount, Num::kFormulaCoefficientBytes,
       static_cast<std::size_t>(sink));
 }
 
@@ -83,18 +81,6 @@ int main() {
 #endif
 #if defined(AE_SEG_HAS_CONN)
   SinkOne<ae::test_segmented_formats::ConnectDuration>("connect-duration");
-#endif
-#if defined(AE_SEG_HAS_RSSI_LOOKUP) || defined(AE_SEG_FOOTPRINT_ALL_LOOKUP)
-  SinkOne<ae::test_segmented_formats::RssiLookup>("rssi-lookup");
-#endif
-#if defined(AE_SEG_HAS_TEMP_LOOKUP) || defined(AE_SEG_FOOTPRINT_ALL_LOOKUP)
-  SinkOne<ae::test_segmented_formats::TemperatureLookup>("temperature-lookup");
-#endif
-#if defined(AE_SEG_FOOTPRINT_ALL_LOOKUP)
-  SinkOne<ae::test_segmented_formats::HumidityLookup>("humidity-lookup");
-  SinkOne<ae::test_segmented_formats::Co2Lookup>("co2-lookup");
-  SinkOne<ae::test_segmented_formats::BatteryLookup>("battery-lookup");
-  SinkOne<ae::test_segmented_formats::ConnectLookup>("connect-lookup");
 #endif
   return 0;
 }

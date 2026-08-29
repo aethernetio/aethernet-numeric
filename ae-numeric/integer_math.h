@@ -286,6 +286,269 @@ AE_INTEGER_MATH_CONSTEXPR std::uint64_t SqrtU64(std::uint64_t n) noexcept {
   return x0;
 }
 
+AE_INTEGER_MATH_CONSTEXPR std::uint32_t AbsI32ToU32(std::int32_t value) noexcept {
+  if (value >= 0) {
+    return static_cast<std::uint32_t>(value);
+  }
+  return static_cast<std::uint32_t>(-(value + 1)) + 1U;
+}
+
+AE_INTEGER_MATH_CONSTEXPR bool MulU32Checked(std::uint32_t a, std::uint32_t b,
+                                             std::uint32_t& out) noexcept {
+  if (a == 0 || b == 0) {
+    out = 0;
+    return true;
+  }
+  if (a > std::numeric_limits<std::uint32_t>::max() / b) {
+    return false;
+  }
+  out = a * b;
+  return true;
+}
+
+AE_INTEGER_MATH_CONSTEXPR bool AddU32Checked(std::uint32_t a, std::uint32_t b,
+                                             std::uint32_t& out) noexcept {
+  if (a > std::numeric_limits<std::uint32_t>::max() - b) {
+    return false;
+  }
+  out = a + b;
+  return true;
+}
+
+// 32×32 → (hi, lo) via 16×16 products. No 64-bit arithmetic type.
+AE_INTEGER_MATH_CONSTEXPR void MulU32Wide(std::uint32_t a, std::uint32_t b,
+                                          std::uint32_t& hi,
+                                          std::uint32_t& lo) noexcept {
+  std::uint32_t const a0 = a & 0xFFFFu;
+  std::uint32_t const a1 = a >> 16U;
+  std::uint32_t const b0 = b & 0xFFFFu;
+  std::uint32_t const b1 = b >> 16U;
+  std::uint32_t const p00 = a0 * b0;
+  std::uint32_t const p01 = a0 * b1;
+  std::uint32_t const p10 = a1 * b0;
+  std::uint32_t const p11 = a1 * b1;
+  lo = p00;
+  hi = p11;
+  std::uint32_t const p01_lo = p01 << 16U;
+  std::uint32_t const p01_hi = p01 >> 16U;
+  std::uint32_t s = lo + p01_lo;
+  std::uint32_t c = s < lo ? 1U : 0U;
+  lo = s;
+  hi += p01_hi + c;
+  std::uint32_t const p10_lo = p10 << 16U;
+  std::uint32_t const p10_hi = p10 >> 16U;
+  s = lo + p10_lo;
+  c = s < lo ? 1U : 0U;
+  lo = s;
+  hi += p10_hi + c;
+}
+
+// (hi:lo) / d → 32-bit quotient. Requires d != 0 and hi < d.
+AE_INTEGER_MATH_CONSTEXPR bool DivU32Wide(std::uint32_t hi, std::uint32_t lo,
+                                          std::uint32_t d, std::uint32_t& quot,
+                                          std::uint32_t& rem) noexcept {
+  if (d == 0 || hi >= d) {
+    return false;
+  }
+  std::uint32_t q = 0;
+  for (int i = 0; i < 32; ++i) {
+    std::uint32_t const hi_msb = hi >> 31U;
+    hi = (hi << 1U) | (lo >> 31U);
+    lo <<= 1U;
+    q <<= 1U;
+    if (hi_msb != 0U || hi >= d) {
+      hi -= d;
+      q |= 1U;
+    }
+  }
+  quot = q;
+  rem = hi;
+  return true;
+}
+
+AE_INTEGER_MATH_CONSTEXPR bool RoundDivU32(std::uint32_t a, std::uint32_t b,
+                                           std::uint32_t& out) noexcept {
+  if (b == 0) {
+    return false;
+  }
+  std::uint32_t const q = a / b;
+  std::uint32_t const r = a % b;
+  if (r >= b - r) {
+    if (q == std::numeric_limits<std::uint32_t>::max()) {
+      return false;
+    }
+    out = q + 1U;
+  } else {
+    out = q;
+  }
+  return true;
+}
+
+// round_nearest((a * f) / d) with 32-bit operations only.
+AE_INTEGER_MATH_CONSTEXPR bool MulDivU32Nearest(
+    std::uint32_t a, std::uint32_t f, std::uint32_t d,
+    std::uint32_t& out) noexcept {
+  if (d == 0) {
+    return false;
+  }
+  std::uint32_t hi = 0;
+  std::uint32_t lo = 0;
+  MulU32Wide(a, f, hi, lo);
+  std::uint32_t q = 0;
+  std::uint32_t r = 0;
+  if (!DivU32Wide(hi, lo, d, q, r)) {
+    return false;
+  }
+  if (r >= d - r) {
+    if (q == std::numeric_limits<std::uint32_t>::max()) {
+      return false;
+    }
+    ++q;
+  }
+  out = q;
+  return true;
+}
+
+AE_INTEGER_MATH_CONSTEXPR std::uint32_t SqrtU32(std::uint32_t n) noexcept {
+  if (n < 2U) {
+    return n;
+  }
+  std::uint32_t x0 = n >> 1U;
+  std::uint32_t x1 = (x0 + n / x0) >> 1U;
+  while (x1 < x0) {
+    x0 = x1;
+    x1 = (x0 + n / x0) >> 1U;
+  }
+  return x0;
+}
+
+// Floor sqrt of a 64-bit magnitude stored as (hi, lo). 32-bit operations only:
+// digit-by-digit search of the 32-bit root, comparing squares via MulU32Wide.
+AE_INTEGER_MATH_CONSTEXPR std::uint32_t SqrtU32Wide(std::uint32_t hi,
+                                                    std::uint32_t lo) noexcept {
+  if (hi == 0U) {
+    return SqrtU32(lo);
+  }
+  std::uint32_t res = 0;
+  for (unsigned i = 0; i < 32U; ++i) {
+    std::uint32_t const cand = res | (1U << (31U - i));
+    std::uint32_t phi = 0;
+    std::uint32_t plo = 0;
+    MulU32Wide(cand, cand, phi, plo);
+    if (phi < hi || (phi == hi && plo <= lo)) {
+      res = cand;
+    }
+  }
+  return res;
+}
+
+// Two's-complement negate of a 64-bit value stored as (hi, lo) uint32 halves.
+AE_INTEGER_MATH_CONSTEXPR void NegU32Wide(std::uint32_t& hi,
+                                          std::uint32_t& lo) noexcept {
+  lo = ~lo + 1U;
+  hi = ~hi + (lo == 0U ? 1U : 0U);
+}
+
+AE_INTEGER_MATH_CONSTEXPR void MulI32Wide(std::int32_t a, std::int32_t b,
+                                          std::uint32_t& hi,
+                                          std::uint32_t& lo) noexcept {
+  bool const neg = (a < 0) != (b < 0);
+  MulU32Wide(AbsI32ToU32(a), AbsI32ToU32(b), hi, lo);
+  if (neg) {
+    NegU32Wide(hi, lo);
+  }
+}
+
+// Shift (hi:lo) left. Returns false if bits shift out of hi.
+AE_INTEGER_MATH_CONSTEXPR bool ShlU32WideChecked(std::uint32_t& hi,
+                                                 std::uint32_t& lo,
+                                                 unsigned bits) noexcept {
+  if (bits == 0U) {
+    return true;
+  }
+  if (bits >= 64U) {
+    if (hi != 0U || lo != 0U) {
+      return false;
+    }
+    return true;
+  }
+  if (bits >= 32U) {
+    unsigned const rest = bits - 32U;
+    if (hi != 0U) {
+      return false;
+    }
+    if (rest != 0U && (lo >> (32U - rest)) != 0U) {
+      return false;
+    }
+    hi = lo << rest;
+    lo = 0U;
+    return true;
+  }
+  if ((hi >> (32U - bits)) != 0U) {
+    return false;
+  }
+  hi = (hi << bits) | (lo >> (32U - bits));
+  lo <<= bits;
+  return true;
+}
+
+// Arithmetic-free logical right shift of (hi:lo) with optional round-nearest
+// (half away from zero on the unsigned magnitude).
+AE_INTEGER_MATH_CONSTEXPR void ShrU32Wide(std::uint32_t& hi, std::uint32_t& lo,
+                                          unsigned bits,
+                                          bool round_nearest) noexcept {
+  if (bits == 0U) {
+    return;
+  }
+  if (bits >= 64U) {
+    std::uint32_t const round =
+        round_nearest && (hi != 0U || lo != 0U) ? 1U : 0U;
+    hi = 0U;
+    lo = round;
+    return;
+  }
+  std::uint32_t round_bit = 0U;
+  if (round_nearest) {
+    if (bits <= 32U) {
+      round_bit = (lo >> (bits - 1U)) & 1U;
+    } else {
+      round_bit = (hi >> (bits - 33U)) & 1U;
+    }
+  }
+  if (bits >= 32U) {
+    lo = hi >> (bits - 32U);
+    hi = 0U;
+  } else {
+    lo = (lo >> bits) | (hi << (32U - bits));
+    hi >>= bits;
+  }
+  if (round_bit != 0U) {
+    lo += 1U;
+    if (lo == 0U) {
+      hi += 1U;
+    }
+  }
+}
+
+// Compare unsigned products a*b vs c*d using 16×16 decomposition.
+AE_INTEGER_MATH_CONSTEXPR int CmpMulU32(std::uint32_t a, std::uint32_t b,
+                                        std::uint32_t c,
+                                        std::uint32_t d) noexcept {
+  std::uint32_t ahi = 0;
+  std::uint32_t alo = 0;
+  std::uint32_t bhi = 0;
+  std::uint32_t blo = 0;
+  MulU32Wide(a, b, ahi, alo);
+  MulU32Wide(c, d, bhi, blo);
+  if (ahi != bhi) {
+    return ahi < bhi ? -1 : 1;
+  }
+  if (alo != blo) {
+    return alo < blo ? -1 : 1;
+  }
+  return 0;
+}
+
 }  // namespace ae::integer_math
 
 #undef AE_INTEGER_MATH_CONSTEXPR

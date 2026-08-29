@@ -21,9 +21,11 @@
 #include <cstdint>
 #include <type_traits>
 
+#include <ae-numeric/details/segmented_formula_backend.h>
 #include <ae-numeric/segmented_number_wire_io.h>
 #include <ae-numeric/tiered_int.h>
 
+#include "segmented_reference_math.h"
 #include "segmented_test_formats.h"
 
 namespace ae::test_segmented_number_formats {
@@ -99,9 +101,9 @@ void test_HumidityGolden() {
   TEST_ASSERT_EQUAL(45, p.segs[0].intervals);
   TEST_ASSERT_EQUAL(168, p.segs[1].intervals);
   TEST_ASSERT_EQUAL(42, p.segs[2].intervals);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-8, 60.0 / 168.0, p.segs[1].step0);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-6, 0.5317460317, p.segs[0].step0);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-6, 0.5952380952, p.segs[2].last_step);
+  TEST_ASSERT_DOUBLE_WITHIN(2.0e-4, 60.0 / 168.0, AsDouble(p.segs[1].step0));
+  TEST_ASSERT_DOUBLE_WITHIN(2.0e-4, 0.5317460317, AsDouble(p.segs[0].step0));
+  TEST_ASSERT_DOUBLE_WITHIN(2.0e-4, 0.5952380952, AsDouble(p.segs[2].last_step));
 }
 
 void test_HumidityErrors() {
@@ -135,7 +137,7 @@ void test_Co2Golden() {
   TEST_ASSERT_EQUAL(821, p.segs[0].intervals);
   TEST_ASSERT_EQUAL(254, p.segs[0].last_1);
   TEST_ASSERT_EQUAL(477, p.segs[0].last_2);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-9, 1.005414508222845, p.segs[0].r);
+  TEST_ASSERT_DOUBLE_WITHIN(1.0e-6, 1.005414508222845, AsDouble(p.segs[0].r));
 }
 
 void test_Co2DecodedCuts() {
@@ -160,9 +162,15 @@ void test_RxWindowGolden() {
   TEST_ASSERT_EQUAL_UINT(255U, RxWindow::kTwoByteCount);
   TEST_ASSERT_EQUAL_UINT(3046U, RxWindow::kCodeCount);
   TEST_ASSERT_EQUAL_UINT(4U, RxWindow::kMaxWireBytes);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-9, 1.0355033664891309, p.segs[0].r);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-9, 1.0341296978352505, p.segs[1].r);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-6, 1.012401106168161, p.segs[2].q);
+  TEST_ASSERT_DOUBLE_WITHIN(1.0e-6, 1.0355033664891309, AsDouble(p.segs[0].r));
+  TEST_ASSERT_DOUBLE_WITHIN(1.0e-6, 1.0341296978352505, AsDouble(p.segs[1].r));
+  TEST_ASSERT_DOUBLE_WITHIN(1.0e-5, 1.012401106168161, AsDouble(p.segs[2].q));
+  TEST_ASSERT_DOUBLE_WITHIN(2.0, 2.0, AsDouble(p.segs[2].step0));
+  TEST_ASSERT_DOUBLE_WITHIN(2.0, 45.0, AsDouble(p.segs[2].last_step));
+  TEST_ASSERT_DOUBLE_WITHIN(2.0, 45.0, AsDouble(p.segs[3].step0));
+  TEST_ASSERT_DOUBLE_WITHIN(2.0, 20.0, AsDouble(p.segs[3].last_step));
+  TEST_ASSERT_EQUAL(
+      132, test_segmented_reference::RefAutoSplitN1(0.01L, 1.0L, 60.0L, 254));
 }
 
 void test_BatteryGolden() {
@@ -170,8 +178,8 @@ void test_BatteryGolden() {
   auto const& p = Battery::Logical();
   TEST_ASSERT_EQUAL(130, p.segs[0].intervals);
   TEST_ASSERT_EQUAL(125, p.segs[1].intervals);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-9, 1.0116049124714404, p.segs[0].q);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-7, 0.0088601265, p.segs[0].step0);
+  TEST_ASSERT_DOUBLE_WITHIN(5.0e-6, 1.0116049124714404, AsDouble(p.segs[0].q));
+  TEST_ASSERT_DOUBLE_WITHIN(5.0e-4, 0.0088601265, AsDouble(p.segs[0].step0));
 }
 
 void test_ConnectDurationGolden() {
@@ -179,36 +187,13 @@ void test_ConnectDurationGolden() {
   auto const& p = ConnectDuration::Logical();
   TEST_ASSERT_EQUAL(102, p.segs[0].intervals);
   TEST_ASSERT_EQUAL(153, p.segs[1].intervals);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-9, 1.0228310927967654, p.segs[0].r);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-9, 1.0224789769119687, p.segs[1].r);
-}
-
-void test_RoundTripAllFormats() {
-  CheckRankRoundTrip<Humidity>();
-  CheckRankRoundTrip<Co2>();
-  CheckRankRoundTrip<Battery>();
-  CheckRankRoundTrip<ConnectDuration>();
-  CheckRankRoundTrip<RxWindow>();
-}
-
-void test_UniqueAndSerializeSmall() {
-  CheckUniqueRaws<Humidity>();
-  CheckUniqueRaws<Battery>();
-  CheckUniqueRaws<ConnectDuration>();
-  CheckUniqueRaws<RxWindow>();
-  CheckSerializeRoundTrip<Humidity>();
-  CheckSerializeRoundTrip<Battery>();
-  CheckSerializeRoundTrip<ConnectDuration>();
-}
-
-void test_Co2UniqueAndSerialize() {
-  CheckUniqueRaws<Co2>();
-  CheckSerializeRoundTrip<Co2>();
+  TEST_ASSERT_DOUBLE_WITHIN(1.0e-6, 1.0228310927967654, AsDouble(p.segs[0].r));
+  TEST_ASSERT_DOUBLE_WITHIN(1.0e-6, 1.0224789769119687, AsDouble(p.segs[1].r));
 }
 
 template <typename Num>
 double MaxAbsErrorRatio(std::int64_t den, std::int64_t n0, std::int64_t n1,
-                        std::int64_t step) {
+                         std::int64_t step) {
   double m = 0.0;
   for (std::int64_t n = n0; n <= n1; n += step) {
     auto const v = Num::runtime_type::FromRatio(n, den);
@@ -222,13 +207,41 @@ double MaxAbsErrorRatio(std::int64_t den, std::int64_t n0, std::int64_t n1,
   return m;
 }
 
-void test_DenseSampling() {
-  TEST_ASSERT(MaxAbsErrorRatio<Temperature>(100, -4000, 12500, 1) <= 0.22);
+void test_HumidityRoundTrip() { CheckRankRoundTrip<Humidity>(); }
+void test_Co2RoundTrip() { CheckRankRoundTrip<Co2>(); }
+void test_BatteryRoundTrip() { CheckRankRoundTrip<Battery>(); }
+void test_ConnectRoundTrip() { CheckRankRoundTrip<ConnectDuration>(); }
+void test_RxWindowRoundTrip() { CheckRankRoundTrip<RxWindow>(); }
+
+void test_HumidityUnique() { CheckUniqueRaws<Humidity>(); }
+void test_BatteryUnique() { CheckUniqueRaws<Battery>(); }
+void test_ConnectUnique() { CheckUniqueRaws<ConnectDuration>(); }
+void test_RxWindowUnique() { CheckUniqueRaws<RxWindow>(); }
+void test_Co2Unique() { CheckUniqueRaws<Co2>(); }
+
+void test_HumiditySerialize() { CheckSerializeRoundTrip<Humidity>(); }
+void test_BatterySerialize() { CheckSerializeRoundTrip<Battery>(); }
+void test_ConnectSerialize() { CheckSerializeRoundTrip<ConnectDuration>(); }
+void test_Co2Serialize() { CheckSerializeRoundTrip<Co2>(); }
+
+void test_DenseTemperature() {
+  TEST_ASSERT(MaxAbsErrorRatio<Temperature>(100, -4000, 12500, 1) <= 0.20);
+}
+void test_DenseHumidity() {
   TEST_ASSERT(MaxAbsErrorRatio<Humidity>(100, 0, 10000, 1) <= 0.32);
+}
+void test_DenseRssi() {
   TEST_ASSERT(MaxAbsErrorRatio<Rssi>(10, -1270, 0, 1) <= 0.51);
+}
+void test_DenseBattery() {
   TEST_ASSERT(MaxAbsErrorRatio<Battery>(10000, 21500, 30000, 1) <= 0.005);
+}
+void test_DenseConnect() {
   TEST_ASSERT(MaxAbsErrorRatio<ConnectDuration>(1000, 200, 60000, 1) <= 0.70);
+}
+void test_DenseCo2() {
   double co2_rel = 0.0;
+  double co2_rel_hi = 0.0;
   for (int ppm = 380; ppm <= 32000; ++ppm) {
     auto const v = Co2::runtime_type::FromInteger(ppm);
     auto const n = Co2::TryFromRuntime(v);
@@ -237,10 +250,71 @@ void test_DenseSampling() {
     double const rel = std::fabs(got - static_cast<double>(ppm)) /
                        static_cast<double>(ppm);
     co2_rel = std::max(co2_rel, rel);
+    if (ppm >= 2000) {
+      co2_rel_hi = std::max(co2_rel_hi, rel);
+    }
   }
-  TEST_ASSERT(co2_rel <= 0.0035);
+  TEST_ASSERT(co2_rel_hi <= 0.00280);
+  TEST_ASSERT(co2_rel <= 0.00320);
+}
+void test_DenseRxWindow() {
   TEST_ASSERT(MaxAbsErrorRatio<RxWindow>(1, 1, 86400, 1) <= 23.0);
-  TEST_ASSERT(MaxAbsErrorRatio<RxWindow>(1, 86000, 86400, 1) <= 12.0);
+}
+void test_DenseRxWindow24h() {
+  // Last linear step is 20 s; the 10.01 s bound applies at the 24 h edge,
+  // not 400 s earlier where the ramp step is still slightly larger.
+  TEST_ASSERT(MaxAbsErrorRatio<RxWindow>(1, 86380, 86400, 1) <= 10.01);
+}
+
+void test_ConnectJumpAndReference() {
+  auto const& p = ConnectDuration::Logical();
+  double const a = AsDouble(p.segs[0].last_step);
+  double const b = AsDouble(p.segs[1].step0);
+  TEST_ASSERT(a > 0.0);
+  TEST_ASSERT(b > 0.0);
+  double const jump = std::fabs(a - b) / (a < b ? a : b);
+  TEST_ASSERT(jump < 0.01);
+  TEST_ASSERT_EQUAL(
+      102, test_segmented_reference::RefAutoSplitN1(0.2L, 2.0L, 60.0L, 255));
+}
+
+void test_TemperatureMatchesReferenceQ() {
+  double const q0 = AsDouble(Temperature::Logical().segs[0].q);
+  TEST_ASSERT_DOUBLE_WITHIN(
+      5.0e-6, static_cast<double>(test_segmented_reference::RefSolveGeomQ(349, 500.0L)),
+      q0);
+}
+
+void test_Co2MatchesReferenceR() {
+  double const r = AsDouble(Co2::Logical().segs[0].r);
+  TEST_ASSERT_DOUBLE_WITHIN(
+      5.0e-6,
+      static_cast<double>(test_segmented_reference::RefExpRatio(380.0L, 32000.0L, 821)),
+      r);
+}
+
+void test_RampIndexError() {
+  int const hum_codes =
+      ae::seg::segmented_formula_internal::MaxRampIndexError<
+          Humidity::spec_type, Humidity::logical_type>();
+  int const hum_dense =
+      ae::seg::segmented_formula_internal::MaxRampIndexErrorDenseInputs<
+          Humidity::spec_type, Humidity::logical_type>();
+  int const rx_codes = ae::seg::segmented_formula_internal::MaxRampIndexError<
+      RxWindow::spec_type, RxWindow::logical_type>();
+  int const rx_dense =
+      ae::seg::segmented_formula_internal::MaxRampIndexErrorDenseInputs<
+          RxWindow::spec_type, RxWindow::logical_type>();
+  int const temp = ae::seg::segmented_formula_internal::MaxRampIndexError<
+      Temperature::spec_type, Temperature::logical_type>();
+  int const co2 = ae::seg::segmented_formula_internal::MaxRampIndexError<
+      Co2::spec_type, Co2::logical_type>();
+  TEST_ASSERT_LESS_OR_EQUAL_INT(3, hum_codes);
+  TEST_ASSERT_LESS_OR_EQUAL_INT(3, rx_codes);
+  TEST_ASSERT_LESS_OR_EQUAL_INT(3, hum_dense);
+  TEST_ASSERT_LESS_OR_EQUAL_INT(3, rx_dense);
+  TEST_ASSERT_EQUAL_INT(0, temp);
+  TEST_ASSERT_EQUAL_INT(0, co2);
 }
 
 }  // namespace ae::test_segmented_number_formats
@@ -254,9 +328,31 @@ int test_segmented_number_formats() {
   RUN_TEST(ae::test_segmented_number_formats::test_RxWindowGolden);
   RUN_TEST(ae::test_segmented_number_formats::test_BatteryGolden);
   RUN_TEST(ae::test_segmented_number_formats::test_ConnectDurationGolden);
-  RUN_TEST(ae::test_segmented_number_formats::test_RoundTripAllFormats);
-  RUN_TEST(ae::test_segmented_number_formats::test_UniqueAndSerializeSmall);
-  RUN_TEST(ae::test_segmented_number_formats::test_Co2UniqueAndSerialize);
-  RUN_TEST(ae::test_segmented_number_formats::test_DenseSampling);
+  RUN_TEST(ae::test_segmented_number_formats::test_HumidityRoundTrip);
+  RUN_TEST(ae::test_segmented_number_formats::test_Co2RoundTrip);
+  RUN_TEST(ae::test_segmented_number_formats::test_BatteryRoundTrip);
+  RUN_TEST(ae::test_segmented_number_formats::test_ConnectRoundTrip);
+  RUN_TEST(ae::test_segmented_number_formats::test_RxWindowRoundTrip);
+  RUN_TEST(ae::test_segmented_number_formats::test_HumidityUnique);
+  RUN_TEST(ae::test_segmented_number_formats::test_BatteryUnique);
+  RUN_TEST(ae::test_segmented_number_formats::test_ConnectUnique);
+  RUN_TEST(ae::test_segmented_number_formats::test_RxWindowUnique);
+  RUN_TEST(ae::test_segmented_number_formats::test_Co2Unique);
+  RUN_TEST(ae::test_segmented_number_formats::test_HumiditySerialize);
+  RUN_TEST(ae::test_segmented_number_formats::test_BatterySerialize);
+  RUN_TEST(ae::test_segmented_number_formats::test_ConnectSerialize);
+  RUN_TEST(ae::test_segmented_number_formats::test_Co2Serialize);
+  RUN_TEST(ae::test_segmented_number_formats::test_ConnectJumpAndReference);
+  RUN_TEST(ae::test_segmented_number_formats::test_TemperatureMatchesReferenceQ);
+  RUN_TEST(ae::test_segmented_number_formats::test_Co2MatchesReferenceR);
+  RUN_TEST(ae::test_segmented_number_formats::test_DenseTemperature);
+  RUN_TEST(ae::test_segmented_number_formats::test_DenseHumidity);
+  RUN_TEST(ae::test_segmented_number_formats::test_DenseRssi);
+  RUN_TEST(ae::test_segmented_number_formats::test_DenseBattery);
+  RUN_TEST(ae::test_segmented_number_formats::test_DenseConnect);
+  RUN_TEST(ae::test_segmented_number_formats::test_DenseCo2);
+  RUN_TEST(ae::test_segmented_number_formats::test_DenseRxWindow);
+  RUN_TEST(ae::test_segmented_number_formats::test_DenseRxWindow24h);
+  RUN_TEST(ae::test_segmented_number_formats::test_RampIndexError);
   return UNITY_END();
 }

@@ -17,8 +17,9 @@ They are used across the Æthernet C++ client to represent durations, counters, 
 8. [Combined Types](#combined-types)
 9. [SegmentedNumber](#segmentednumber)
 10. [CyclicCounter](#cycliccounter)
-11. [Integration Notes](#integration-notes)
-12. [Running Tests](#running-tests)
+11. [Footprint and benchmarks](#footprint-and-benchmarks)
+12. [Integration Notes](#integration-notes)
+13. [Running Tests](#running-tests)
 
 ---
 
@@ -302,14 +303,14 @@ This is a linear scale: every raw step is one millisecond. Use `Exponential` ins
 
 ## SegmentedNumber
 
-`SegmentedNumber` is a header-only piecewise quantized number. The object stores only the physical runtime value. A dense packed rank is computed when encoding and is serialized through a compiled `uint8_t` or `TieredInt` wire type.
+`SegmentedNumber` is a header-only piecewise quantized physical value. The object stores only the runtime `FixedPoint` (or opt-in floating runtime). Wire rank is computed at encode time and serialized through a compiled `uint8_t` or `TieredInt` wire type.
 
-The description splits four layers:
+Architecture:
 
-1. runtime representation (`runtime::Fixed<Rep>` or opt-in `runtime::Floating<float|double>`);
-2. mathematical curves of representable values;
-3. assignment of those codes to wire lengths 1/2/4/8 bytes;
-4. the serializable packed rank.
+* Mathematical mapping (which physical values exist) and wire-tier placement (1/2/4/8-byte assignment) are independent layers.
+* Fractional math on the production path uses only our `FixedPoint` with underlying Rep no wider than 32 bits.
+* There are no per-code lookup tables, no runtime heap, no homemade Q30/Q31 storage, and no 64-bit arithmetic helpers on the mathematical ESP32-C6 path.
+* The number of materialized constants does not grow with the number of codes; shared `Log2`/`Exp2` FixedPoint tables are common across formats.
 
 Bounds and steps are written with `ae::Decimal` / `ae::Ratio`, not `double`.
 
@@ -347,56 +348,99 @@ static_assert(Temperature::kCodeCount == 1021);
 static_assert(Temperature::kMaxWireBytes == 2);
 ```
 
-`Compile<Spec>` is `SegmentedNumber<Spec>`. The object does not store the wire rank. Encode with `TryEncode` / `TryFromRuntime`; out-of-range input is rejected unless `Saturating` is used. Comparisons use the runtime value, never the packed rank: rank order need not follow physical order (the temperature window uses 1-byte codes in the middle and 2-byte codes on both tails).
+`Compile<Spec>` is `SegmentedNumber<Spec>`. Encode with `TryEncode` / `TryFromRuntime`; out-of-range input is rejected unless `Saturating` is used. Comparisons use the runtime value, never the packed rank (temperature packs 1-byte codes in the center and 2-byte codes on both tails).
 
-Curve primitives: `UniformStep`, `UniformValues`, `ExponentialValues`, `GeometricStep`, `LinearStepRamp`. Allocation helpers: `Intervals<N>`, `FillTier`, `MinimumIntervals`, `AutoSplit`, and `ContinuousExponential` with `WireCuts` / `OptimizeCuts`.
+### Curves
 
-Two compute backends:
+**UniformStep** — constant physical step between adjacent codes over a closed range. Encode/decode are O(1) in the number of codes (affine map with FixedPoint multiply/divide). Uses FixedPoint scale conversion only; no `Log2`/`Exp2`.
 
-* `compute::Formula` (default) — small per-segment coefficients, no per-code table, no runtime `float`/`double` for `Fixed` runtime. Segment selection is O(S). Uniform and linear-ramp paths are O(1) (integer square root for the ramp). Exponential and geometric decode use integer exponentiation-by-squaring of a compiled ratio (O(log n) multiplies). Encode of those curves binary-searches the selected segment and checks neighboring codes. Serialization is O(1), at most 8 bytes, heap = 0;
-* `compute::Lookup` — consteval decoded-raw table, O(1) decode and O(log N) encode, used as a Formula oracle. Flash/data is O(N).
+**UniformValues** — packs a fixed count of evenly spaced values into a range. Same O(1) affine FixedPoint path as UniformStep; interval count is prescribed rather than implied by step size.
 
-Shared physical endpoints are encoded once. The segment with the smaller wire size owns the joint; if the sizes match, the previous physical segment owns it. Unused packed ranks deserialize with `bytes_read == 0`.
+**LinearStepRamp** — step size grows linearly along the segment (coarse then fine, or the reverse). Encode/decode solve a quadratic in FixedPoint (`Sqrt` / wide multiply-divide helpers bounded to 32-bit limbs). Complexity is O(1) in code count aside from a fixed Newton/`Sqrt` budget.
+
+**ExponentialValues** — values follow a geometric progression in physical space (constant ratio). Encode/decode use `Log2`/`Exp2` FixedPoint primitives; O(1) relative to code count (fixed iteration count for log/exp).
+
+**GeometricStep** — adjacent steps form a geometric series (useful for tails that must meet a prescribed endpoint step). Encode/decode use `Log2`/`Exp2` plus geometric weight helpers; still O(1) in code count.
+
+**ContinuousExponential** — single exponential-style continuum used inside cut optimizers / `WireCuts`. Same FixedPoint `Log2`/`Exp2` core; used when placing cuts rather than as a standalone sensor format by itself.
+
+**AutoSplit** — compile-time splitter that partitions a continuum into exponential-style pieces under an objective (for example continuous absolute step plus minimax relative error). Runs only at compile time; runtime path is the resulting ExponentialValues / GeometricStep / LinearStepRamp segments.
+
+Shared physical endpoints are encoded once (smaller wire size owns the joint). Unused packed ranks deserialize with `bytes_read == 0`.
+
+`sizeof(CompiledSegment)` is a compile-time C++ type size (~68 B on ILP32). It is **not** flash per segment: descriptors do not materialize as `68 × segments` in `.rodata`. See [docs/footprint.md](docs/footprint.md).
 
 Floating runtime is opt-in and does not change the wire ABI:
 
 ```cpp
 #include <ae-numeric/segmented_number_floating_runtime.h>
-
-using FloatSpec = ae::seg::Format<
-    ae::seg::runtime::Floating<double>,
-    ae::seg::wire::AutoTiered<std::uint8_t, ae::seg::wire::MaxBytes<2>>,
-    ae::seg::compute::Formula,
-    typename Spec::layout_type>;
 ```
-
-Release footprint binaries (section GC, volatile sinks) are the `footprint-*` / `segmented-footprint` targets in `tests/`.
 
 ---
 
 ## CyclicCounter
 
-`CyclicCounter<WireType, ValueType>` keeps a full unsigned counter locally and sends only its low bits on the wire:
+`CyclicCounter<WireType, ValueType>` keeps the full counter as `ValueType` at runtime and puts only the low bits of that counter on the wire as `WireType`. The default value is zero. The object contains only `ValueType value_`, so `sizeof(CyclicCounter<Wire, Value>) == sizeof(Value)`.
+
+Restoration is always relative to the current full value: missing messages do not break recovery as long as the absolute distance stays within the unambiguous half-range. An older truncated sample from another peer can still be restored and compared without changing the local base. `TryAdvance` never decreases that base. The distance must be strictly less than half the wire range; exactly half the range is ambiguous.
 
 ```text
-wire = value mod (max(WireType) + 1)
+current = 1001
+received wire = 237
+restored = 1005
 ```
 
-Example with `CyclicCounter<std::uint8_t, std::uint32_t>`:
+```text
+current = 1023
+received wire = 0
+restored = 1024
+```
+
+```text
+current = 1008
+received wire corresponding to 1003
+restored = 1003
+current remains 1008
+```
+
+**Stateless deserialization of a full `CyclicCounter` is forbidden.** Without a current full value, epoch / high bits cannot be recovered. There is no `wire_traits<CyclicCounter>`, and `Deserialize<CyclicCounter>(…)` does not compile. Read a `WireType` first, then call `TryRestore`, `TryAdvance`, `TryDeserializeAndRestore`, or `TryDeserializeAndAdvance` on an existing counter.
 
 ```cpp
-Counter counter{1001};
-std::uint8_t wire = counter.WireValue();  // 233
-// ... later, after gaps, peer sends wire 237 ...
-auto restored = counter.TryRestore(237);  // 1005; counter still 1001
-counter.TryAdvance(237);                  // counter becomes 1005
+using Counter =
+    ae::CyclicCounter<std::uint8_t, std::uint32_t>;
+
+Counter counter;  // value = 0
+
+counter.Set(1001);
+
+std::uint8_t wire = counter.WireValue();
+
+auto restored = counter.TryRestore(wire);
+auto advanced = counter.TryAdvance(wire);
 ```
 
-Wire wrap uses the same rule: `1023`/`255` then wire `0` restores `1024`.
+Supported configurations (ESP32-C6 `-Os`, object-only; see [docs/footprint.md](docs/footprint.md) for `-O2` and full section breakdown):
 
-**CyclicCounter cannot be deserialized statelessly** because the truncated wire value does not contain the epoch/high bits. There is no `wire_traits<CyclicCounter>` and `Deserialize<CyclicCounter>(…)` does not compile. Deserialize the `WireType` first (or use `TryDeserializeAndRestore` / `TryDeserializeAndAdvance` on an existing counter) and restore relative to a live full value.
+| Wire → Value | Runtime B | Wire B | Max unambiguous distance | `.text` | `.rodata` | Heap |
+|---|---:|---:|---:|---:|---:|---|
+| `uint8_t` → `uint16_t` | 2 | 1 | 127 | 224 | 0 | 0 |
+| `uint8_t` → `uint32_t` | 4 | 1 | 127 | 182 | 0 | 0 |
+| `uint16_t` → `uint32_t` | 4 | 2 | 32767 | 136 | 0 | 0 |
 
-Restoration is unambiguous only for absolute distances strictly less than half the wire space (`127` for `uint8_t`, `32767` for `uint16_t`). Distance exactly half (`128` / `32768`) is ambiguous. `TryAdvance` updates the local base only when the restored value is strictly newer. `sizeof(CyclicCounter) == sizeof(ValueType)`.
+---
+
+## Footprint and benchmarks
+
+* [docs/footprint.md](docs/footprint.md) — ESP32-C6 `.text` / `.rodata` / RAM, constant tables, object sizes, stack usage, code sharing.
+* [docs/benchmarks.md](docs/benchmarks.md) — desktop encode/decode/serialize timings (nanoseconds, not MCU cycles).
+
+Refresh generated tables:
+
+```bash
+cmake --build build-dev --target segmented-footprint-obj
+python tools/measure_esp32c6_footprint.py --repo .
+python tools/generate_footprint_docs.py --repo .
+```
 
 ---
 

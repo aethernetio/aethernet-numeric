@@ -1,0 +1,15 @@
+﻿BENCH_HOST arch=desktop note=nanoseconds_not_esp32_cycles iters=200000
+BENCH_SEG name=Rssi logical=-40 wire_bytes=1 encode_ns=24.170 decode_ns=0.238 serialize_ns=474.880 deserialize_ns=0.268 roundtrip_ns=440.944 sink=1
+BENCH_SEG name=Temperature_center logical=25 wire_bytes=1 encode_ns=20.201 decode_ns=0.234 serialize_ns=5676.991 deserialize_ns=33.132 roundtrip_ns=5848.599 sink=1
+BENCH_SEG name=Temperature_low logical=-35 wire_bytes=2 encode_ns=21.945 decode_ns=0.279 serialize_ns=7578.979 deserialize_ns=226.782 roundtrip_ns=7485.159 sink=2
+BENCH_SEG name=Temperature_high logical=100 wire_bytes=2 encode_ns=22.858 decode_ns=0.258 serialize_ns=7486.931 deserialize_ns=219.238 roundtrip_ns=7515.242 sink=2
+BENCH_SEG name=Humidity logical=55 wire_bytes=1 encode_ns=23.458 decode_ns=0.259 serialize_ns=636.130 deserialize_ns=0.259 roundtrip_ns=633.419 sink=1
+BENCH_SEG name=Co2_1B logical=600 wire_bytes=1 encode_ns=23.430 decode_ns=0.224 serialize_ns=6986.739 deserialize_ns=76.366 roundtrip_ns=7125.114 sink=1
+BENCH_SEG name=Co2_2B logical=2500 wire_bytes=2 encode_ns=26.120 decode_ns=0.252 serialize_ns=6709.723 deserialize_ns=83.351 roundtrip_ns=6619.372 sink=2
+BENCH_SEG name=Co2_4B logical=18000 wire_bytes=4 encode_ns=24.526 decode_ns=0.252 serialize_ns=7105.739 deserialize_ns=78.898 roundtrip_ns=7344.620 sink=4
+BENCH_SEG name=Rx_1B logical=1 wire_bytes=1 encode_ns=23.081 decode_ns=0.252 serialize_ns=5031.953 deserialize_ns=1.951 roundtrip_ns=5078.962 sink=1
+BENCH_SEG name=Rx_2B logical=120 wire_bytes=2 encode_ns=23.729 decode_ns=0.239 serialize_ns=9176.965 deserialize_ns=208.262 roundtrip_ns=10699.008 sink=2
+BENCH_SEG name=Rx_4B logical=7200 wire_bytes=4 encode_ns=30.999 decode_ns=0.218 serialize_ns=10707.724 deserialize_ns=54.874 roundtrip_ns=10635.228 sink=4
+BENCH_SEG name=Battery logical=3 wire_bytes=1 encode_ns=53.407 decode_ns=0.418 serialize_ns=1362.323 deserialize_ns=0.219 roundtrip_ns=1267.943 sink=1
+BENCH_SEG name=ConnectDuration logical=5 wire_bytes=1 encode_ns=44.609 decode_ns=0.382 serialize_ns=2543.144 deserialize_ns=1.254 roundtrip_ns=2137.385 sink=1
+BENCH_CYC wire_ns=0.627 restore_fwd_ns=0.627 restore_back_ns=0.627 advance_ns=0.598 ctx_deser_ns=0.598 sink=239

@@ -23,14 +23,26 @@ jobs:
 
       matrix:
         config:
+          # windows-latest (Server 2025) ships Visual Studio 2026 and the
+          # "Visual Studio 18 2026" CMake generator as of June 2026.
           - {
               name: "Windows MSVC",
               os: windows-latest,
               shell: "powershell",
               generator: "Visual Studio 18 2026",
-              arch: "x64",
+              cmake_args: "-A x64",
               cc: "cl",
               cxx: "cl",
+              build_type: Release,
+            }
+          - {
+              name: "Windows LLVM Clang",
+              os: windows-latest,
+              shell: "powershell",
+              generator: "Visual Studio 18 2026",
+              cmake_args: "-A x64 -T ClangCL",
+              cc: "clang-cl",
+              cxx: "clang-cl",
               build_type: Release,
             }
           - {
@@ -38,6 +50,7 @@ jobs:
               os: windows-latest,
               shell: "msys2",
               generator: "Ninja",
+              cmake_args: "",
               cc: "gcc",
               cxx: "g++",
               build_type: Release,
@@ -47,8 +60,19 @@ jobs:
               os: ubuntu-latest,
               shell: "bash",
               generator: "Unix Makefiles",
+              cmake_args: "",
               cc: "gcc",
               cxx: "g++",
+              build_type: Release,
+            }
+          - {
+              name: "Ubuntu LLVM Clang",
+              os: ubuntu-latest,
+              shell: "bash",
+              generator: "Unix Makefiles",
+              cmake_args: "",
+              cc: "clang",
+              cxx: "clang++",
               build_type: Release,
             }
           - {
@@ -56,14 +80,15 @@ jobs:
               os: macos-latest,
               shell: "bash",
               generator: "Unix Makefiles",
+              cmake_args: "",
               cc: "clang",
               cxx: "clang++",
               build_type: Release,
             }
 
     steps:
-      - name: Set Windows environment
-        if: ${{ (matrix.config.os == 'windows-latest' && matrix.config.cc == 'cl') }}
+      - name: Set Windows MSVC environment
+        if: ${{ (matrix.config.os == 'windows-latest' && matrix.config.shell == 'powershell') }}
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Set MinGW environment
@@ -88,7 +113,7 @@ jobs:
         run: >
           cmake -B build-numerics
           -G "${{ matrix.config.generator }}"
-          -A "${{ matrix.config.arch }}"
+          ${{ matrix.config.cmake_args }}
           -DCMAKE_CXX_COMPILER=${{ matrix.config.cxx }}
           -DCMAKE_C_COMPILER=${{ matrix.config.cc }}
           -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }}

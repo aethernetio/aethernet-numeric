@@ -29,7 +29,6 @@ using test_segmented_formats::Co2;
 using test_segmented_formats::ConnectDuration;
 using test_segmented_formats::Humidity;
 using test_segmented_formats::Rssi;
-using test_segmented_formats::RssiLookup;
 using test_segmented_formats::RxWindow;
 using test_segmented_formats::Temperature;
 
@@ -43,15 +42,11 @@ static_assert(sizeof(ConnectDuration) == sizeof(ConnectDuration::runtime_type));
 static_assert(MaxWireBytes<Rssi>() == 1);
 static_assert(MaxWireBytes<Temperature>() == 2);
 static_assert(MaxWireBytes<Co2>() == 4);
-static_assert(Rssi::kLookupTableBytes == 0);
-static_assert(RssiLookup::kLookupTableBytes ==
-              Rssi::kCodeCount * (sizeof(std::int64_t) + sizeof(std::uint32_t)));
 
 void test_FootprintConstants() {
   TEST_ASSERT_EQUAL_UINT(sizeof(Rssi::runtime_type), sizeof(Rssi));
   TEST_ASSERT_EQUAL_UINT(1U, sizeof(Rssi::wire_type));
   TEST_ASSERT(Temperature::kFormulaCoefficientBytes > 0);
-  TEST_ASSERT_EQUAL_UINT(0U, Temperature::kLookupTableBytes);
   TEST_ASSERT_EQUAL_UINT(3U, Temperature::kSegmentCount);
   TEST_ASSERT_EQUAL_UINT(1U, Rssi::kSegmentCount);
 }

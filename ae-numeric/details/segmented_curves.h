@@ -26,8 +26,16 @@
 
 namespace ae::seg::segmented_curves_internal {
 
+using segmented_math_internal::LogZero;
+using segmented_math_internal::NumberToRat;
+using segmented_math_internal::Rat;
+using segmented_math_internal::RatioOne;
 using segmented_math_internal::SegmentedSpecError;
-using segmented_math_internal::ValueToDouble;
+using segmented_math_internal::SegLog;
+using segmented_math_internal::SegRatio;
+using segmented_math_internal::SegWork;
+using segmented_math_internal::WorkFromRat;
+using segmented_math_internal::WorkZero;
 
 inline constexpr int kMaxDrafts = 16;
 
@@ -41,37 +49,46 @@ enum class StepMode : std::uint8_t {
 
 struct CurveDraft {
   CurveKind kind = CurveKind::kUniformStep;
-  double begin = 0.0;
-  double end = 0.0;
+  Rat begin_rat{};
+  Rat end_rat{};
+  SegWork begin = WorkZero();
+  SegWork end = WorkZero();
   int bytes = 1;
   int intervals = -1;
   StepMode step_mode = StepMode::kNone;
-  double specified_step = 0.0;
+  Rat specified_step_rat{};
+  SegWork specified_step = WorkZero();
   bool fill_tier = false;
   bool min_intervals = false;
-  double max_err_upper = 0.0;
+  Rat max_err_upper_rat{};
+  SegWork max_err_upper = WorkZero();
   bool has_max_err_upper = false;
-  double max_err_lower = 0.0;
+  Rat max_err_lower_rat{};
+  SegWork max_err_lower = WorkZero();
   bool has_max_err_lower = false;
   int autosplit_id = 0;
   int total_values = 0;
   bool is_cont_exp = false;
-  double cut1 = 0.0;
-  double cut2 = 0.0;
+  Rat cut1_rat{};
+  Rat cut2_rat{};
+  SegWork cut1 = WorkZero();
+  SegWork cut2 = WorkZero();
   int last_1 = -1;
   int last_2 = -1;
-  double r = 1.0;
-  double q = 1.0;
-  double step0 = 0.0;
-  double last_step = 0.0;
-  double delta = 0.0;
+  SegLog log2_r = LogZero();
+  SegLog log2_q = LogZero();
+  SegRatio r = RatioOne();
+  SegRatio q = RatioOne();
+  SegWork step0 = WorkZero();
+  SegWork last_step = WorkZero();
+  SegWork delta = WorkZero();
   bool own_begin = false;
   bool own_end = false;
   int stored = 0;
   int math_first = 0;
   std::uint32_t wire_begin = 0;
-  double phys_begin = 0.0;
-  double phys_end = 0.0;
+  SegWork phys_begin = WorkZero();
+  SegWork phys_end = WorkZero();
 };
 
 template <typename>
@@ -153,29 +170,29 @@ template <typename... O>
 inline constexpr bool kIsMathCurveV<LinearStepRamp<O...>> = true;
 
 struct OptAcc {
-  double begin = 0.0;
-  double end = 0.0;
+  Rat begin{};
+  Rat end{};
   bool has_range = false;
   int bytes = -1;
   int intervals = -1;
   int total_values = -1;
   StepMode step_mode = StepMode::kNone;
-  double specified_step = 0.0;
+  Rat specified_step{};
   bool fill_tier = false;
   bool min_intervals = false;
-  double max_err_upper = 0.0;
+  Rat max_err_upper{};
   bool has_max_err_upper = false;
-  double max_err_lower = 0.0;
+  Rat max_err_lower{};
   bool has_max_err_lower = false;
-  double cut1 = 0.0;
-  double cut2 = 0.0;
+  Rat cut1{};
+  Rat cut2{};
   int ncuts = 0;
 };
 
 template <typename B, typename E>
 consteval void ApplyOne(OptAcc& a, Range<B, E>) {
-  a.begin = ValueToDouble<B>();
-  a.end = ValueToDouble<E>();
+  a.begin = NumberToRat<B>();
+  a.end = NumberToRat<E>();
   a.has_range = true;
 }
 
@@ -200,7 +217,7 @@ consteval void ApplyOne(OptAcc& a, MinimumIntervals) { a.min_intervals = true; }
 
 template <typename V>
 consteval void ApplyOne(OptAcc& a, Step<V>) {
-  a.specified_step = ValueToDouble<V>();
+  a.specified_step = NumberToRat<V>();
   a.step_mode = StepMode::kLowerExplicit;
 }
 
@@ -210,7 +227,7 @@ consteval void ApplyOne(OptAcc& a, StepAtLower<V>) {
     a.step_mode = StepMode::kLowerInherit;
   } else {
     a.step_mode = StepMode::kLowerExplicit;
-    a.specified_step = ValueToDouble<V>();
+    a.specified_step = NumberToRat<V>();
   }
 }
 
@@ -220,28 +237,28 @@ consteval void ApplyOne(OptAcc& a, StepAtUpper<V>) {
     a.step_mode = StepMode::kUpperInherit;
   } else {
     a.step_mode = StepMode::kUpperExplicit;
-    a.specified_step = ValueToDouble<V>();
+    a.specified_step = NumberToRat<V>();
   }
 }
 
 template <typename V>
 consteval void ApplyOne(OptAcc& a, MaxAbsErrorAtLower<V>) {
-  a.max_err_lower = ValueToDouble<V>();
+  a.max_err_lower = NumberToRat<V>();
   a.has_max_err_lower = true;
 }
 
 template <typename V>
 consteval void ApplyOne(OptAcc& a, MaxAbsErrorAtUpper<V>) {
-  a.max_err_upper = ValueToDouble<V>();
+  a.max_err_upper = NumberToRat<V>();
   a.has_max_err_upper = true;
 }
 
 template <typename V, typename B>
 consteval void ApplyOne(OptAcc& a, ApproximateCut<V, B>) {
   if (a.ncuts == 0) {
-    a.cut1 = ValueToDouble<V>();
+    a.cut1 = NumberToRat<V>();
   } else {
-    a.cut2 = ValueToDouble<V>();
+    a.cut2 = NumberToRat<V>();
   }
   ++a.ncuts;
 }
@@ -270,14 +287,17 @@ consteval OptAcc ParseOpts() {
   return a;
 }
 
-consteval CurveDraft DraftFromAcc(CurveKind kind, OptAcc const& a, int bytes_fallback) {
+consteval CurveDraft DraftFromAcc(CurveKind kind, OptAcc const& a,
+                                   int bytes_fallback) {
   CurveDraft d{};
   d.kind = kind;
   if (!a.has_range) {
     SegmentedSpecError();
   }
-  d.begin = a.begin;
-  d.end = a.end;
+  d.begin_rat = a.begin;
+  d.end_rat = a.end;
+  d.begin = WorkFromRat(a.begin);
+  d.end = WorkFromRat(a.end);
   if (d.end < d.begin) {
     SegmentedSpecError();
   }
@@ -287,15 +307,20 @@ consteval CurveDraft DraftFromAcc(CurveKind kind, OptAcc const& a, int bytes_fal
   }
   d.intervals = a.intervals;
   d.step_mode = a.step_mode;
-  d.specified_step = a.specified_step;
+  d.specified_step_rat = a.specified_step;
+  d.specified_step = WorkFromRat(a.specified_step);
   d.fill_tier = a.fill_tier;
   d.min_intervals = a.min_intervals;
-  d.max_err_upper = a.max_err_upper;
+  d.max_err_upper_rat = a.max_err_upper;
+  d.max_err_upper = WorkFromRat(a.max_err_upper);
   d.has_max_err_upper = a.has_max_err_upper;
-  d.max_err_lower = a.max_err_lower;
+  d.max_err_lower_rat = a.max_err_lower;
+  d.max_err_lower = WorkFromRat(a.max_err_lower);
   d.has_max_err_lower = a.has_max_err_lower;
-  d.cut1 = a.cut1;
-  d.cut2 = a.cut2;
+  d.cut1_rat = a.cut1;
+  d.cut2_rat = a.cut2;
+  d.cut1 = WorkFromRat(a.cut1);
+  d.cut2 = WorkFromRat(a.cut2);
   return d;
 }
 
@@ -305,27 +330,31 @@ struct DraftsOf;
 template <typename... Opts>
 struct DraftsOf<UniformStep<Opts...>> {
   static constexpr int kCount = 1;
-  static consteval void Fill(CurveDraft* out, int& i, int /*as_id*/, int bytes_fb) {
-    out[i++] = DraftFromAcc(CurveKind::kUniformStep, ParseOpts<Opts...>(), bytes_fb);
+  static consteval void Fill(CurveDraft* out, int& i, int /*as_id*/,
+                             int bytes_fb) {
+    out[i++] =
+        DraftFromAcc(CurveKind::kUniformStep, ParseOpts<Opts...>(), bytes_fb);
   }
 };
 
 template <typename... Opts>
 struct DraftsOf<UniformValues<Opts...>> {
   static constexpr int kCount = 1;
-  static consteval void Fill(CurveDraft* out, int& i, int /*as_id*/, int bytes_fb) {
-    out[i++] =
-        DraftFromAcc(CurveKind::kUniformValues, ParseOpts<Opts...>(), bytes_fb);
+  static consteval void Fill(CurveDraft* out, int& i, int /*as_id*/,
+                             int bytes_fb) {
+    out[i++] = DraftFromAcc(CurveKind::kUniformValues, ParseOpts<Opts...>(),
+                            bytes_fb);
   }
 };
 
 template <typename... Opts>
 struct DraftsOf<ExponentialValues<Opts...>> {
   static constexpr int kCount = 1;
-  static consteval void Fill(CurveDraft* out, int& i, int /*as_id*/, int bytes_fb) {
-    CurveDraft d =
-        DraftFromAcc(CurveKind::kExponentialValues, ParseOpts<Opts...>(), bytes_fb);
-    if (d.begin <= 0.0 || d.end <= 0.0) {
+  static consteval void Fill(CurveDraft* out, int& i, int /*as_id*/,
+                             int bytes_fb) {
+    CurveDraft d = DraftFromAcc(CurveKind::kExponentialValues,
+                                ParseOpts<Opts...>(), bytes_fb);
+    if (d.begin_rat.num <= 0 || d.end_rat.num <= 0) {
       SegmentedSpecError();
     }
     out[i++] = d;
@@ -335,28 +364,31 @@ struct DraftsOf<ExponentialValues<Opts...>> {
 template <typename... Opts>
 struct DraftsOf<GeometricStep<Opts...>> {
   static constexpr int kCount = 1;
-  static consteval void Fill(CurveDraft* out, int& i, int /*as_id*/, int bytes_fb) {
-    out[i++] =
-        DraftFromAcc(CurveKind::kGeometricStep, ParseOpts<Opts...>(), bytes_fb);
+  static consteval void Fill(CurveDraft* out, int& i, int /*as_id*/,
+                             int bytes_fb) {
+    out[i++] = DraftFromAcc(CurveKind::kGeometricStep, ParseOpts<Opts...>(),
+                            bytes_fb);
   }
 };
 
 template <typename... Opts>
 struct DraftsOf<LinearStepRamp<Opts...>> {
   static constexpr int kCount = 1;
-  static consteval void Fill(CurveDraft* out, int& i, int /*as_id*/, int bytes_fb) {
-    out[i++] =
-        DraftFromAcc(CurveKind::kLinearStepRamp, ParseOpts<Opts...>(), bytes_fb);
+  static consteval void Fill(CurveDraft* out, int& i, int /*as_id*/,
+                             int bytes_fb) {
+    out[i++] = DraftFromAcc(CurveKind::kLinearStepRamp, ParseOpts<Opts...>(),
+                            bytes_fb);
   }
 };
 
 template <typename... Opts>
 struct DraftsOf<ContinuousExponential<Opts...>> {
   static constexpr int kCount = 1;
-  static consteval void Fill(CurveDraft* out, int& i, int /*as_id*/, int bytes_fb) {
+  static consteval void Fill(CurveDraft* out, int& i, int /*as_id*/,
+                             int bytes_fb) {
     CurveDraft d = DraftFromAcc(CurveKind::kExponentialValues,
                                 ParseOpts<Opts...>(), bytes_fb);
-    if (d.begin <= 0.0 || d.end <= 0.0) {
+    if (d.begin_rat.num <= 0 || d.end_rat.num <= 0) {
       SegmentedSpecError();
     }
     d.is_cont_exp = true;
@@ -389,7 +421,8 @@ consteval void FillIfCurve(CurveDraft* out, int& i, int as_id, int bytes) {
 template <typename... Opts>
 struct DraftsOf<AutoSplit<Opts...>> {
   static constexpr int kCount = CountAutoCurves<Opts...>::value;
-  static consteval void Fill(CurveDraft* out, int& i, int as_id, int /*bytes_fb*/) {
+  static consteval void Fill(CurveDraft* out, int& i, int as_id,
+                             int /*bytes_fb*/) {
     OptAcc const pack = ParseOpts<Opts...>();
     int const bytes = pack.bytes;
     int const total = pack.total_values;

@@ -17,7 +17,7 @@ cmake_minimum_required(VERSION 3.16)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project(test-ae-numeric LANGUAGES CXX)
+project(test-ae-numeric LANGUAGES C CXX)
 
 include(../cmake/CPM.cmake)
 
@@ -27,11 +27,69 @@ if (CMAKE_COLOR_DIAGNOSTICS)
   add_compile_definitions(UNITY_OUTPUT_COLOR=1)
 endif()
 CPMAddPackage("https://github.com/ThrowTheSwitch/Unity.git#master")
+if (TARGET unity)
+  set_target_properties(unity PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
+  target_compile_options(unity PRIVATE
+    $<$<C_COMPILER_ID:Clang>:-w>
+    $<$<C_COMPILER_ID:AppleClang>:-w>
+    $<$<C_COMPILER_ID:MSVC>:/w>
+  )
+endif()
 
 option(AE_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer for tests" OFF)
 option(AE_ENABLE_COVERAGE
   "Build a separate gcov target for integer_math (AE_COVERAGE_BUILD)"
   OFF)
+
+# clang-cl reports CMAKE_CXX_COMPILER_ID=Clang but MSVC=1. Do not pass GNU
+# -fconstexpr-* to clang-cl; it rejects them as unknown arguments.
+# Plain clang++ (including the VS LLVM clang++ driver) is GNU-style for
+# -Wall/-Werror but still rejects GCC-only -fconstexpr-ops-limit /
+# -fconstexpr-loop-limit; use -fconstexpr-steps there.
+set(AE_GNU_STYLE_CXX FALSE)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR
+   CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR
+   (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT MSVC))
+  set(AE_GNU_STYLE_CXX TRUE)
+endif()
+
+function(ae_numeric_cxx_warnings_and_constexpr tgt)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR
+     CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    target_compile_options(${tgt} PRIVATE
+      -Wall -Wextra -Werror
+      -fconstexpr-ops-limit=268435456
+      -fconstexpr-loop-limit=1048576)
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT MSVC)
+    target_compile_options(${tgt} PRIVATE
+      -Wall -Wextra -Werror
+      -fconstexpr-steps=268435456)
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    # clang-cl rejects GNU -fconstexpr-* and does not honor MSVC
+    # /constexpr:steps. Raise the budget via -Xclang.
+    target_compile_options(${tgt} PRIVATE
+      /W4 /WX /wd4530 /wd4702 /wd4127
+      "SHELL:-Xclang -fconstexpr-steps=268435456")
+  elseif(MSVC)
+    target_compile_options(${tgt} PRIVATE
+      /W4 /WX /FS /Zm200 /constexpr:steps2147483647 /wd4530 /wd4702 /wd4127)
+  endif()
+endfunction()
+
+function(ae_numeric_constexpr_only tgt)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR
+     CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    target_compile_options(${tgt} PRIVATE
+      -fconstexpr-ops-limit=268435456
+      -fconstexpr-loop-limit=1048576)
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT MSVC)
+    target_compile_options(${tgt} PRIVATE -fconstexpr-steps=268435456)
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    target_compile_options(${tgt} PRIVATE "SHELL:-Xclang -fconstexpr-steps=268435456")
+  elseif(MSVC)
+    target_compile_options(${tgt} PRIVATE /constexpr:steps2147483647)
+  endif()
+endfunction()
 
 add_executable(${PROJECT_NAME})
 target_sources(${PROJECT_NAME} PRIVATE
@@ -54,7 +112,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-segmented-number-core.cpp
   test-segmented-number-formats.cpp
   test-segmented-number-wire.cpp
-  test-segmented-number-formula-lookup.cpp
+  test-segmented-number-schema.cpp
   test-segmented-number-floating-runtime.cpp
   test-segmented-number-size.cpp
   test-fixed-math.cpp
@@ -64,17 +122,11 @@ target_sources(${PROJECT_NAME} PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE ae-numeric unity)
-
-# enable warnings and werror
-target_compile_options(${PROJECT_NAME} PRIVATE
-  $<$<CXX_COMPILER_ID:Clang>: -Wall -Wextra -Werror>
-  $<$<CXX_COMPILER_ID:GNU>: -Wall -Wextra -Werror -fconstexpr-ops-limit=268435456 -fconstexpr-loop-limit=1048576>
-  $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /MP /constexpr:steps100000000 /wd4530 /wd4702 /wd4127>
-)
+ae_numeric_cxx_warnings_and_constexpr(${PROJECT_NAME})
 
 
 if(AE_ENABLE_UBSAN)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  if(AE_GNU_STYLE_CXX)
     # Prefer trap-on-error so MinGW builds do not require libubsan.
     target_compile_options(${PROJECT_NAME} PRIVATE
       -fsanitize=undefined -fsanitize-undefined-trap-on-error)
@@ -86,7 +138,7 @@ if(AE_ENABLE_UBSAN)
 endif()
 
 if(AE_ENABLE_COVERAGE)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  if(AE_GNU_STYLE_CXX)
     # Full suite gets gcov arcs (constexpr helpers stay constexpr here).
     target_compile_options(${PROJECT_NAME} PRIVATE --coverage -O0 -g)
     target_link_options(${PROJECT_NAME} PRIVATE --coverage)
@@ -99,9 +151,7 @@ if(AE_ENABLE_COVERAGE)
     target_link_libraries(test-integer-math-coverage PRIVATE ae-numeric unity)
     target_compile_definitions(test-integer-math-coverage PRIVATE AE_COVERAGE_BUILD=1)
     target_compile_options(test-integer-math-coverage PRIVATE
-      --coverage -O0 -g
-      $<$<CXX_COMPILER_ID:GNU>: -Wall -Wextra -Werror>
-      $<$<CXX_COMPILER_ID:Clang>: -Wall -Wextra -Werror>)
+      --coverage -O0 -g -Wall -Wextra -Werror)
     target_link_options(test-integer-math-coverage PRIVATE --coverage)
     add_test(NAME test-integer-math-coverage
       COMMAND $<TARGET_FILE:test-integer-math-coverage>)
@@ -137,6 +187,7 @@ foreach(fail_case
   add_executable(fail-${fail_case} EXCLUDE_FROM_ALL
     compile-fail/${fail_case}.cpp)
   target_link_libraries(fail-${fail_case} PRIVATE ae-numeric)
+  ae_numeric_constexpr_only(fail-${fail_case})
   add_test(NAME fail-${fail_case}
     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}
       --target fail-${fail_case} --config $<CONFIG>)
@@ -147,16 +198,14 @@ function(ae_numeric_add_footprint tgt)
   add_executable(${tgt} EXCLUDE_FROM_ALL footprint/segmented_footprint.cpp)
   target_link_libraries(${tgt} PRIVATE ae-numeric)
   target_compile_definitions(${tgt} PRIVATE ${ARGN})
-  target_compile_options(${tgt} PRIVATE
-    $<$<CXX_COMPILER_ID:Clang>: -Wall -Wextra -Werror>
-    $<$<CXX_COMPILER_ID:GNU>: -Wall -Wextra -Werror -fconstexpr-ops-limit=268435456 -fconstexpr-loop-limit=1048576 -ffunction-sections -fdata-sections>
-    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /MP /constexpr:steps100000000 /Gy /wd4530 /wd4702 /wd4127>
-  )
-  target_link_options(${tgt} PRIVATE
-    $<$<CXX_COMPILER_ID:GNU>:-Wl,--gc-sections>
-    $<$<CXX_COMPILER_ID:Clang>:-Wl,--gc-sections>
-    $<$<CXX_COMPILER_ID:MSVC>:/OPT:REF>
-  )
+  ae_numeric_cxx_warnings_and_constexpr(${tgt})
+  if(AE_GNU_STYLE_CXX)
+    target_compile_options(${tgt} PRIVATE -ffunction-sections -fdata-sections)
+    target_link_options(${tgt} PRIVATE -Wl,--gc-sections)
+  elseif(MSVC)
+    target_compile_options(${tgt} PRIVATE /Gy)
+    target_link_options(${tgt} PRIVATE /OPT:REF)
+  endif()
 endfunction()
 
 ae_numeric_add_footprint(footprint-rssi AE_SEG_HAS_RSSI=1)
@@ -167,9 +216,6 @@ ae_numeric_add_footprint(footprint-rx-window AE_SEG_HAS_RX=1)
 ae_numeric_add_footprint(footprint-battery AE_SEG_HAS_BAT=1)
 ae_numeric_add_footprint(footprint-connect-duration AE_SEG_HAS_CONN=1)
 ae_numeric_add_footprint(footprint-all-formula AE_SEG_FOOTPRINT_ALL=1)
-ae_numeric_add_footprint(footprint-rssi-lookup AE_SEG_HAS_RSSI_LOOKUP=1)
-ae_numeric_add_footprint(footprint-temperature-lookup AE_SEG_HAS_TEMP_LOOKUP=1)
-ae_numeric_add_footprint(footprint-all-lookup AE_SEG_FOOTPRINT_ALL_LOOKUP=1)
 
 add_custom_target(segmented-footprint DEPENDS
   footprint-rssi
@@ -180,29 +226,84 @@ add_custom_target(segmented-footprint DEPENDS
   footprint-battery
   footprint-connect-duration
   footprint-all-formula
-  footprint-rssi-lookup
-  footprint-temperature-lookup
-  footprint-all-lookup
 )
 
-# Minimal object-only CyclicCounter footprint probes (no CRT link).
-function(ae_numeric_add_cyclic_fp_obj tgt src)
+# Object-only library incremental measurement: no CRT, no Unity, no iostream.
+function(ae_numeric_add_footprint_obj tgt src)
   add_library(${tgt} OBJECT EXCLUDE_FROM_ALL ${src})
   target_link_libraries(${tgt} PRIVATE ae-numeric)
-  target_include_directories(${tgt} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/footprint)
-  target_compile_options(${tgt} PRIVATE
-    $<$<CXX_COMPILER_ID:Clang>: -Wall -Wextra -Werror -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti>
-    $<$<CXX_COMPILER_ID:GNU>: -Wall -Wextra -Werror -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti>
-    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /Gy /GR- /EHs-c- /wd4530>
-  )
+  ae_numeric_cxx_warnings_and_constexpr(${tgt})
+  if(AE_GNU_STYLE_CXX)
+    target_compile_options(${tgt} PRIVATE
+      -ffunction-sections -fdata-sections
+      -fno-exceptions -fno-rtti)
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    # clang-cl
+    target_compile_options(${tgt} PRIVATE /Gy /GR- /EHs-c-)
+  elseif(MSVC)
+    target_compile_options(${tgt} PRIVATE /Gy /GR- /EHs-c-)
+  endif()
 endfunction()
 
-ae_numeric_add_cyclic_fp_obj(fp-obj-cyclic-u8-u16 footprint/minimal_cyclic_u8_u16.cpp)
-ae_numeric_add_cyclic_fp_obj(fp-obj-cyclic-u8-u32 footprint/minimal_cyclic_u8_u32.cpp)
-ae_numeric_add_cyclic_fp_obj(fp-obj-cyclic-u16-u32 footprint/minimal_cyclic_u16_u32.cpp)
+ae_numeric_add_footprint_obj(fp-obj-rssi footprint/minimal_rssi.cpp)
+ae_numeric_add_footprint_obj(fp-obj-temperature footprint/minimal_temperature.cpp)
+ae_numeric_add_footprint_obj(fp-obj-humidity footprint/minimal_humidity.cpp)
+ae_numeric_add_footprint_obj(fp-obj-co2 footprint/minimal_co2.cpp)
+ae_numeric_add_footprint_obj(fp-obj-rx footprint/minimal_rx.cpp)
+ae_numeric_add_footprint_obj(fp-obj-battery footprint/minimal_battery.cpp)
+ae_numeric_add_footprint_obj(fp-obj-connect footprint/minimal_connect.cpp)
+ae_numeric_add_footprint_obj(fp-obj-all footprint/minimal_all.cpp)
+ae_numeric_add_footprint_obj(fp-obj-empty footprint/minimal_empty.cpp)
+ae_numeric_add_footprint_obj(fp-obj-uniform footprint/minimal_uniform.cpp)
+ae_numeric_add_footprint_obj(fp-obj-ramp footprint/minimal_ramp.cpp)
+ae_numeric_add_footprint_obj(fp-obj-exponential footprint/minimal_exponential.cpp)
+ae_numeric_add_footprint_obj(fp-obj-geometric footprint/minimal_geometric.cpp)
+ae_numeric_add_footprint_obj(fp-obj-tiered footprint/minimal_tiered.cpp)
+ae_numeric_add_footprint_obj(fp-obj-combined footprint/minimal_combined.cpp)
+ae_numeric_add_footprint_obj(fp-obj-cyclic-u8-u16 footprint/minimal_cyclic_u8_u16.cpp)
+ae_numeric_add_footprint_obj(fp-obj-cyclic-u8-u32 footprint/minimal_cyclic_u8_u32.cpp)
+ae_numeric_add_footprint_obj(fp-obj-cyclic-u16-u32 footprint/minimal_cyclic_u16_u32.cpp)
+ae_numeric_add_footprint_obj(fp-obj-thermometer footprint/minimal_thermometer.cpp)
+
+add_executable(fp-dump-layout EXCLUDE_FROM_ALL footprint/dump_layout.cpp)
+target_link_libraries(fp-dump-layout PRIVATE ae-numeric)
+ae_numeric_cxx_warnings_and_constexpr(fp-dump-layout)
+
+add_executable(fp-dump-meta EXCLUDE_FROM_ALL footprint/dump_meta.cpp)
+target_link_libraries(fp-dump-meta PRIVATE ae-numeric)
+ae_numeric_cxx_warnings_and_constexpr(fp-dump-meta)
+
+add_custom_target(segmented-footprint-obj DEPENDS
+  fp-obj-rssi
+  fp-obj-temperature
+  fp-obj-humidity
+  fp-obj-co2
+  fp-obj-rx
+  fp-obj-battery
+  fp-obj-connect
+  fp-obj-all
+  fp-obj-thermometer
+  fp-obj-empty
+  fp-obj-uniform
+  fp-obj-ramp
+  fp-obj-exponential
+  fp-obj-geometric
+  fp-obj-tiered
+  fp-obj-combined
+  fp-obj-cyclic-u8-u16
+  fp-obj-cyclic-u8-u32
+  fp-obj-cyclic-u16-u32
+  fp-dump-layout
+  fp-dump-meta
+)
 
 add_custom_target(cyclic-counter-footprint-obj DEPENDS
   fp-obj-cyclic-u8-u16
   fp-obj-cyclic-u8-u32
   fp-obj-cyclic-u16-u32
 )
+
+add_executable(numeric-bench EXCLUDE_FROM_ALL benchmark/numeric_bench.cpp)
+target_link_libraries(numeric-bench PRIVATE ae-numeric)
+target_include_directories(numeric-bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+ae_numeric_cxx_warnings_and_constexpr(numeric-bench)

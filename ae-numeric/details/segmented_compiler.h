@@ -23,13 +23,12 @@
 #include <limits>
 #include <type_traits>
 
-#include <gcem.hpp>
-
 #include "ae-numeric/details/segmented_curves.h"
 #include "ae-numeric/details/segmented_format.h"
 #include "ae-numeric/details/segmented_math.h"
 #include "ae-numeric/fixed_math.h"
 #include "ae-numeric/fixed_point.h"
+#include "ae-numeric/integer_math.h"
 #include "ae-numeric/tiered_int.h"
 
 namespace ae::seg::segmented_compiler_internal {
@@ -39,17 +38,43 @@ using segmented_curves_internal::FlattenLayout;
 using segmented_curves_internal::kMaxDrafts;
 using segmented_curves_internal::StepMode;
 using segmented_math_internal::AutoSplitTwoExp;
-using segmented_math_internal::ExpRatio;
-using segmented_math_internal::GeomSum;
+using segmented_math_internal::CeilAbsRat;
+using segmented_math_internal::ConvertFixed;
+using segmented_math_internal::GeomInterp;
+using segmented_math_internal::RatSub;
+using segmented_math_internal::RoundRatQuotient;
+using segmented_math_internal::WorkFromRaw;
+using segmented_math_internal::Exp2Ratio;
+using segmented_math_internal::Exp2Work;
+using segmented_math_internal::Log2OfRat;
+using segmented_math_internal::Log2RFromEndpoints;
+using segmented_math_internal::Log2Ratio;
+using segmented_math_internal::LogZero;
 using segmented_math_internal::MinRampIntervals;
+using segmented_math_internal::MulWorkSame;
+using segmented_math_internal::ScaleWorkByInt;
+using segmented_math_internal::ScaleWorkByRatio;
 using segmented_math_internal::MixHash;
+using segmented_math_internal::MixRat;
+using segmented_math_internal::MulLogInt;
 using segmented_math_internal::OptimizeContinuousExp;
+using segmented_math_internal::Rat;
+using segmented_math_internal::RatAbsMax;
+using segmented_math_internal::RatLess;
+using segmented_math_internal::RatioOne;
 using segmented_math_internal::SegmentedSpecError;
+using segmented_math_internal::SegLog;
+using segmented_math_internal::SegPosWork;
+using segmented_math_internal::SegRatio;
+using segmented_math_internal::SegWork;
 using segmented_math_internal::SolveQForGeomSum;
-using segmented_math_internal::ThreeTierMaxU8;
 using segmented_math_internal::TwoTierMaxU8;
-
-inline constexpr double kEps = 1.0e-12;
+using segmented_math_internal::WorkAbs;
+using segmented_math_internal::WorkFromRat;
+using segmented_math_internal::WorkOne;
+using segmented_math_internal::WorkPositive;
+using segmented_math_internal::WorkToNearestInt;
+using segmented_math_internal::WorkZero;
 
 template <typename>
 inline constexpr int kMaxBytesTag = -1;
@@ -75,35 +100,34 @@ consteval int FormatMaxBytes() {
   return PolicyMaxBytes(static_cast<WirePolicy const*>(nullptr));
 }
 
-consteval bool NearlyEqual(double a, double b) {
-  double const s = gcem::abs(a) > gcem::abs(b) ? gcem::abs(a) : gcem::abs(b);
-  double const tol = kEps * (s > 1.0 ? s : 1.0);
-  return gcem::abs(a - b) <= tol;
-}
-
-consteval int RoundN(double x) {
-  if (x < 0.0) {
-    return static_cast<int>(x - 0.5);
-  }
-  return static_cast<int>(x + 0.5);
-}
-
 consteval bool GeomFromUpper(CurveDraft const& d) {
   return d.step_mode == StepMode::kUpperExplicit ||
          d.step_mode == StepMode::kUpperInherit;
 }
 
-consteval double GeomUpperStep(CurveDraft const& d) {
+consteval SegWork GeomUpperStep(CurveDraft const& d) {
   if (d.step_mode == StepMode::kUpperInherit) {
     return d.last_step;
   }
-  if (d.specified_step != 0.0) {
+  if (WorkPositive(d.specified_step)) {
     return d.specified_step;
   }
   return d.last_step;
 }
 
-consteval double DecodeMath(CurveDraft const& d, int i) {
+consteval SegWork LerpWork(SegWork a, SegWork b, int i, int n) {
+  if (n <= 0 || i <= 0) {
+    return a;
+  }
+  if (i >= n) {
+    return b;
+  }
+  SegWork const span = SubTo<SegWork>(b, a);
+  SegWork const t = ConvertFixed<SegWork>(SegPosWork::FromRatio(i, n));
+  return AddTo<SegWork>(a, MulWorkSame(span, t));
+}
+
+consteval SegWork DecodeMath(CurveDraft const& d, int i) {
   if (d.intervals <= 0) {
     return d.begin;
   }
@@ -115,30 +139,40 @@ consteval double DecodeMath(CurveDraft const& d, int i) {
   }
   if (d.kind == CurveKind::kUniformStep ||
       d.kind == CurveKind::kUniformValues) {
-    return d.begin + (d.end - d.begin) *
-                         static_cast<double>(i) /
-                         static_cast<double>(d.intervals);
+    return LerpWork(d.begin, d.end, i, d.intervals);
   }
   if (d.kind == CurveKind::kExponentialValues) {
-    return d.begin * gcem::pow(d.r, static_cast<double>(i));
+    SegLog const arg =
+        AddTo<SegLog>(Log2OfRat(d.begin_rat), MulLogInt(d.log2_r, i));
+    return Exp2Work(arg);
   }
   if (d.kind == CurveKind::kGeometricStep) {
-    if (GeomFromUpper(d)) {
-      double const se = GeomUpperStep(d);
-      return d.end - se * GeomSum(d.q, d.intervals - i);
-    }
-    return d.begin + d.step0 * GeomSum(d.q, i);
+    return GeomInterp(d.begin, d.end, d.log2_q, i, d.intervals,
+                      GeomFromUpper(d));
   }
-  return d.begin + static_cast<double>(i) * d.step0 +
-         d.delta * static_cast<double>(i) * static_cast<double>(i - 1) / 2.0;
+  std::uint32_t const n_u = static_cast<std::uint32_t>(i);
+  std::uint32_t const n_all = static_cast<std::uint32_t>(d.intervals);
+  std::uint32_t const pair_i = n_u * (n_u - 1U) / 2U;
+  std::uint32_t const pair_n = n_all * (n_all - 1U) / 2U;
+  SegWork const num = AddTo<SegWork>(ScaleWorkByInt(d.step0, i),
+                                      ScaleWorkByInt(d.delta, static_cast<int>(pair_i)));
+  SegWork const den =
+      AddTo<SegWork>(ScaleWorkByInt(d.step0, d.intervals),
+                     ScaleWorkByInt(d.delta, static_cast<int>(pair_n)));
+  if (den.RawValue() == static_cast<typename SegWork::rep_value_type>(0)) {
+    return d.begin;
+  }
+  SegWork const span = SubTo<SegWork>(d.end, d.begin);
+  return AddTo<SegWork>(d.begin, MulWorkSame(span, DivTo<SegWork>(num, den)));
 }
 
-consteval double FirstAbsStep(CurveDraft const& d) {
-  return gcem::abs(DecodeMath(d, 1) - DecodeMath(d, 0));
+consteval SegWork FirstAbsStep(CurveDraft const& d) {
+  return WorkAbs(SubTo<SegWork>(DecodeMath(d, 1), DecodeMath(d, 0)));
 }
 
-consteval double LastAbsStep(CurveDraft const& d) {
-  return gcem::abs(DecodeMath(d, d.intervals) - DecodeMath(d, d.intervals - 1));
+consteval SegWork LastAbsStep(CurveDraft const& d) {
+  return WorkAbs(
+      SubTo<SegWork>(DecodeMath(d, d.intervals), DecodeMath(d, d.intervals - 1)));
 }
 
 consteval void AssignOwnership(CurveDraft* d, int n) {
@@ -149,10 +183,10 @@ consteval void AssignOwnership(CurveDraft* d, int n) {
   d[0].own_begin = true;
   d[n - 1].own_end = true;
   for (int i = 0; i < n - 1; ++i) {
-    if (!NearlyEqual(d[i].end, d[i + 1].begin)) {
-      if (d[i + 1].begin < d[i].end) {
-        SegmentedSpecError();
-      } else {
+    if (d[i].end_rat.num != d[i + 1].begin_rat.num ||
+        d[i].end_rat.den != d[i + 1].begin_rat.den) {
+      if (RatLess(d[i + 1].begin_rat, d[i].end_rat) ||
+          RatLess(d[i].end_rat, d[i + 1].begin_rat)) {
         SegmentedSpecError();
       }
     }
@@ -178,56 +212,78 @@ consteval int StoredOf(CurveDraft const& d) {
   return d.intervals + (d.own_begin ? 1 : 0) + (d.own_end ? 1 : 0) - 1;
 }
 
-consteval bool HasBytes(CurveDraft const* d, int n, int bytes) {
-  for (int i = 0; i < n; ++i) {
-    if (d[i].bytes == bytes || (d[i].is_cont_exp && bytes >= 1)) {
-      if (d[i].is_cont_exp) {
-        return bytes == 1 || bytes == 2 || bytes == 4;
-      }
-      if (d[i].bytes == bytes) {
-        return true;
-      }
-    }
+consteval SegRatio SolveQFromStepRat(int intervals, SegWork span, SegWork step0,
+                                       Rat span_r, Rat step_r) {
+  if (step_r.num == 0 || step_r.den == 0) {
+    return SolveQForGeomSum(intervals, DivTo<SegWork>(span, step0));
   }
-  return false;
+  std::int32_t const sn = span_r.num < 0 ? -span_r.num : span_r.num;
+  std::int32_t const sd = span_r.den < 0 ? -span_r.den : span_r.den;
+  std::int32_t const tn = step_r.num < 0 ? -step_r.num : step_r.num;
+  std::int32_t const td = step_r.den < 0 ? -step_r.den : step_r.den;
+  return SolveQForGeomSum(intervals, WorkFromRat({sn * td, sd * tn}));
 }
 
 consteval void ComputeCoeffsKnownN(CurveDraft& d) {
   if (d.intervals <= 0) {
     return;
   }
-  double const span = d.end - d.begin;
+  SegWork const span = SubTo<SegWork>(d.end, d.begin);
   if (d.kind == CurveKind::kUniformStep ||
       d.kind == CurveKind::kUniformValues) {
-    d.step0 = span / static_cast<double>(d.intervals);
+    Rat const span_r = RatSub(d.end_rat, d.begin_rat);
+    std::int32_t const den = span_r.den * d.intervals;
+    if (den == 0) {
+      SegmentedSpecError();
+      return;
+    }
+    d.step0 = SegWork::FromRatio(span_r.num, den);
     d.last_step = d.step0;
-    d.delta = 0.0;
-    d.r = 1.0;
-    d.q = 1.0;
+    d.delta = WorkZero();
+    d.r = RatioOne();
+    d.q = RatioOne();
     return;
   }
   if (d.kind == CurveKind::kExponentialValues) {
-    d.r = ExpRatio(d.begin, d.end, d.intervals);
-    d.step0 = d.begin * (d.r - 1.0);
-    d.last_step = d.end * (1.0 - 1.0 / d.r);
+    d.log2_r = Log2RFromEndpoints(d.begin_rat, d.end_rat, d.intervals);
+    d.r = Exp2Ratio(d.log2_r);
+    d.step0 = ScaleWorkByRatio(d.begin, SubTo<SegRatio>(d.r, RatioOne()));
+    SegRatio const rel_last =
+        DivTo<SegRatio>(SubTo<SegRatio>(d.r, RatioOne()), d.r);
+    d.last_step = ScaleWorkByRatio(d.end, rel_last);
     return;
   }
   if (d.kind == CurveKind::kGeometricStep) {
-    if (d.step_mode == StepMode::kLowerExplicit && d.specified_step > 0.0) {
+    Rat const span_r = RatSub(d.end_rat, d.begin_rat);
+    if (d.step_mode == StepMode::kLowerExplicit &&
+        WorkPositive(d.specified_step)) {
       d.step0 = d.specified_step;
-      d.q = SolveQForGeomSum(d.intervals, span / d.step0);
-      d.last_step = d.step0 * gcem::pow(d.q, d.intervals - 1);
+      d.q = SolveQFromStepRat(d.intervals, span, d.step0, span_r,
+                               d.specified_step_rat);
+      d.log2_q = Log2Ratio(d.q);
     } else if (d.step_mode == StepMode::kUpperExplicit &&
-               d.specified_step > 0.0) {
+               WorkPositive(d.specified_step)) {
       d.last_step = d.specified_step;
-      d.q = SolveQForGeomSum(d.intervals, span / d.last_step);
-      d.step0 = d.last_step * gcem::pow(d.q, d.intervals - 1);
-    } else if (d.step_mode == StepMode::kLowerInherit && d.step0 > 0.0) {
-      d.q = SolveQForGeomSum(d.intervals, span / d.step0);
-      d.last_step = d.step0 * gcem::pow(d.q, d.intervals - 1);
-    } else if (d.step_mode == StepMode::kUpperInherit && d.last_step > 0.0) {
-      d.q = SolveQForGeomSum(d.intervals, span / d.last_step);
-      d.step0 = d.last_step * gcem::pow(d.q, d.intervals - 1);
+      d.q = SolveQFromStepRat(d.intervals, span, d.step0, span_r,
+                               d.specified_step_rat);
+      d.log2_q = Log2Ratio(d.q);
+    } else if (d.step_mode == StepMode::kLowerInherit &&
+               WorkPositive(d.step0)) {
+      d.q = SolveQForGeomSum(d.intervals, DivTo<SegWork>(span, d.step0));
+      d.log2_q = Log2Ratio(d.q);
+    } else if (d.step_mode == StepMode::kUpperInherit &&
+               WorkPositive(d.last_step)) {
+      d.q = SolveQForGeomSum(d.intervals, DivTo<SegWork>(span, d.last_step));
+      d.log2_q = Log2Ratio(d.q);
+    }
+    if (d.intervals >= 1) {
+      SegWork const qpow =
+          Exp2Work(MulLogInt(d.log2_q, d.intervals - 1));
+      if (GeomFromUpper(d) && WorkPositive(d.last_step)) {
+        d.step0 = MulWorkSame(d.last_step, qpow);
+      } else if (WorkPositive(d.step0)) {
+        d.last_step = MulWorkSame(d.step0, qpow);
+      }
     }
     return;
   }
@@ -238,25 +294,27 @@ consteval void ComputeCoeffsKnownN(CurveDraft& d) {
     if (d.step_mode == StepMode::kUpperExplicit) {
       d.last_step = d.specified_step;
     }
-    if (d.step0 > 0.0 && d.last_step > 0.0) {
-      double const mean = 2.0 * span / static_cast<double>(d.intervals);
-      (void)mean;
+    Rat const span_r = RatSub(d.end_rat, d.begin_rat);
+    SegWork const mean = SegWork::FromRatio(
+        span_r.num * 2, span_r.den * d.intervals);
+    if (WorkPositive(d.step0) && !WorkPositive(d.last_step) &&
+        d.intervals > 0) {
+      d.last_step = SubTo<SegWork>(mean, d.step0);
     }
-    if (d.step0 > 0.0 && d.last_step <= 0.0 && d.intervals > 0) {
-      d.last_step = 2.0 * span / static_cast<double>(d.intervals) - d.step0;
+    if (WorkPositive(d.last_step) && !WorkPositive(d.step0) &&
+        d.intervals > 0) {
+      d.step0 = SubTo<SegWork>(mean, d.last_step);
     }
-    if (d.last_step > 0.0 && d.step0 <= 0.0 && d.intervals > 0 &&
-        d.step_mode != StepMode::kLowerInherit) {
-      d.step0 = 2.0 * span / static_cast<double>(d.intervals) - d.last_step;
+    if (d.intervals > 1 && WorkPositive(d.step0) && WorkPositive(d.last_step)) {
+      d.delta = DivTo<SegWork>(SubTo<SegWork>(d.last_step, d.step0),
+                               SegWork::FromRuntimeInteger(d.intervals - 1));
     }
-    if (d.intervals > 1 && d.step0 > 0.0 && d.last_step > 0.0) {
-      d.delta = (d.last_step - d.step0) /
-                static_cast<double>(d.intervals - 1);
-    }
-    if (d.has_max_err_lower && d.step0 > 2.0 * d.max_err_lower + 1.0e-15) {
+    if (d.has_max_err_lower &&
+        AddTo<SegWork>(d.max_err_lower, d.max_err_lower) < d.step0) {
       SegmentedSpecError();
     }
-    if (d.has_max_err_upper && d.last_step > 2.0 * d.max_err_upper + 1.0e-12) {
+    if (d.has_max_err_upper &&
+        AddTo<SegWork>(d.max_err_upper, d.max_err_upper) < d.last_step) {
       SegmentedSpecError();
     }
   }
@@ -266,14 +324,18 @@ consteval bool TryInherit(CurveDraft* d, int n) {
   bool changed = false;
   for (int i = 0; i < n; ++i) {
     if (d[i].step_mode == StepMode::kLowerInherit && i > 0) {
-      if (d[i - 1].last_step > 0.0) {
-        d[i].step0 = d[i - 1].last_step;
+      SegWork prev_last = d[i - 1].last_step;
+      if (!WorkPositive(prev_last) && d[i - 1].intervals > 0) {
+        prev_last = LastAbsStep(d[i - 1]);
+      }
+      if (WorkPositive(prev_last)) {
+        d[i].step0 = prev_last;
         changed = true;
       }
     }
     if (d[i].step_mode == StepMode::kUpperInherit && i + 1 < n) {
-      double nxt = 0.0;
-      if (d[i + 1].step0 > 0.0) {
+      SegWork nxt = WorkZero();
+      if (WorkPositive(d[i + 1].step0)) {
         nxt = d[i + 1].step0;
       } else if (d[i + 1].intervals > 0 &&
                  (d[i + 1].kind == CurveKind::kUniformValues ||
@@ -281,7 +343,7 @@ consteval bool TryInherit(CurveDraft* d, int n) {
                   d[i + 1].kind == CurveKind::kExponentialValues)) {
         nxt = FirstAbsStep(d[i + 1]);
       }
-      if (nxt > 0.0) {
+      if (WorkPositive(nxt)) {
         d[i].last_step = nxt;
         changed = true;
       }
@@ -299,7 +361,10 @@ struct LogicalPlan {
   std::uint32_t n8 = 0;
   std::uint32_t code_count = 0;
   int max_bytes = 1;
-  double max_abs = 0.0;
+  std::int32_t max_abs_ceil = 1;
+  Rat declared_min{};
+  Rat declared_max{};
+  // Compile-time FNV-1a schema identity only — not encode/decode math.
   std::uint64_t schema_hash = 0;
 };
 
@@ -315,7 +380,6 @@ consteval void AssignWire(CurveDraft* d, int n, LogicalPlan& plan) {
           d[i].stored = StoredOf(d[i]);
           d[i].math_first = d[i].own_begin ? 0 : 1;
         } else if (!d[i].own_begin && d[i].math_first == 0) {
-          // FillTier pre-assigns stored but leaves math_first at 0.
           d[i].math_first = 1;
         }
         if (d[i].stored <= 0) {
@@ -335,9 +399,28 @@ consteval void AssignWire(CurveDraft* d, int n, LogicalPlan& plan) {
   }
 }
 
+consteval void PushContExpSlice(LogicalPlan& out, int& w, CurveDraft const& s,
+                                int math_lo, int math_hi, int bytes,
+                                int stored) {
+  CurveDraft c = s;
+  c.is_cont_exp = false;
+  c.bytes = bytes;
+  c.math_first = math_lo;
+  c.own_begin = true;
+  c.own_end = true;
+  c.stored = stored;
+  c.phys_begin = DecodeMath(s, math_lo);
+  c.phys_end = DecodeMath(s, math_hi);
+  out.segs[static_cast<std::size_t>(w)] = c;
+  ++w;
+}
+
 consteval LogicalPlan SplitContExp(LogicalPlan in) {
   LogicalPlan out{};
   out.max_bytes = in.max_bytes;
+  out.max_abs_ceil = in.max_abs_ceil;
+  out.declared_min = in.declared_min;
+  out.declared_max = in.declared_max;
   int w = 0;
   for (int i = 0; i < in.count; ++i) {
     CurveDraft const& s = in.segs[static_cast<std::size_t>(i)];
@@ -348,25 +431,39 @@ consteval LogicalPlan SplitContExp(LogicalPlan in) {
     int const n = s.intervals;
     int const a = s.last_1;
     int const b = s.last_2;
-    auto push_slice = [&](int math_lo, int math_hi, int bytes, int stored) {
-      CurveDraft c = s;
-      c.is_cont_exp = false;
-      c.bytes = bytes;
-      c.math_first = math_lo;
-      c.own_begin = true;
-      c.own_end = true;
-      c.stored = stored;
-      c.phys_begin = DecodeMath(s, math_lo);
-      c.phys_end = DecodeMath(s, math_hi);
-      out.segs[static_cast<std::size_t>(w++)] = c;
-    };
-    push_slice(0, a, 1, a + 1);
-    push_slice(a + 1, b, 2, b - a);
-    push_slice(b + 1, n, 4, n - b);
+    PushContExpSlice(out, w, s, 0, a, 1, a + 1);
+    PushContExpSlice(out, w, s, a + 1, b, 2, b - a);
+    PushContExpSlice(out, w, s, b + 1, n, 4, n - b);
   }
   out.count = w;
   AssignWire(out.segs.data(), out.count, out);
   return out;
+}
+
+consteval std::uint64_t HashDraft(std::uint64_t h, CurveDraft const& d) {
+  h = MixHash(h, static_cast<std::uint64_t>(d.kind));
+  h = MixRat(h, d.begin_rat);
+  h = MixRat(h, d.end_rat);
+  h = MixHash(h, static_cast<std::uint64_t>(d.intervals));
+  h = MixHash(h, static_cast<std::uint64_t>(d.bytes));
+  h = MixHash(h, static_cast<std::uint64_t>(d.step_mode));
+  h = MixRat(h, d.specified_step_rat);
+  h = MixHash(h, d.fill_tier ? 1U : 0U);
+  h = MixHash(h, d.min_intervals ? 1U : 0U);
+  h = MixHash(h, d.has_max_err_upper ? 1U : 0U);
+  h = MixRat(h, d.max_err_upper_rat);
+  h = MixHash(h, d.has_max_err_lower ? 1U : 0U);
+  h = MixRat(h, d.max_err_lower_rat);
+  h = MixHash(h, d.is_cont_exp ? 1U : 0U);
+  h = MixRat(h, d.cut1_rat);
+  h = MixRat(h, d.cut2_rat);
+  h = MixHash(h, static_cast<std::uint64_t>(d.last_1));
+  h = MixHash(h, static_cast<std::uint64_t>(d.last_2));
+  h = MixHash(h, d.own_begin ? 1U : 0U);
+  h = MixHash(h, d.own_end ? 1U : 0U);
+  h = MixHash(h, static_cast<std::uint64_t>(d.stored));
+  h = MixHash(h, static_cast<std::uint64_t>(d.math_first));
+  return h;
 }
 
 template <typename LayoutT>
@@ -381,18 +478,24 @@ consteval LogicalPlan MakeUnsplitPlan(int max_bytes) {
     SegmentedSpecError();
   }
 
+  plan.declared_min = plan.segs[0].begin_rat;
+  plan.declared_max = plan.segs[0].end_rat;
+  Rat max_abs = RatAbsMax(plan.segs[0].begin_rat, plan.segs[0].end_rat);
   for (int i = 0; i < plan.count; ++i) {
     CurveDraft& d = plan.segs[static_cast<std::size_t>(i)];
     if (d.bytes > max_bytes && d.bytes != 0) {
       SegmentedSpecError();
     }
-    double const mag =
-        gcem::abs(d.begin) > gcem::abs(d.end) ? gcem::abs(d.begin)
-                                              : gcem::abs(d.end);
-    if (mag > plan.max_abs) {
-      plan.max_abs = mag;
+    max_abs = RatAbsMax(max_abs, d.begin_rat);
+    max_abs = RatAbsMax(max_abs, d.end_rat);
+    if (RatLess(d.begin_rat, plan.declared_min)) {
+      plan.declared_min = d.begin_rat;
+    }
+    if (RatLess(plan.declared_max, d.end_rat)) {
+      plan.declared_max = d.end_rat;
     }
   }
+  plan.max_abs_ceil = CeilAbsRat(max_abs);
 
   for (int i = 0; i < plan.count; ++i) {
     CurveDraft& d = plan.segs[static_cast<std::size_t>(i)];
@@ -409,12 +512,16 @@ consteval LogicalPlan MakeUnsplitPlan(int max_bytes) {
       }
       CurveDraft& a = plan.segs[static_cast<std::size_t>(i)];
       CurveDraft& b = plan.segs[static_cast<std::size_t>(i + 1)];
-      if (!NearlyEqual(a.end, b.begin)) {
+      if (a.end_rat.num != b.begin_rat.num ||
+          a.end_rat.den != b.begin_rat.den) {
         SegmentedSpecError();
       }
-      auto const sp = AutoSplitTwoExp(a.begin, a.end, b.end, a.total_values - 1);
+      auto const sp =
+          AutoSplitTwoExp(a.begin_rat, a.end_rat, b.end_rat, a.total_values - 1);
       a.intervals = sp.n1;
       b.intervals = sp.n2;
+      a.log2_r = sp.log2_r1;
+      b.log2_r = sp.log2_r2;
       a.r = sp.r1;
       b.r = sp.r2;
       i = j - 1;
@@ -430,17 +537,19 @@ consteval LogicalPlan MakeUnsplitPlan(int max_bytes) {
           has4 ? static_cast<int>(TwoTierMaxU8(static_cast<std::uint32_t>(last1)) -
                                   1U)
                : last1 + 1;
-      auto const ce = OptimizeContinuousExp(d.begin, d.end, d.cut1, d.cut2, last1,
-                                            last1 + 2, 2500, max_last2);
+      auto const ce = OptimizeContinuousExp(d.begin_rat, d.end_rat, d.cut1_rat,
+                                            d.cut2_rat, last1, last1 + 2, 1100,
+                                            max_last2);
       d.intervals = ce.intervals;
       d.last_1 = ce.last_1;
       d.last_2 = ce.last_2;
+      d.log2_r = ce.log2_r;
       d.r = ce.r;
     }
     if (d.kind == CurveKind::kUniformStep && d.intervals < 0 &&
-        d.specified_step > 0.0) {
-      double const n = (d.end - d.begin) / d.specified_step;
-      d.intervals = RoundN(n);
+        (WorkPositive(d.specified_step) || d.specified_step_rat.num != 0)) {
+      d.intervals = RoundRatQuotient(RatSub(d.end_rat, d.begin_rat),
+                                     d.specified_step_rat);
       if (d.intervals < 1) {
         SegmentedSpecError();
       }
@@ -451,7 +560,6 @@ consteval LogicalPlan MakeUnsplitPlan(int max_bytes) {
 
   bool has2 = false;
   bool has4 = false;
-  bool has8 = false;
   for (int i = 0; i < plan.count; ++i) {
     if (plan.segs[static_cast<std::size_t>(i)].is_cont_exp) {
       has2 = true;
@@ -463,11 +571,7 @@ consteval LogicalPlan MakeUnsplitPlan(int max_bytes) {
     if (plan.segs[static_cast<std::size_t>(i)].bytes == 4) {
       has4 = true;
     }
-    if (plan.segs[static_cast<std::size_t>(i)].bytes == 8) {
-      has8 = true;
-    }
   }
-  (void)has8;
 
   int n1_known = 0;
   for (int i = 0; i < plan.count; ++i) {
@@ -492,10 +596,9 @@ consteval LogicalPlan MakeUnsplitPlan(int max_bytes) {
     } else if (d.bytes == 2) {
       std::uint32_t const b0 =
           n1_known > 0 ? static_cast<std::uint32_t>(n1_known - 1) : 0;
-      std::uint64_t const tmax = TwoTierMaxU8(b0);
-      cap = has4 ? static_cast<int>(tmax - static_cast<std::uint64_t>(n1_known))
-                 : static_cast<int>(tmax + 1U -
-                                    static_cast<std::uint64_t>(n1_known));
+      std::uint32_t const tmax = TwoTierMaxU8(b0);
+      cap = has4 ? static_cast<int>(tmax - n1_known)
+                 : static_cast<int>(tmax + 1U - n1_known);
     }
     if (cap < 1) {
       SegmentedSpecError();
@@ -504,7 +607,7 @@ consteval LogicalPlan MakeUnsplitPlan(int max_bytes) {
     d.intervals = cap - (d.own_begin ? 1 : 0) - (d.own_end ? 1 : 0) + 1;
   }
 
-  for (int pass = 0; pass < 8; ++pass) {
+  for (int pass = 0; pass < 2; ++pass) {
     for (int i = 0; i < plan.count; ++i) {
       ComputeCoeffsKnownN(plan.segs[static_cast<std::size_t>(i)]);
     }
@@ -514,14 +617,18 @@ consteval LogicalPlan MakeUnsplitPlan(int max_bytes) {
   for (int i = 0; i < plan.count; ++i) {
     CurveDraft& d = plan.segs[static_cast<std::size_t>(i)];
     if (d.min_intervals) {
-      if (d.step0 <= 0.0 || !d.has_max_err_upper) {
+      if (!WorkPositive(d.step0) && i > 0) {
+        d.step0 = LastAbsStep(plan.segs[static_cast<std::size_t>(i - 1)]);
+      }
+      if (!WorkPositive(d.step0) || !d.has_max_err_upper) {
         SegmentedSpecError();
       }
-      d.intervals = MinRampIntervals(d.end - d.begin, d.step0, d.max_err_upper);
+      d.intervals = MinRampIntervals(SubTo<SegWork>(d.end, d.begin), d.step0,
+                                      d.max_err_upper);
     }
   }
 
-  for (int pass = 0; pass < 4; ++pass) {
+  for (int pass = 0; pass < 1; ++pass) {
     for (int i = 0; i < plan.count; ++i) {
       ComputeCoeffsKnownN(plan.segs[static_cast<std::size_t>(i)]);
     }
@@ -532,19 +639,20 @@ consteval LogicalPlan MakeUnsplitPlan(int max_bytes) {
     if (d.intervals < 1 && !d.is_cont_exp) {
       SegmentedSpecError();
     }
-    if (d.step_mode == StepMode::kLowerInherit && d.step0 <= 0.0) {
+    if (d.step_mode == StepMode::kLowerInherit && !WorkPositive(d.step0)) {
       SegmentedSpecError();
     }
   }
 
-  plan.schema_hash = MixHash(0xcbf29ce484222325ULL,
-                             static_cast<std::uint64_t>(plan.count));
+  plan.schema_hash =
+      MixHash(0xcbf29ce484222325ULL, static_cast<std::uint64_t>(plan.count));
+  plan.schema_hash =
+      MixHash(plan.schema_hash, static_cast<std::uint64_t>(max_bytes));
+  plan.schema_hash = MixRat(plan.schema_hash, plan.declared_min);
+  plan.schema_hash = MixRat(plan.schema_hash, plan.declared_max);
   for (int i = 0; i < plan.count; ++i) {
-    CurveDraft const& d = plan.segs[static_cast<std::size_t>(i)];
-    plan.schema_hash = MixHash(plan.schema_hash,
-                               static_cast<std::uint64_t>(d.intervals));
-    plan.schema_hash = MixHash(plan.schema_hash,
-                               static_cast<std::uint64_t>(d.bytes));
+    plan.schema_hash =
+        HashDraft(plan.schema_hash, plan.segs[static_cast<std::size_t>(i)]);
   }
   return plan;
 }
@@ -563,29 +671,39 @@ consteval LogicalPlan CompileLogical() {
   if (plan.n1 == 0) {
     SegmentedSpecError();
   }
-  plan.max_abs = unsplit.max_abs;
+  plan.max_abs_ceil = unsplit.max_abs_ceil;
+  plan.declared_min = unsplit.declared_min;
+  plan.declared_max = unsplit.declared_max;
   plan.schema_hash = MixHash(unsplit.schema_hash, plan.code_count);
+  plan.schema_hash = MixHash(plan.schema_hash, plan.n1);
+  plan.schema_hash = MixHash(plan.schema_hash, plan.n2);
+  plan.schema_hash = MixHash(plan.schema_hash, plan.n4);
+  plan.schema_hash = MixHash(plan.schema_hash, plan.n8);
+  for (int i = 0; i < plan.count; ++i) {
+    plan.schema_hash =
+        HashDraft(plan.schema_hash, plan.segs[static_cast<std::size_t>(i)]);
+  }
   return plan;
 }
 
 struct CompiledSegment {
-  std::int64_t physical_begin_raw = 0;
-  std::int64_t physical_end_raw = 0;
+  std::uint32_t physical_begin_raw = 0;
+  std::uint32_t physical_end_raw = 0;
   std::uint32_t wire_code_begin = 0;
   std::uint32_t code_count = 0;
   CurveKind curve_kind = CurveKind::kUniformStep;
   std::uint8_t wire_bytes = 1;
   std::int32_t intervals = 0;
   std::int32_t math_first = 0;
-  std::int64_t curve_begin_raw = 0;
-  std::int64_t curve_end_raw = 0;
-  std::int64_t step0_raw = 0;
-  std::int64_t last_step_raw = 0;
-  std::int64_t delta_raw = 0;
-  std::int32_t log2_r_raw = 0;
-  std::int32_t log2_q_raw = 0;
-  std::int32_t log2_begin_raw = 0;
-  std::int32_t ratio_raw = 0;
+  std::uint32_t curve_begin_raw = 0;
+  std::uint32_t curve_end_raw = 0;
+  std::uint32_t step0_raw = 0;
+  std::uint32_t last_step_raw = 0;
+  std::uint32_t delta_raw = 0;
+  SegLog log2_r = LogZero();
+  SegLog log2_q = LogZero();
+  SegLog log2_begin = LogZero();
+  SegLog log2_end = LogZero();
   std::uint8_t from_upper = 0;
 };
 
@@ -635,9 +753,7 @@ using WireTypeOf = typename WireSelKind<
         PlanHolder<Spec>::kPlan.n4 - 1U>::type;
 
 template <typename Spec>
-inline constexpr double kMaxAbsBound = PlanHolder<Spec>::kPlan.max_abs == 0.0
-                                           ? 1.0
-                                           : PlanHolder<Spec>::kPlan.max_abs;
+inline constexpr auto kMaxAbsBound = PlanHolder<Spec>::kPlan.max_abs_ceil;
 
 template <bool IsFloating, typename Spec>
 struct LogicalTypeSel;
@@ -661,17 +777,92 @@ template <typename Spec>
 using FixedRuntimeOf = LogicalTypeOf<Spec>;
 
 template <typename RT>
-consteval std::int64_t RawAt(CurveDraft const& d, int i) {
-  return static_cast<std::int64_t>(RT::FromDouble(DecodeMath(d, i)).RawValue());
+inline constexpr bool kRtSigned =
+    std::is_signed_v<typename RT::rep_value_type>;
+
+template <typename RT>
+consteval std::uint32_t PackRtRaw(typename RT::rep_value_type v) {
+  if constexpr (kRtSigned<RT>) {
+    return static_cast<std::uint32_t>(static_cast<std::int32_t>(v));
+  } else {
+    return static_cast<std::uint32_t>(v);
+  }
+}
+
+template <typename RT>
+consteval bool StoredRawLess(std::uint32_t a, std::uint32_t b) {
+  if constexpr (kRtSigned<RT>) {
+    return static_cast<std::int32_t>(a) < static_cast<std::int32_t>(b);
+  } else {
+    return a < b;
+  }
+}
+
+template <typename RT>
+consteval std::uint32_t StoredRawAbsDiff(std::uint32_t a, std::uint32_t b) {
+  if constexpr (kRtSigned<RT>) {
+    auto const ia = static_cast<std::int32_t>(a);
+    auto const ib = static_cast<std::int32_t>(b);
+    auto const ua = static_cast<std::uint32_t>(ia);
+    auto const ub = static_cast<std::uint32_t>(ib);
+    return ia >= ib ? ua - ub : ub - ua;
+  } else {
+    return a >= b ? a - b : b - a;
+  }
+}
+
+template <typename RT>
+consteval std::uint32_t RawFromWork(SegWork w) {
+  return PackRtRaw<RT>(ConvertFixed<RT>(w).RawValue());
+}
+
+template <typename RT>
+consteval std::uint32_t RawFromRat(Rat r) {
+  return PackRtRaw<RT>(RT::FromRatio(r.num, r.den).RawValue());
+}
+
+template <typename RT>
+consteval std::uint32_t RawAt(CurveDraft const& d, int i) {
+  if (i <= 0) {
+    return RawFromRat<RT>(d.begin_rat);
+  }
+  if (i >= d.intervals) {
+    return RawFromRat<RT>(d.end_rat);
+  }
+  std::uint32_t raw = RawFromWork<RT>(DecodeMath(d, i));
+  std::uint32_t const b = RawFromRat<RT>(d.begin_rat);
+  std::uint32_t const e = RawFromRat<RT>(d.end_rat);
+  bool const rising = !StoredRawLess<RT>(e, b);
+  if (raw == e) {
+    if constexpr (kRtSigned<RT>) {
+      auto v = static_cast<std::int32_t>(raw);
+      v += rising ? -1 : 1;
+      raw = static_cast<std::uint32_t>(v);
+    } else if (rising) {
+      raw -= 1U;
+    } else {
+      raw += 1U;
+    }
+  } else if (raw == b) {
+    if constexpr (kRtSigned<RT>) {
+      auto v = static_cast<std::int32_t>(raw);
+      v += rising ? 1 : -1;
+      raw = static_cast<std::uint32_t>(v);
+    } else if (rising) {
+      raw += 1U;
+    } else {
+      raw -= 1U;
+    }
+  }
+  return raw;
 }
 
 template <typename RT>
 consteval CompiledSegment CompileOne(CurveDraft const& d) {
-  using Log = segmented_math_internal::SegFixedMathPolicy::log_type;
   CompiledSegment c{};
   c.physical_begin_raw = RawAt<RT>(d, d.math_first);
   c.physical_end_raw = RawAt<RT>(d, d.math_first + d.stored - 1);
-  if (c.physical_end_raw < c.physical_begin_raw) {
+  if (StoredRawLess<RT>(c.physical_end_raw, c.physical_begin_raw)) {
     auto const t = c.physical_begin_raw;
     c.physical_begin_raw = c.physical_end_raw;
     c.physical_end_raw = t;
@@ -682,29 +873,53 @@ consteval CompiledSegment CompileOne(CurveDraft const& d) {
   c.wire_bytes = static_cast<std::uint8_t>(d.bytes);
   c.intervals = d.intervals;
   c.math_first = d.math_first;
-  c.curve_begin_raw = RawAt<RT>(d, 0);
-  c.curve_end_raw = RawAt<RT>(d, d.intervals);
-  if (d.intervals >= 1) {
-    c.step0_raw = RawAt<RT>(d, 1) - RawAt<RT>(d, 0);
-    c.last_step_raw =
-        RawAt<RT>(d, d.intervals) - RawAt<RT>(d, d.intervals - 1);
-  }
-  if (d.intervals >= 2) {
-    c.delta_raw = (RawAt<RT>(d, 2) - RawAt<RT>(d, 1)) - c.step0_raw;
+  c.curve_begin_raw = RawFromRat<RT>(d.begin_rat);
+  c.curve_end_raw = RawFromRat<RT>(d.end_rat);
+  c.step0_raw = RawFromWork<RT>(d.step0);
+  c.last_step_raw = RawFromWork<RT>(d.last_step);
+  c.delta_raw = RawFromWork<RT>(d.delta);
+  if (d.kind == CurveKind::kLinearStepRamp && d.intervals > 0) {
+    std::uint32_t const span =
+        StoredRawAbsDiff<RT>(c.curve_end_raw, c.curve_begin_raw);
+    std::uint32_t const n = static_cast<std::uint32_t>(d.intervals);
+    std::uint32_t mean2u = 0;
+    if (!integer_math::MulDivU32Nearest(span, 2U, n, mean2u) ||
+        mean2u > static_cast<std::uint32_t>(
+                     std::numeric_limits<std::int32_t>::max())) {
+      SegmentedSpecError();
+    }
+    bool const rising =
+        !StoredRawLess<RT>(c.curve_end_raw, c.curve_begin_raw);
+    std::int32_t const mean2 =
+        rising ? static_cast<std::int32_t>(mean2u)
+               : -static_cast<std::int32_t>(mean2u);
+    auto const last_i = static_cast<std::int32_t>(c.last_step_raw);
+    auto const step0_i = static_cast<std::int32_t>(c.step0_raw);
+    bool const keep_last = d.step_mode == StepMode::kUpperExplicit ||
+                           d.step_mode == StepMode::kUpperInherit;
+    std::int32_t new_step0 = step0_i;
+    std::int32_t new_last = last_i;
+    if (keep_last) {
+      new_step0 = mean2 - last_i;
+    } else {
+      new_last = mean2 - step0_i;
+    }
+    c.step0_raw = static_cast<std::uint32_t>(new_step0);
+    c.last_step_raw = static_cast<std::uint32_t>(new_last);
+    if (n > 1U) {
+      c.delta_raw = static_cast<std::uint32_t>(
+          fixed_point_internal::RoundDivNearest(
+              new_last - new_step0, static_cast<std::int32_t>(n - 1U)));
+    }
   }
   c.from_upper = GeomFromUpper(d) ? 1 : 0;
-  if (d.kind == CurveKind::kExponentialValues && d.begin > 0.0 && d.r > 0.0) {
-    c.log2_r_raw = static_cast<std::int32_t>(
-        Log::FromDouble(gcem::log(d.r) / gcem::log(2.0)).RawValue());
-    c.log2_begin_raw = static_cast<std::int32_t>(
-        Log::FromDouble(gcem::log(d.begin) / gcem::log(2.0)).RawValue());
-    c.ratio_raw = segmented_math_internal::RatioToQ30(d.r);
+  if (d.kind == CurveKind::kExponentialValues && d.begin_rat.num > 0) {
+    c.log2_r = d.log2_r;
+    c.log2_begin = Log2OfRat(d.begin_rat);
+    c.log2_end = Log2OfRat(d.end_rat);
   }
-  if (d.kind == CurveKind::kGeometricStep && d.q > 1.0) {
-    c.log2_q_raw = static_cast<std::int32_t>(
-        Log::FromDouble(gcem::log(d.q) / gcem::log(2.0)).RawValue());
-    c.ratio_raw = static_cast<std::int32_t>(
-        segmented_math_internal::SegPow::FromDouble(d.q).RawValue());
+  if (d.kind == CurveKind::kGeometricStep) {
+    c.log2_q = d.log2_q;
   }
   return c;
 }
@@ -716,11 +931,9 @@ consteval std::array<CompiledSegment, kMaxDrafts> MakeCompiledSegments() {
   for (int i = 0; i < kPlan.count; ++i) {
     CompiledSegment const c =
         CompileOne<RT>(kPlan.segs[static_cast<std::size_t>(i)]);
-    std::int64_t span = c.physical_end_raw - c.physical_begin_raw;
-    if (span < 0) {
-      span = -span;
-    }
-    if (c.code_count > static_cast<std::uint32_t>(span) + 1U) {
+    std::uint32_t const span =
+        StoredRawAbsDiff<RT>(c.physical_end_raw, c.physical_begin_raw);
+    if (c.code_count > span + 1U) {
       SegmentedSpecError();
     }
     out[static_cast<std::size_t>(i)] = c;
@@ -729,8 +942,9 @@ consteval std::array<CompiledSegment, kMaxDrafts> MakeCompiledSegments() {
     CompiledSegment const key = out[static_cast<std::size_t>(i)];
     int j = i;
     while (j > 0 &&
-           (out[static_cast<std::size_t>(j - 1)].physical_begin_raw >
-                key.physical_begin_raw ||
+           (StoredRawLess<RT>(
+                key.physical_begin_raw,
+                out[static_cast<std::size_t>(j - 1)].physical_begin_raw) ||
             (out[static_cast<std::size_t>(j - 1)].physical_begin_raw ==
                  key.physical_begin_raw &&
              out[static_cast<std::size_t>(j - 1)].wire_code_begin >
@@ -741,6 +955,45 @@ consteval std::array<CompiledSegment, kMaxDrafts> MakeCompiledSegments() {
     out[static_cast<std::size_t>(j)] = key;
   }
   return out;
+}
+
+template <typename Spec, typename RT>
+struct CompiledSegHolder {
+  static constexpr std::array<CompiledSegment, kMaxDrafts> kAll =
+      MakeCompiledSegments<Spec, RT>();
+};
+
+template <typename Spec, typename RT, std::size_t N>
+consteval std::array<CompiledSegment, N> MakeExactCompiledSegments() {
+  constexpr auto all = CompiledSegHolder<Spec, RT>::kAll;
+  std::array<CompiledSegment, N> out{};
+  for (std::size_t i = 0; i < N; ++i) {
+    out[i] = all[i];
+  }
+  return out;
+}
+
+consteval std::size_t PackedDescriptorBytes(CurveKind kind) {
+  if (kind == CurveKind::kExponentialValues) {
+    return 32;
+  }
+  if (kind == CurveKind::kGeometricStep) {
+    return 32;
+  }
+  if (kind == CurveKind::kLinearStepRamp) {
+    return 40;
+  }
+  return 24;
+}
+
+template <typename Spec>
+consteval std::size_t FormulaCoefficientBytes() {
+  constexpr LogicalPlan kPlan = PlanHolder<Spec>::kPlan;
+  std::size_t n = 0;
+  for (int i = 0; i < kPlan.count; ++i) {
+    n += PackedDescriptorBytes(kPlan.segs[static_cast<std::size_t>(i)].kind);
+  }
+  return n;
 }
 
 }  // namespace ae::seg::segmented_compiler_internal

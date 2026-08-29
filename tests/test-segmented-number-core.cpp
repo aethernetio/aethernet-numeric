@@ -61,7 +61,6 @@ static_assert(sizeof(Rssi) == sizeof(Rssi::runtime_type));
 static_assert(Rssi::kCodeCount == 128);
 static_assert(std::is_same_v<Rssi::wire_type, std::uint8_t>);
 static_assert(Rssi::kMaxWireBytes == 1);
-static_assert(Rssi::kLookupTableBytes == 0);
 static_assert(sizeof(Temperature) == sizeof(Temperature::runtime_type));
 static_assert(Temperature::kCodeCount == 1021);
 static_assert(Temperature::kOneByteCount == 253);
@@ -120,10 +119,10 @@ void test_TemperatureGolden() {
   TEST_ASSERT_EQUAL_UINT(2U, Temperature::kMaxWireBytes);
   auto const& p = Temperature::Logical();
   TEST_ASSERT_EQUAL(3, p.count);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-9, 1.0019571403660685, p.segs[0].q);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-9, 1.0032825748092233, p.segs[2].q);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-6, 0.1974705407, p.segs[0].step0);
-  TEST_ASSERT_DOUBLE_WITHIN(1.0e-6, 0.3934835786, p.segs[2].last_step);
+  TEST_ASSERT_DOUBLE_WITHIN(5.0e-6, 1.0019571403660685, AsDouble(p.segs[0].q));
+  TEST_ASSERT_DOUBLE_WITHIN(5.0e-6, 1.0032825748092233, AsDouble(p.segs[2].q));
+  TEST_ASSERT_DOUBLE_WITHIN(5.0e-4, 0.1974705407, AsDouble(p.segs[0].step0));
+  TEST_ASSERT_DOUBLE_WITHIN(5.0e-4, 0.3934835786, AsDouble(p.segs[2].last_step));
 }
 
 void test_TemperatureEndpointsAndWire() {
@@ -164,8 +163,8 @@ void test_TemperatureQuantization() {
   };
   TEST_ASSERT(max_err(9.9, 10.1, 40) <= 0.06);
   TEST_ASSERT(max_err(35.1, 35.3, 40) <= 0.06);
-  TEST_ASSERT(max_err(-40.0, -39.7, 40) <= 0.11);
-  TEST_ASSERT(max_err(124.6, 125.0, 40) <= 0.22);
+  TEST_ASSERT(max_err(-40.0, -39.7, 40) <= 0.105);
+  TEST_ASSERT(max_err(124.6, 125.0, 40) <= 0.20);
 }
 
 void test_TemperatureRoundTrip() { CheckRankRoundTrip<Temperature>(); }

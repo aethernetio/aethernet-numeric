@@ -63,7 +63,6 @@ struct AutoTiered {
 
 namespace compute {
 struct Formula {};
-struct Lookup {};
 }  // namespace compute
 
 template <typename Begin, typename End>

@@ -17,9 +17,10 @@
 #ifndef AE_NUMERIC_SEGMENTED_NUMBER_H_
 #define AE_NUMERIC_SEGMENTED_NUMBER_H_
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
+#include <cstdlib>
 #include <optional>
 #include <type_traits>
 
@@ -27,7 +28,6 @@
 #include "ae-numeric/details/segmented_curves.h"
 #include "ae-numeric/details/segmented_format.h"
 #include "ae-numeric/details/segmented_formula_backend.h"
-#include "ae-numeric/details/segmented_lookup_backend.h"
 #include "ae-numeric/fixed_point.h"
 #include "ae-numeric/numeric_traits.h"
 #include "ae-numeric/runtime_numeric_traits.h"
@@ -42,62 +42,25 @@ namespace segmented_number_internal {
 
 template <typename Logical, typename RT>
 struct RuntimeRawMap {
-  static constexpr std::int64_t ToRaw(RT const& v) {
+  using raw_type = typename Logical::rep_value_type;
+
+  static constexpr raw_type ToRaw(RT const& v) {
     static_assert(numeric_traits<RT>::kIsFixedPoint,
                   "include ae-numeric/segmented_number_floating_runtime.h "
                   "to use floating runtime");
-    return static_cast<std::int64_t>(v.RawValue());
+    return v.RawValue();
   }
 
-  static constexpr RT FromRaw(std::int64_t raw) {
+  static constexpr RT FromRaw(raw_type raw) {
     static_assert(numeric_traits<RT>::kIsFixedPoint,
                   "include ae-numeric/segmented_number_floating_runtime.h "
                   "to use floating runtime");
-    auto const clamped = RT::ClampRaw(static_cast<typename RT::rep_value_type>(
-        raw < static_cast<std::int64_t>(RT::kRawMin)
-            ? RT::kRawMin
-            : (raw > static_cast<std::int64_t>(RT::kRawMax) ? RT::kRawMax
-                                                            : raw)));
+    auto const clamped =
+        raw < RT::kRawMin ? RT::kRawMin
+                          : (raw > RT::kRawMax ? RT::kRawMax : raw);
     return RT::FromRaw(
-        fixed_point_internal::RepFromRawValue<typename RT::rep_type>(clamped));
-  }
-};
-
-template <typename Spec, typename Logical, std::size_t N, bool UseLookup>
-struct Codec {
-  static constexpr std::uint32_t Encode(
-      segmented_compiler_internal::CompiledSegment const* segs, int nseg,
-      std::uint32_t code_count, std::int64_t raw) {
-    return segmented_formula_internal::EncodeRaw<Logical>(segs, nseg, code_count,
-                                                          raw);
-  }
-
-  static constexpr std::int64_t Decode(
-      segmented_compiler_internal::CompiledSegment const* segs, int nseg,
-      std::uint32_t rank) {
-    return segmented_formula_internal::DecodeRankRaw<Logical>(segs, nseg, rank);
-  }
-};
-
-template <typename Spec, typename Logical, std::size_t N>
-struct Codec<Spec, Logical, N, true> {
-  static constexpr auto kTables =
-      segmented_lookup_internal::MakeLookupTables<Spec, Logical, N>();
-
-  static constexpr std::uint32_t Encode(
-      segmented_compiler_internal::CompiledSegment const*, int, std::uint32_t,
-      std::int64_t raw) {
-    return segmented_lookup_internal::LookupEncode<Spec, Logical, N>(kTables,
-                                                                     raw);
-  }
-
-  static constexpr std::int64_t Decode(
-      segmented_compiler_internal::CompiledSegment const*, int,
-      std::uint32_t rank) {
-    if (rank >= N) {
-      return kTables.decoded[0];
-    }
-    return kTables.decoded[rank];
+        fixed_point_internal::RepFromRawValue<typename RT::rep_type>(
+            RT::ClampRaw(clamped)));
   }
 };
 
@@ -106,10 +69,6 @@ using RuntimeType = std::conditional_t<
     kIsFloatingRuntimePolicy<typename Spec::runtime_policy>,
     typename Spec::runtime_policy::rep,
     segmented_compiler_internal::LogicalTypeOf<Spec>>;
-
-template <typename Spec>
-inline constexpr bool kUseLookup =
-    std::is_same_v<typename Spec::compute_policy, compute::Lookup>;
 
 template <typename Wire>
 constexpr Wire RankToWire(std::uint32_t rank) {
@@ -138,8 +97,15 @@ class SegmentedNumber {
   using runtime_type = segmented_number_internal::RuntimeType<Spec>;
   using logical_type = segmented_compiler_internal::LogicalTypeOf<Spec>;
   using wire_type = segmented_compiler_internal::WireTypeOf<Spec>;
-  using runtime_raw_type = std::int64_t;
+  using runtime_raw_type = typename logical_type::rep_value_type;
+  static_assert(sizeof(runtime_raw_type) <= 4,
+                "SegmentedNumber runtime raw must be at most 32 bits");
 
+  static_assert(std::is_same_v<typename Spec::compute_policy, compute::Formula>,
+                "SegmentedNumber supports compute::Formula only");
+
+  static_assert(sizeof(runtime_raw_type) <= 4,
+                "SegmentedNumber runtime raw must be at most 32 bits");
   static constexpr auto kPlan =
       segmented_compiler_internal::PlanHolder<Spec>::kPlan;
   static constexpr std::size_t kSegmentCount =
@@ -148,12 +114,13 @@ class SegmentedNumber {
       static_cast<std::size_t>(kPlan.code_count);
   static constexpr std::size_t kMaxWireBytes =
       kPlan.n8 > 0 ? 8U : (kPlan.n4 > 0 ? 4U : (kPlan.n2 > 0 ? 2U : 1U));
+  // Compile-time schema identity (FNV-1a). Not used by encode/decode math.
   static constexpr std::uint64_t kSchemaHash = kPlan.schema_hash;
   static constexpr std::uint32_t kOneByteCount = kPlan.n1;
   static constexpr std::uint32_t kTwoByteCount = kPlan.n2;
   static constexpr std::uint32_t kFourByteCount = kPlan.n4;
   static constexpr std::size_t kFormulaCoefficientBytes =
-      sizeof(segmented_compiler_internal::CompiledSegment) * kSegmentCount;
+      segmented_compiler_internal::FormulaCoefficientBytes<Spec>();
 
   static_assert(!kIsFloatingRuntimePolicy<typename Spec::runtime_policy> ||
                     kFloatingRuntimeEnabled<typename Spec::runtime_policy::rep>,
@@ -162,35 +129,39 @@ class SegmentedNumber {
   static_assert(kCodeCount >= 1U, "format without values");
 
   static constexpr auto kSegments =
-      segmented_compiler_internal::MakeCompiledSegments<Spec, logical_type>();
+      segmented_compiler_internal::MakeExactCompiledSegments<
+          Spec, logical_type, kSegmentCount>();
 
-  static constexpr std::size_t kLookupTableBytes =
-      segmented_number_internal::kUseLookup<Spec>
-          ? kCodeCount * (sizeof(std::int64_t) + sizeof(std::uint32_t))
-          : 0;
-
-  constexpr SegmentedNumber() : value_(Decode(wire_type{})) {}
+  constexpr SegmentedNumber() : value_(DecodeUnchecked(wire_type{})) {}
 
   runtime_type Value() const { return value_; }
 
-  static constexpr runtime_type Decode(wire_type wire) {
-    std::uint32_t rank = segmented_number_internal::WireToRank<wire_type>(wire);
+  static std::optional<runtime_type> TryDecode(wire_type wire) {
+    std::uint32_t const rank =
+        segmented_number_internal::WireToRank<wire_type>(wire);
     if (rank >= kCodeCount) {
-      rank = 0;
+      return std::nullopt;
     }
-    std::int64_t const raw = segmented_number_internal::Codec<
-        Spec, logical_type, kCodeCount,
-        segmented_number_internal::kUseLookup<Spec>>::Decode(
-        kSegments.data(), kPlan.count, rank);
-    return segmented_number_internal::RuntimeRawMap<logical_type,
-                                                    runtime_type>::FromRaw(raw);
+    return DecodeUnchecked(wire);
+  }
+
+  static constexpr runtime_type Decode(wire_type wire) {
+    std::uint32_t const rank =
+        segmented_number_internal::WireToRank<wire_type>(wire);
+    if (rank >= kCodeCount) {
+      assert(rank < kCodeCount);
+      if (!std::is_constant_evaluated()) {
+        std::abort();
+      }
+    }
+    return DecodeUnchecked(wire);
   }
 
   static std::optional<wire_type> TryEncode(runtime_type value) {
-    std::int64_t const raw =
+    runtime_raw_type const raw =
         segmented_number_internal::RuntimeRawMap<logical_type,
                                                  runtime_type>::ToRaw(value);
-    if (raw < kRawMin || raw > kRawMax) {
+    if (raw < kDeclaredRawMin || raw > kDeclaredRawMax) {
       return std::nullopt;
     }
     return segmented_number_internal::RankToWire<wire_type>(EncodeRaw(raw));
@@ -205,14 +176,14 @@ class SegmentedNumber {
   }
 
   static SegmentedNumber Saturating(runtime_type value) {
-    std::int64_t raw =
+    runtime_raw_type raw =
         segmented_number_internal::RuntimeRawMap<logical_type,
                                                  runtime_type>::ToRaw(value);
-    if (raw < kRawMin) {
-      raw = kRawMin;
+    if (raw < kDeclaredRawMin) {
+      raw = kDeclaredRawMin;
     }
-    if (raw > kRawMax) {
-      raw = kRawMax;
+    if (raw > kDeclaredRawMax) {
+      raw = kDeclaredRawMax;
     }
     return FromWire(segmented_number_internal::RankToWire<wire_type>(
         EncodeRaw(raw)));
@@ -226,7 +197,7 @@ class SegmentedNumber {
 
   static SegmentedNumber FromWire(wire_type wire) {
     SegmentedNumber n;
-    n.value_ = Decode(wire);
+    n.value_ = DecodeUnchecked(wire);
     return n;
   }
 
@@ -285,40 +256,31 @@ class SegmentedNumber {
 
   static constexpr auto const& Logical() { return kPlan; }
 
- private:
-  static constexpr std::int64_t kRawMin = std::invoke([]() {
-    std::int64_t m = segmented_formula_internal::DecodeRankRaw<logical_type>(
-        kSegments.data(), kPlan.count, 0);
-    for (std::uint32_t r = 1; r < static_cast<std::uint32_t>(kCodeCount); ++r) {
-      std::int64_t const v =
-          segmented_formula_internal::DecodeRankRaw<logical_type>(
-              kSegments.data(), kPlan.count, r);
-      if (v < m) {
-        m = v;
-      }
-    }
-    return m;
-  });
-  static constexpr std::int64_t kRawMax = std::invoke([]() {
-    std::int64_t m = segmented_formula_internal::DecodeRankRaw<logical_type>(
-        kSegments.data(), kPlan.count, 0);
-    for (std::uint32_t r = 1; r < static_cast<std::uint32_t>(kCodeCount); ++r) {
-      std::int64_t const v =
-          segmented_formula_internal::DecodeRankRaw<logical_type>(
-              kSegments.data(), kPlan.count, r);
-      if (v > m) {
-        m = v;
-      }
-    }
-    return m;
-  });
+  static constexpr runtime_raw_type kDeclaredRawMin =
+      logical_type::FromRatio(kPlan.declared_min.num, kPlan.declared_min.den)
+          .RawValue();
+  static constexpr runtime_raw_type kDeclaredRawMax =
+      logical_type::FromRatio(kPlan.declared_max.num, kPlan.declared_max.den)
+          .RawValue();
+  static constexpr runtime_raw_type kRepresentableRawMin =
+      segmented_formula_internal::ScanRepresentable<Spec, logical_type>(true);
+  static constexpr runtime_raw_type kRepresentableRawMax =
+      segmented_formula_internal::ScanRepresentable<Spec, logical_type>(
+          false);
 
-  static constexpr std::uint32_t EncodeRaw(std::int64_t raw) {
-    return segmented_number_internal::Codec<
-        Spec, logical_type, kCodeCount,
-        segmented_number_internal::kUseLookup<Spec>>::Encode(
-        kSegments.data(), kPlan.count, static_cast<std::uint32_t>(kCodeCount),
-        raw);
+ private:
+  static constexpr runtime_type DecodeUnchecked(wire_type wire) {
+    std::uint32_t const rank =
+        segmented_number_internal::WireToRank<wire_type>(wire);
+    runtime_raw_type const raw =
+        segmented_formula_internal::DecodeRankRaw<Spec, logical_type>(rank);
+    return segmented_number_internal::RuntimeRawMap<logical_type,
+                                                    runtime_type>::FromRaw(raw);
+  }
+
+  static constexpr std::uint32_t EncodeRaw(runtime_raw_type raw) {
+    return segmented_formula_internal::EncodeRaw<Spec, logical_type>(
+        static_cast<std::uint32_t>(kCodeCount), raw);
   }
 
   runtime_type value_{};
@@ -367,10 +329,6 @@ struct runtime_numeric_traits<seg::SegmentedNumber<Spec>> {
 
   static constexpr value_type FromInteger(std::int64_t value) {
     return value_type::Saturating(runtime_numeric_traits<RT>::FromInteger(value));
-  }
-
-  static consteval value_type FromDouble(double value) {
-    return value_type::Saturating(runtime_numeric_traits<RT>::FromDouble(value));
   }
 };
 

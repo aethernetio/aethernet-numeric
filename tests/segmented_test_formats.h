@@ -18,6 +18,7 @@
 #define AE_NUMERIC_TESTS_SEGMENTED_TEST_FORMATS_H_
 
 #include <cstdint>
+#include <type_traits>
 
 #include <ae-numeric/decimal.h>
 #include <ae-numeric/segmented_number.h>
@@ -120,49 +121,6 @@ using ConnectDurationSpec = seg::Format<
         seg::ExponentialValues<seg::Range<D<2, -1>, D<2>>>,
         seg::ExponentialValues<seg::Range<D<2>, D<60>>>>>>;
 using ConnectDuration = seg::Compile<ConnectDurationSpec>;
-
-using TemperatureLookupSpec = seg::Format<
-    seg::runtime::Fixed<std::int16_t>,
-    seg::wire::AutoTiered<std::uint8_t, seg::wire::MaxBytes<2>>,
-    seg::compute::Lookup,
-    typename TemperatureSpec::layout_type>;
-using TemperatureLookup = seg::Compile<TemperatureLookupSpec>;
-
-using RssiLookupSpec = seg::Format<
-    seg::runtime::Fixed<std::int8_t>,
-    seg::wire::AutoTiered<std::uint8_t, seg::wire::MaxBytes<1>>,
-    seg::compute::Lookup, typename RssiSpec::layout_type>;
-using RssiLookup = seg::Compile<RssiLookupSpec>;
-
-using HumidityLookupSpec = seg::Format<
-    seg::runtime::Fixed<std::uint16_t>,
-    seg::wire::AutoTiered<std::uint8_t, seg::wire::MaxBytes<1>>,
-    seg::compute::Lookup, typename HumiditySpec::layout_type>;
-using HumidityLookup = seg::Compile<HumidityLookupSpec>;
-
-using Co2LookupSpec = seg::Format<
-    seg::runtime::Fixed<std::uint16_t>,
-    seg::wire::AutoTiered<std::uint8_t, seg::wire::MaxBytes<4>>,
-    seg::compute::Lookup, typename Co2Spec::layout_type>;
-using Co2Lookup = seg::Compile<Co2LookupSpec>;
-
-using BatteryLookupSpec = seg::Format<
-    seg::runtime::Fixed<std::uint16_t>,
-    seg::wire::AutoTiered<std::uint8_t, seg::wire::MaxBytes<1>>,
-    seg::compute::Lookup, typename BatteryVoltageSpec::layout_type>;
-using BatteryLookup = seg::Compile<BatteryLookupSpec>;
-
-using ConnectLookupSpec = seg::Format<
-    seg::runtime::Fixed<std::uint32_t>,
-    seg::wire::AutoTiered<std::uint8_t, seg::wire::MaxBytes<1>>,
-    seg::compute::Lookup, typename ConnectDurationSpec::layout_type>;
-using ConnectLookup = seg::Compile<ConnectLookupSpec>;
-
-using RxWindowLookupSpec = seg::Format<
-    seg::runtime::Fixed<std::uint32_t>,
-    seg::wire::AutoTiered<std::uint8_t, seg::wire::MaxBytes<4>>,
-    seg::compute::Lookup, typename RxWindowSpec::layout_type>;
-using RxWindowLookup = seg::Compile<RxWindowLookupSpec>;
 
 template <typename Num>
 typename Num::wire_type WireFromRank(std::uint32_t rank) {

@@ -21,6 +21,8 @@
 #include "ae-numeric/exponential_floating_runtime.h"
 #include "ae-numeric/segmented_number.h"
 
+#include <type_traits>
+
 namespace ae::seg {
 
 template <>
@@ -31,28 +33,34 @@ inline constexpr bool kFloatingRuntimeEnabled<double> = true;
 namespace segmented_number_internal {
 
 template <typename Logical, typename FloatingT>
-constexpr std::int64_t FloatingToLogicalRaw(FloatingT value) {
+constexpr typename Logical::rep_value_type FloatingToLogicalRaw(
+    FloatingT value) {
   if (value == FloatingT{0}) {
-    return 0;
+    return static_cast<typename Logical::rep_value_type>(0);
   }
   bool const neg = value < FloatingT{0};
   FloatingT const mag = neg ? -value : value;
   Logical const work =
       exponential_internal::FloatingToWork<Logical, FloatingT>(mag);
-  std::int64_t const raw = static_cast<std::int64_t>(work.RawValue());
-  return neg ? -raw : raw;
+  auto const raw = work.RawValue();
+  if constexpr (std::is_signed_v<typename Logical::rep_value_type>) {
+    return neg ? static_cast<typename Logical::rep_value_type>(-raw) : raw;
+  } else {
+    (void)neg;
+    return raw;
+  }
 }
 
 template <typename Logical, typename FloatingT>
-constexpr FloatingT LogicalRawToFloating(std::int64_t raw) {
-  bool const neg = raw < 0;
-  std::int64_t ar = neg ? -raw : raw;
-  if (ar > static_cast<std::int64_t>(Logical::kRawMax)) {
-    ar = static_cast<std::int64_t>(Logical::kRawMax);
+constexpr FloatingT LogicalRawToFloating(typename Logical::rep_value_type raw) {
+  bool const neg =
+      std::is_signed_v<typename Logical::rep_value_type> && raw < 0;
+  auto ar = neg ? static_cast<typename Logical::rep_value_type>(-raw) : raw;
+  if (ar > Logical::kRawMax) {
+    ar = Logical::kRawMax;
   }
   Logical const work = Logical::FromRaw(
-      fixed_point_internal::RepFromRawValue<typename Logical::rep_type>(
-          static_cast<typename Logical::rep_value_type>(ar)));
+      fixed_point_internal::RepFromRawValue<typename Logical::rep_type>(ar));
   FloatingT const mag =
       exponential_internal::WorkToFloating<FloatingT, Logical>(work);
   return neg ? -mag : mag;
@@ -60,20 +68,20 @@ constexpr FloatingT LogicalRawToFloating(std::int64_t raw) {
 
 template <typename Logical>
 struct RuntimeRawMap<Logical, float> {
-  static constexpr std::int64_t ToRaw(float v) {
+  static constexpr typename Logical::rep_value_type ToRaw(float v) {
     return FloatingToLogicalRaw<Logical, float>(v);
   }
-  static constexpr float FromRaw(std::int64_t raw) {
+  static constexpr float FromRaw(typename Logical::rep_value_type raw) {
     return LogicalRawToFloating<Logical, float>(raw);
   }
 };
 
 template <typename Logical>
 struct RuntimeRawMap<Logical, double> {
-  static constexpr std::int64_t ToRaw(double v) {
+  static constexpr typename Logical::rep_value_type ToRaw(double v) {
     return FloatingToLogicalRaw<Logical, double>(v);
   }
-  static constexpr double FromRaw(std::int64_t raw) {
+  static constexpr double FromRaw(typename Logical::rep_value_type raw) {
     return LogicalRawToFloating<Logical, double>(raw);
   }
 };

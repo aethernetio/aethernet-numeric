@@ -37,7 +37,7 @@ extern int test_composed_exponential_tiered();
 extern int test_segmented_number_core();
 extern int test_segmented_number_formats();
 extern int test_segmented_number_wire();
-extern int test_segmented_number_formula_lookup();
+extern int test_segmented_number_schema();
 extern int test_segmented_number_floating_runtime();
 extern int test_segmented_number_size();
 extern int test_fixed_math();
@@ -65,7 +65,7 @@ int main() {
   res += test_segmented_number_core();
   res += test_segmented_number_formats();
   res += test_segmented_number_wire();
-  res += test_segmented_number_formula_lookup();
+  res += test_segmented_number_schema();
   res += test_segmented_number_floating_runtime();
   res += test_segmented_number_size();
   res += test_fixed_math();
