@@ -50,6 +50,12 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-composed-types.cpp
   test-composed-exponential.cpp
   test-composed-exponential-tiered.cpp
+  test-segmented-number-core.cpp
+  test-segmented-number-formats.cpp
+  test-segmented-number-wire.cpp
+  test-segmented-number-formula-lookup.cpp
+  test-segmented-number-floating-runtime.cpp
+  test-segmented-number-size.cpp
   test-fixed-math.cpp
   test-integer-math.cpp
   test-tiered-int-aether-compat.cpp
@@ -61,8 +67,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE ae-numeric unity)
 # enable warnings and werror
 target_compile_options(${PROJECT_NAME} PRIVATE
   $<$<CXX_COMPILER_ID:Clang>: -Wall -Wextra -Werror>
-  $<$<CXX_COMPILER_ID:GNU>: -Wall -Wextra -Werror>
-  $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /MP /constexpr:steps16777216 /wd4530 /wd4702 /wd4127>
+  $<$<CXX_COMPILER_ID:GNU>: -Wall -Wextra -Werror -fconstexpr-ops-limit=268435456 -fconstexpr-loop-limit=1048576>
+  $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /MP /constexpr:steps100000000 /wd4530 /wd4702 /wd4127>
 )
 
 
@@ -115,7 +121,17 @@ foreach(fail_case
     exp_float_runtime
     wide_mul_intermediate
     tiered_add_overflow
-    tiered_add_underflow)
+    tiered_add_underflow
+    segmented_overlap
+    segmented_gap
+    segmented_duplicate_boundary
+    segmented_exponential_non_positive
+    segmented_too_many_one_byte_codes
+    segmented_impossible_error
+    segmented_runtime_rep_too_small
+    segmented_invalid_wire_bytes
+    segmented_duplicate_runtime_value
+    segmented_impossible_continuous_step)
   add_executable(fail-${fail_case} EXCLUDE_FROM_ALL
     compile-fail/${fail_case}.cpp)
   target_link_libraries(fail-${fail_case} PRIVATE ae-numeric)
@@ -124,3 +140,45 @@ foreach(fail_case
       --target fail-${fail_case} --config $<CONFIG>)
   set_tests_properties(fail-${fail_case} PROPERTIES WILL_FAIL TRUE)
 endforeach()
+
+function(ae_numeric_add_footprint tgt)
+  add_executable(${tgt} EXCLUDE_FROM_ALL footprint/segmented_footprint.cpp)
+  target_link_libraries(${tgt} PRIVATE ae-numeric)
+  target_compile_definitions(${tgt} PRIVATE ${ARGN})
+  target_compile_options(${tgt} PRIVATE
+    $<$<CXX_COMPILER_ID:Clang>: -Wall -Wextra -Werror>
+    $<$<CXX_COMPILER_ID:GNU>: -Wall -Wextra -Werror -fconstexpr-ops-limit=268435456 -fconstexpr-loop-limit=1048576 -ffunction-sections -fdata-sections>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /MP /constexpr:steps100000000 /Gy /wd4530 /wd4702 /wd4127>
+  )
+  target_link_options(${tgt} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU>:-Wl,--gc-sections>
+    $<$<CXX_COMPILER_ID:Clang>:-Wl,--gc-sections>
+    $<$<CXX_COMPILER_ID:MSVC>:/OPT:REF>
+  )
+endfunction()
+
+ae_numeric_add_footprint(footprint-rssi AE_SEG_HAS_RSSI=1)
+ae_numeric_add_footprint(footprint-temperature AE_SEG_HAS_TEMP=1)
+ae_numeric_add_footprint(footprint-humidity AE_SEG_HAS_HUM=1)
+ae_numeric_add_footprint(footprint-co2 AE_SEG_HAS_CO2=1)
+ae_numeric_add_footprint(footprint-rx-window AE_SEG_HAS_RX=1)
+ae_numeric_add_footprint(footprint-battery AE_SEG_HAS_BAT=1)
+ae_numeric_add_footprint(footprint-connect-duration AE_SEG_HAS_CONN=1)
+ae_numeric_add_footprint(footprint-all-formula AE_SEG_FOOTPRINT_ALL=1)
+ae_numeric_add_footprint(footprint-rssi-lookup AE_SEG_HAS_RSSI_LOOKUP=1)
+ae_numeric_add_footprint(footprint-temperature-lookup AE_SEG_HAS_TEMP_LOOKUP=1)
+ae_numeric_add_footprint(footprint-all-lookup AE_SEG_FOOTPRINT_ALL_LOOKUP=1)
+
+add_custom_target(segmented-footprint DEPENDS
+  footprint-rssi
+  footprint-temperature
+  footprint-humidity
+  footprint-co2
+  footprint-rx-window
+  footprint-battery
+  footprint-connect-duration
+  footprint-all-formula
+  footprint-rssi-lookup
+  footprint-temperature-lookup
+  footprint-all-lookup
+)

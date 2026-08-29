@@ -15,8 +15,9 @@ They are used across the Æthernet C++ client to represent durations, counters, 
 6. [Ostream IO](#ostream-io)
 7. [Wire IO](#wire-io)
 8. [Combined Types](#combined-types)
-9. [Integration Notes](#integration-notes)
-10. [Running Tests](#running-tests)
+9. [SegmentedNumber](#segmentednumber)
+10. [Integration Notes](#integration-notes)
+11. [Running Tests](#running-tests)
 
 ---
 
@@ -297,12 +298,87 @@ This is a linear scale: every raw step is one millisecond. Use `Exponential` ins
 
 ---
 
+## SegmentedNumber
+
+`SegmentedNumber` is a header-only piecewise quantized number. The object stores only the physical runtime value. A dense packed rank is computed when encoding and is serialized through a compiled `uint8_t` or `TieredInt` wire type.
+
+The description splits four layers:
+
+1. runtime representation (`runtime::Fixed<Rep>` or opt-in `runtime::Floating<float|double>`);
+2. mathematical curves of representable values;
+3. assignment of those codes to wire lengths 1/2/4/8 bytes;
+4. the serializable packed rank.
+
+Bounds and steps are written with `ae::Decimal` / `ae::Ratio`, not `double`.
+
+```cpp
+#include <ae-numeric/segmented_number.h>
+#include <ae-numeric/segmented_number_wire_io.h>
+
+template <std::int64_t M, int E = 0>
+using D = ae::Decimal<M, E>;
+
+using Spec = ae::seg::Format<
+    ae::seg::runtime::Fixed<std::int16_t>,
+    ae::seg::wire::AutoTiered<std::uint8_t, ae::seg::wire::MaxBytes<2>>,
+    ae::seg::compute::Formula,
+    ae::seg::Layout<
+        ae::seg::GeometricStep<
+            ae::seg::Range<D<-40>, D<10>>,
+            ae::seg::Intervals<349>,
+            ae::seg::StepAtUpper<D<1, -1>>,
+            ae::seg::Place<ae::seg::Bytes<2>>>,
+        ae::seg::UniformStep<
+            ae::seg::Range<D<10>, D<352, -1>>,
+            ae::seg::Step<D<1, -1>>,
+            ae::seg::Place<ae::seg::Bytes<1>>>,
+        ae::seg::GeometricStep<
+            ae::seg::Range<D<352, -1>, D<125>>,
+            ae::seg::Intervals<419>,
+            ae::seg::StepAtLower<D<1, -1>>,
+            ae::seg::Place<ae::seg::Bytes<2>>>>>;
+
+using Temperature = ae::seg::Compile<Spec>;
+
+static_assert(sizeof(Temperature) == sizeof(Temperature::runtime_type));
+static_assert(Temperature::kCodeCount == 1021);
+static_assert(Temperature::kMaxWireBytes == 2);
+```
+
+`Compile<Spec>` is `SegmentedNumber<Spec>`. The object does not store the wire rank. Encode with `TryEncode` / `TryFromRuntime`; out-of-range input is rejected unless `Saturating` is used. Comparisons use the runtime value, never the packed rank: rank order need not follow physical order (the temperature window uses 1-byte codes in the middle and 2-byte codes on both tails).
+
+Curve primitives: `UniformStep`, `UniformValues`, `ExponentialValues`, `GeometricStep`, `LinearStepRamp`. Allocation helpers: `Intervals<N>`, `FillTier`, `MinimumIntervals`, `AutoSplit`, and `ContinuousExponential` with `WireCuts` / `OptimizeCuts`.
+
+Two compute backends:
+
+* `compute::Formula` (default) — small per-segment coefficients, no per-code table, no runtime `float`/`double` for `Fixed` runtime. Segment selection is O(S). Uniform and linear-ramp paths are O(1) (integer square root for the ramp). Exponential and geometric decode use integer exponentiation-by-squaring of a compiled ratio (O(log n) multiplies). Encode of those curves binary-searches the selected segment and checks neighboring codes. Serialization is O(1), at most 8 bytes, heap = 0;
+* `compute::Lookup` — consteval decoded-raw table, O(1) decode and O(log N) encode, used as a Formula oracle. Flash/data is O(N).
+
+Shared physical endpoints are encoded once. The segment with the smaller wire size owns the joint; if the sizes match, the previous physical segment owns it. Unused packed ranks deserialize with `bytes_read == 0`.
+
+Floating runtime is opt-in and does not change the wire ABI:
+
+```cpp
+#include <ae-numeric/segmented_number_floating_runtime.h>
+
+using FloatSpec = ae::seg::Format<
+    ae::seg::runtime::Floating<double>,
+    ae::seg::wire::AutoTiered<std::uint8_t, ae::seg::wire::MaxBytes<2>>,
+    ae::seg::compute::Formula,
+    typename Spec::layout_type>;
+```
+
+Release footprint binaries (section GC, volatile sinks) are the `footprint-*` / `segmented-footprint` targets in `tests/`.
+
+---
+
 ## Integration Notes
 
 * Header-only numeric types.
 * C++20.
 * Deterministic integer runtime paths for embedded use.
 * Optional floating runtime support for `Exponential` is isolated in `ae-numeric/exponential_floating_runtime.h`.
+* Optional floating runtime support for `SegmentedNumber` is isolated in `ae-numeric/segmented_number_floating_runtime.h`.
 * Designed for low-overhead serialization on MCUs and constrained networks.
 
 ---

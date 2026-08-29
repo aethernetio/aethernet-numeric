@@ -271,6 +271,21 @@ AE_INTEGER_MATH_CONSTEXPR bool RoundDivPow2U64(std::uint64_t a, std::uint64_t b,
   return RoundDivU64(a, scaled_den, out);
 }
 
+// Floor square root. Newton iteration; no overflow of x*x in the check because
+// `x > n / x` is used instead of `x * x > n`.
+AE_INTEGER_MATH_CONSTEXPR std::uint64_t SqrtU64(std::uint64_t n) noexcept {
+  if (n < 2U) {
+    return n;
+  }
+  std::uint64_t x0 = n >> 1U;
+  std::uint64_t x1 = (x0 + n / x0) >> 1U;
+  while (x1 < x0) {
+    x0 = x1;
+    x1 = (x0 + n / x0) >> 1U;
+  }
+  return x0;
+}
+
 }  // namespace ae::integer_math
 
 #undef AE_INTEGER_MATH_CONSTEXPR

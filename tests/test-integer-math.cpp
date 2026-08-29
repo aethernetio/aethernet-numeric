@@ -41,6 +41,7 @@ struct RuntimeFns {
       &RoundMulPow2DivU64;
   bool (*div_pow2)(std::uint64_t, std::uint64_t, unsigned, std::uint64_t&) =
       &RoundDivPow2U64;
+  std::uint64_t (*sqrt_u64)(std::uint64_t) = &SqrtU64;
 };
 
 RuntimeFns const& Fns() {
@@ -460,6 +461,18 @@ void test_RawFromRatioExhaustiveSmall() {
   }
 }
 
+void test_SqrtU64() {
+  auto const& f = Fns();
+  TEST_ASSERT_EQUAL_UINT(0U, f.sqrt_u64(0));
+  TEST_ASSERT_EQUAL_UINT(1U, f.sqrt_u64(1));
+  TEST_ASSERT_EQUAL_UINT(1U, f.sqrt_u64(3));
+  TEST_ASSERT_EQUAL_UINT(2U, f.sqrt_u64(4));
+  TEST_ASSERT_EQUAL_UINT(10U, f.sqrt_u64(100));
+  TEST_ASSERT_EQUAL_UINT(255U, f.sqrt_u64(65535));
+  TEST_ASSERT_EQUAL_UINT(65536U, f.sqrt_u64(65536ULL * 65536ULL));
+  TEST_ASSERT_EQUAL_UINT(4294967295ULL, f.sqrt_u64(~0ULL));
+}
+
 }  // namespace ae::test_integer_math
 
 int test_integer_math() {
@@ -484,5 +497,6 @@ int test_integer_math() {
   RUN_TEST(ae::test_integer_math::test_RawFromRatioGcdAndRounding);
   RUN_TEST(ae::test_integer_math::test_RawFromRatioOverflowButFitsAndBounds);
   RUN_TEST(ae::test_integer_math::test_RawFromRatioExhaustiveSmall);
+  RUN_TEST(ae::test_integer_math::test_SqrtU64);
   return UNITY_END();
 }
