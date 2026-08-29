@@ -16,8 +16,9 @@ They are used across the Æthernet C++ client to represent durations, counters, 
 7. [Wire IO](#wire-io)
 8. [Combined Types](#combined-types)
 9. [SegmentedNumber](#segmentednumber)
-10. [Integration Notes](#integration-notes)
-11. [Running Tests](#running-tests)
+10. [CyclicCounter](#cycliccounter)
+11. [Integration Notes](#integration-notes)
+12. [Running Tests](#running-tests)
 
 ---
 
@@ -34,7 +35,8 @@ The core types are:
 
 * `TieredInt` — compact integer serialization with compile-time tier boundaries;
 * `FixedPoint` — binary-scaled fixed point over an integral or packed integral representation;
-* `Exponential` — logarithmic code mapping for values that span several orders of magnitude.
+* `Exponential` — logarithmic code mapping for values that span several orders of magnitude;
+* `CyclicCounter` — full local counter with truncated modular wire bits.
 
 ---
 
@@ -369,6 +371,22 @@ using FloatSpec = ae::seg::Format<
 ```
 
 Release footprint binaries (section GC, volatile sinks) are the `footprint-*` / `segmented-footprint` targets in `tests/`.
+
+---
+
+## CyclicCounter
+
+`CyclicCounter<WireType, ValueType>` keeps a full unsigned counter locally and sends only its low bits on the wire:
+
+```text
+wire = value mod (max(WireType) + 1)
+```
+
+Example with `CyclicCounter<std::uint8_t, std::uint32_t>`: value `1001` → wire `233`. Dropped messages do not matter: if the receiver held `1001` and next sees wire `237`, it restores `1005`. Wire wrap is the same rule: `1023`/`255` then wire `0` restores `1024`.
+
+Restoration is relative to the current full value and unambiguous only for absolute distances strictly less than half the wire space (`127` for `uint8_t`, `32767` for `uint16_t`). Distance exactly half (`128` / `32768`) is ambiguous — `TryRestore` returns empty; `Restore` is a contract failure. `TryAdvance` updates the local base only when the restored value is strictly newer.
+
+`sizeof(CyclicCounter) == sizeof(ValueType)`. Wire IO serializes `WireValue()` only; reconstructing a full counter requires a live base (`TryRestore` / `TryAdvance` / `TryDeserializeAndAdvance`).
 
 ---
 

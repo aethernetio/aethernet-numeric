@@ -30,6 +30,7 @@ extern int test_text_io();
 extern int test_ostream_io();
 extern int test_wire_io();
 extern int test_packed_ring();
+extern int test_cyclic_counter();
 extern int test_composed_types();
 extern int test_composed_exponential();
 extern int test_composed_exponential_tiered();
@@ -57,6 +58,7 @@ int main() {
   res += test_ostream_io();
   res += test_wire_io();
   res += test_packed_ring();
+  res += test_cyclic_counter();
   res += test_composed_types();
   res += test_composed_exponential();
   res += test_composed_exponential_tiered();

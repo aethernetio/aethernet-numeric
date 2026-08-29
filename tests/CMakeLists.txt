@@ -47,6 +47,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-ostream-io.cpp
   test-wire-io.cpp
   test-packed-ring.cpp
+  test-cyclic-counter.cpp
   test-composed-types.cpp
   test-composed-exponential.cpp
   test-composed-exponential-tiered.cpp
@@ -181,4 +182,26 @@ add_custom_target(segmented-footprint DEPENDS
   footprint-rssi-lookup
   footprint-temperature-lookup
   footprint-all-lookup
+)
+
+# Minimal object-only CyclicCounter footprint probes (no CRT link).
+function(ae_numeric_add_cyclic_fp_obj tgt src)
+  add_library(${tgt} OBJECT EXCLUDE_FROM_ALL ${src})
+  target_link_libraries(${tgt} PRIVATE ae-numeric)
+  target_include_directories(${tgt} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/footprint)
+  target_compile_options(${tgt} PRIVATE
+    $<$<CXX_COMPILER_ID:Clang>: -Wall -Wextra -Werror -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti>
+    $<$<CXX_COMPILER_ID:GNU>: -Wall -Wextra -Werror -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /Gy /GR- /EHs-c- /wd4530>
+  )
+endfunction()
+
+ae_numeric_add_cyclic_fp_obj(fp-obj-cyclic-u8-u16 footprint/minimal_cyclic_u8_u16.cpp)
+ae_numeric_add_cyclic_fp_obj(fp-obj-cyclic-u8-u32 footprint/minimal_cyclic_u8_u32.cpp)
+ae_numeric_add_cyclic_fp_obj(fp-obj-cyclic-u16-u32 footprint/minimal_cyclic_u16_u32.cpp)
+
+add_custom_target(cyclic-counter-footprint-obj DEPENDS
+  fp-obj-cyclic-u8-u16
+  fp-obj-cyclic-u8-u32
+  fp-obj-cyclic-u16-u32
 )
