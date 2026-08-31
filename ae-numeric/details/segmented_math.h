@@ -17,6 +17,22 @@
 #ifndef AE_NUMERIC_DETAILS_SEGMENTED_MATH_H_
 #define AE_NUMERIC_DETAILS_SEGMENTED_MATH_H_
 
+// Purpose: Define the numeric domains and shared helpers used by the
+// SegmentedNumber compiler and formula backend.
+//
+// Motivation: schema solving and runtime codec math need consistent
+// scales, overflow rules, and deterministic behavior on 32-bit MCUs.
+//
+// Analogous concept: a private numerical kernel for a quantizer compiler.
+// This details header is not a standalone public API.
+//
+// How it works: exact small rationals describe schema inputs; SegWork,
+// SegPosWork, SegRatio, and SegLog are FixedPoint types with Rep <= 32
+// bits. Helpers normalize, interpolate, solve curve parameters, and call
+// fixed_math without pulling 64-bit runtime arithmetic helpers into the
+// ESP32-C6 mathematical path.
+
+
 #include <cstdint>
 #include <limits>
 #include <type_traits>

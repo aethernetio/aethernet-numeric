@@ -17,6 +17,23 @@
 #ifndef AE_NUMERIC_DETAILS_SEGMENTED_COMPILER_H_
 #define AE_NUMERIC_DETAILS_SEGMENTED_COMPILER_H_
 
+// Purpose: Compile a declarative SegmentedNumber schema into validated
+// curve coefficients, canonical ranks, wire tiers, and schema metadata.
+//
+// Motivation: users should describe physical requirements, while the
+// library derives a compact specialized codec and rejects impossible or
+// ambiguous layouts at compile time.
+//
+// Analogous concepts: a small type-level compiler and quantizer design
+// pass. Use it only through segmented_number.h and seg::Compile<Spec>.
+//
+// How it works: it flattens curve drafts, validates ranges and endpoint
+// ownership, solves interval counts and coefficients, assigns ranks,
+// derives uint8_t/TieredInt boundaries, and computes schema identity.
+// CompiledSegment is universal compile-time metadata; its sizeof is not
+// per-segment flash cost, and runtime instances do not store it.
+
+
 #include <array>
 #include <cstddef>
 #include <cstdint>

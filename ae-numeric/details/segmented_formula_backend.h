@@ -17,6 +17,22 @@
 #ifndef AE_NUMERIC_DETAILS_SEGMENTED_FORMULA_BACKEND_H_
 #define AE_NUMERIC_DETAILS_SEGMENTED_FORMULA_BACKEND_H_
 
+// Purpose: Provide the runtime analytical encode/decode implementation
+// for compiled SegmentedNumber formats.
+//
+// Motivation: embedded codecs must avoid per-code lookup tables and
+// searches whose cost grows with the number of representable values.
+//
+// Analogous concept: an analytical inverse/forward quantizer backend.
+// This is internal implementation selected by compute::Formula.
+//
+// How it works: uniform curves use arithmetic, exponential and geometric
+// curves use FixedPoint Log2/Exp2, and step ramps use a quadratic inverse
+// with 32-bit integer sqrt. An analytical index estimate is followed by
+// a small bounded neighbor check to select the nearest canonical rank.
+// No heap or rank-indexed value table is used.
+
+
 #include <cassert>
 #include <cstdint>
 #include <limits>

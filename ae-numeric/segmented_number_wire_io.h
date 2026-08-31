@@ -17,6 +17,22 @@
 #ifndef AE_NUMERIC_SEGMENTED_NUMBER_WIRE_IO_H_
 #define AE_NUMERIC_SEGMENTED_NUMBER_WIRE_IO_H_
 
+// Purpose: Connect SegmentedNumber to the generic wire_io interface.
+//
+// Motivation: callers should use the same Serialize/Deserialize API for
+// built-in integers, TieredInt, FixedPoint, and SegmentedNumber.
+//
+// Analogous concept: a serialization traits adapter.
+//
+// Usage: include this header after segmented_number.h and call the
+// generic ae::Serialize, ae::Deserialize, and ae::MaxWireBytes APIs.
+//
+// How it works: SegmentedNumber computes a canonical rank, then its
+// compiled wire_type serializes that rank. Deserialization rejects
+// truncated encodings and unused ranks. The wire ABI is defined by the
+// schema, not by the selected runtime representation.
+
+
 #include <cassert>
 
 #include "ae-numeric/segmented_number.h"

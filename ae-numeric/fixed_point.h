@@ -17,6 +17,25 @@
 #ifndef AE_NUMERIC_FIXED_POINT_H_
 #define AE_NUMERIC_FIXED_POINT_H_
 
+// Purpose: Represent deterministic fractional values as an integer raw
+// representation with a compile-time selected binary scale.
+//
+// Motivation: embedded code needs fractional arithmetic, stable wire
+// semantics, and predictable storage without depending on an FPU.
+//
+// Analogous concept: binary fixed-point arithmetic with an automatically
+// selected Q scale. Here logical_value = raw_value * 2^kScaleExp.
+//
+// Usage: choose FixedPoint<Rep, Max>; construct constants at compile time
+// or use checked/saturating runtime factories, then use typed arithmetic
+// and scale conversion helpers.
+//
+// How it works: Max defines the required logical range and the compiler
+// chooses the finest power-of-two scale that covers it. The declared
+// logical range is distinct from the full representable raw range.
+// sizeof(FixedPoint) equals sizeof(Rep).
+
+
 #include <concepts>
 #include <cstdint>
 #include <functional>

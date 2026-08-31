@@ -17,6 +17,26 @@
 #ifndef AE_NUMERIC_CYCLIC_COUNTER_H_
 #define AE_NUMERIC_CYCLIC_COUNTER_H_
 
+// Purpose: Store a full-width counter locally while sending only its
+// low WireType bits over the wire.
+//
+// Motivation: Protocol sequence numbers need a long local lifetime,
+// but relevant samples differ by far less than 2^N. Truncating the wire
+// representation saves bandwidth without storing a separate epoch.
+//
+// Analogous concepts: serial-number arithmetic, modular counters, and
+// truncated sequence numbers. This is not a total order: exactly half
+// of the wire space is inherently ambiguous.
+//
+// Usage: send WireValue(); receive with TryRestore() for a non-mutating
+// reconstruction or TryAdvance() to move the stored base only forward.
+//
+// How it works: the object stores only ValueType value_. It restores
+// the nearest full value whose low bits match the sample. No epoch,
+// previous sample, or decoder state is stored. Stateless deserialization
+// is intentionally unavailable because the wire value lacks high bits.
+
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>

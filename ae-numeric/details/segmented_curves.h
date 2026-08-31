@@ -17,6 +17,23 @@
 #ifndef AE_NUMERIC_DETAILS_SEGMENTED_CURVES_H_
 #define AE_NUMERIC_DETAILS_SEGMENTED_CURVES_H_
 
+// Purpose: Parse curve declarations into normalized compile-time drafts
+// for the SegmentedNumber compiler.
+//
+// Motivation: each curve has different constraints and coefficient
+// inputs, but later compiler stages need one validated intermediate form.
+//
+// Analogous concepts: an AST lowering pass and non-uniform quantizer
+// segment definitions. This is an internal header used through
+// segmented_number.h, not a standalone public API.
+//
+// How it works: UniformStep uses x(i)=begin+i*step; UniformValues divides
+// a range linearly; ExponentialValues uses x(i)=begin*r^i;
+// GeometricStep changes step(i)=step0*q^i; LinearStepRamp changes the
+// step linearly. ContinuousExponential keeps one mathematical curve
+// across wire tiers, while AutoSplit allocates values between curves.
+
+
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>

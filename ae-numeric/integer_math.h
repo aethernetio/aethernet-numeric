@@ -17,6 +17,25 @@
 #ifndef AE_NUMERIC_INTEGER_MATH_H_
 #define AE_NUMERIC_INTEGER_MATH_H_
 
+// Purpose: Provide checked low-level integer primitives shared by
+// FixedPoint and SegmentedNumber numerical code.
+//
+// Motivation: 32-bit MCUs need wide products, division, rounding, and
+// square roots without undefined behavior or unnecessary compiler
+// runtime helpers.
+//
+// Analogous concepts: multiword arithmetic and integer numerical kernels.
+//
+// Usage: this is a low-level support header; public numeric types call it
+// indirectly. Some generic or legacy helpers support 64-bit values, while
+// the SegmentedNumber production path selects the explicit 32-bit-safe
+// primitives.
+//
+// How it works: operations use checked bounds, hi/lo word products,
+// explicit rounding, and integer root algorithms. Callers select the
+// primitive whose documented input range matches their numeric domain.
+
+
 #include <cstdint>
 #include <limits>
 

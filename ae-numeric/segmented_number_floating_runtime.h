@@ -17,6 +17,23 @@
 #ifndef AE_NUMERIC_SEGMENTED_NUMBER_FLOATING_RUNTIME_H_
 #define AE_NUMERIC_SEGMENTED_NUMBER_FLOATING_RUNTIME_H_
 
+// Purpose: Opt in to float or double as a SegmentedNumber runtime
+// boundary while preserving the compiled physical schema and wire ABI.
+//
+// Motivation: desktop, server, test, or presentation code may prefer a
+// floating runtime value even when the embedded codec is fixed-point.
+//
+// Analogous concept: a representation adapter at the API boundary.
+//
+// Usage: include this header before instantiating a Format with
+// runtime::Floating<float> or runtime::Floating<double>.
+//
+// How it works: values are converted to and from the same internal
+// logical FixedPoint raw domain used by the formula backend. This header
+// does not implement a floating-point Log2/Exp2 compute backend and does
+// not change ranks, tier boundaries, schema hashes, or serialized bytes.
+
+
 #include "ae-numeric/exponential.h"
 #include "ae-numeric/exponential_floating_runtime.h"
 #include "ae-numeric/segmented_number.h"

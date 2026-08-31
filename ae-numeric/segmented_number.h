@@ -17,6 +17,29 @@
 #ifndef AE_NUMERIC_SEGMENTED_NUMBER_H_
 #define AE_NUMERIC_SEGMENTED_NUMBER_H_
 
+// Purpose: Public runtime type for compile-time defined piecewise
+// quantization formats with independent physical and wire layouts.
+//
+// Motivation: sensor and timing values rarely need one uniform absolute
+// precision across their complete range. Common values may need finer
+// resolution and fewer wire bytes than rare tails or extreme values.
+//
+// Analogous concepts: scalar quantization, non-uniform quantization,
+// logarithmic quantization, companding, and piecewise transfer curves.
+// SegmentedNumber additionally separates the physical curve from the
+// placement of ranks into 1/2/4/8-byte wire tiers.
+//
+// Usage: describe a seg::Format with runtime, wire, compute, and Layout
+// policies, then instantiate seg::Compile<Spec>. Convert with
+// TryFromRuntime()/TryEncode(), and serialize through wire_io.
+//
+// How it works: analytical segment encode maps a physical value to a
+// rank; the compiled wire policy maps that rank to uint8_t or TieredInt.
+// Decode performs the inverse path. Each instance stores only
+// runtime_type: no packed rank, segment table, lookup table, or heap
+// state. Production fractional math uses FixedPoint with Rep <= 32 bits.
+
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>

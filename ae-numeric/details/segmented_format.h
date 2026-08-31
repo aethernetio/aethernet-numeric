@@ -17,6 +17,24 @@
 #ifndef AE_NUMERIC_DETAILS_SEGMENTED_FORMAT_H_
 #define AE_NUMERIC_DETAILS_SEGMENTED_FORMAT_H_
 
+// Purpose: Define the declarative compile-time schema language consumed
+// by SegmentedNumber.
+//
+// Motivation: ranges, precision policies, curve types, and wire tiers
+// must be visible to the compiler so invalid formats fail at build time
+// and runtime code can be specialized without dynamic configuration.
+//
+// Analogous concept: a type-level schema or embedded compile-time DSL.
+//
+// Usage: users normally include segmented_number.h and compose Format,
+// Layout, Range, Intervals, Place, WireCuts, and curve declarations.
+// This details header is not a standalone runtime API.
+//
+// How it works: the declarations contain no runtime state. The compiler
+// parses their types, validates the schema, derives coefficients and
+// wire placement, and produces a SegmentedNumber specialization.
+
+
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>

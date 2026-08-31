@@ -17,6 +17,25 @@
 #ifndef AE_NUMERIC_FIXED_MATH_H_
 #define AE_NUMERIC_FIXED_MATH_H_
 
+// Purpose: Supply deterministic transcendental and root operations for
+// FixedPoint values without requiring an FPU.
+//
+// Motivation: Exponential and SegmentedNumber need Log2, Exp2, powers,
+// square roots, and roots on constrained embedded targets.
+//
+// Analogous concepts: fixed-point elementary-function kernels and
+// digit-by-digit/iterative numerical approximations.
+//
+// Usage: call the typed Log2To, Exp2To, PowTo, Sqrt, and related helpers,
+// optionally selecting a math policy. SegmentedNumber uses the
+// Segmented32MathPolicy with Rep widths no greater than 32 bits.
+//
+// How it works: values are normalized and refined for a fixed number of
+// iterations. Small fixed-size FixedPoint tables support Log2/Exp2; they
+// are independent of SegmentedNumber rank count and are not per-code
+// lookup tables.
+
+
 #include <array>
 #include <cassert>
 #include <cstdint>
