@@ -33,7 +33,7 @@ inline long double RefGeomSum(long double q, int n) {
   if (n <= 0) {
     return 0.0L;
   }
-  if (std::fabsl(q - 1.0L) < 1.0e-18L) {
+  if (std::fabs(q - 1.0L) < 1.0e-18L) {
     return static_cast<long double>(n);
   }
   return (std::pow(q, static_cast<long double>(n)) - 1.0L) / (q - 1.0L);
@@ -122,7 +122,7 @@ inline int RefAutoSplitN1(long double begin, long double mid, long double end,
       continue;
     }
     long double const jump =
-        std::fabsl(step_after - step_before) / smaller;
+        std::fabs(step_after - step_before) / smaller;
     long double const err1 = RefRelQuantError(r1);
     long double const err2 = RefRelQuantError(r2);
     long double const err = err1 > err2 ? err1 : err2;
