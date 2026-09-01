@@ -54,13 +54,13 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR
 endif()
 
 function(ae_numeric_cxx_warnings_and_constexpr tgt)
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR
-     CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(${tgt} PRIVATE
       -Wall -Wextra -Werror
       -fconstexpr-ops-limit=268435456
       -fconstexpr-loop-limit=1048576)
-  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT MSVC)
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR
+         (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT MSVC))
     target_compile_options(${tgt} PRIVATE
       -Wall -Wextra -Werror
       -fconstexpr-steps=268435456)
@@ -77,12 +77,12 @@ function(ae_numeric_cxx_warnings_and_constexpr tgt)
 endfunction()
 
 function(ae_numeric_constexpr_only tgt)
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR
-     CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(${tgt} PRIVATE
       -fconstexpr-ops-limit=268435456
       -fconstexpr-loop-limit=1048576)
-  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT MSVC)
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR
+         (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT MSVC))
     target_compile_options(${tgt} PRIVATE -fconstexpr-steps=268435456)
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     target_compile_options(${tgt} PRIVATE "SHELL:-Xclang -fconstexpr-steps=268435456")
