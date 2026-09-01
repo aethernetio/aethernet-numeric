@@ -24,8 +24,8 @@
 // inputs, but later compiler stages need one validated intermediate form.
 //
 // Analogous concepts: an AST lowering pass and non-uniform quantizer
-// segment definitions. This is an internal header used through
-// segmented_number.h, not a standalone public API.
+// segment definitions. Implementation lives in ae::seg::detail; use through
+// segmented_number.h, not as a standalone public API.
 //
 // How it works: UniformStep uses x(i)=begin+i*step; UniformValues divides
 // a range linearly; ExponentialValues uses x(i)=begin*r^i;
@@ -41,18 +41,7 @@
 #include "ae-numeric/details/segmented_format.h"
 #include "ae-numeric/details/segmented_math.h"
 
-namespace ae::seg::segmented_curves_internal {
-
-using segmented_math_internal::LogZero;
-using segmented_math_internal::NumberToRat;
-using segmented_math_internal::Rat;
-using segmented_math_internal::RatioOne;
-using segmented_math_internal::SegmentedSpecError;
-using segmented_math_internal::SegLog;
-using segmented_math_internal::SegRatio;
-using segmented_math_internal::SegWork;
-using segmented_math_internal::WorkFromRat;
-using segmented_math_internal::WorkZero;
+namespace ae::seg::detail {
 
 inline constexpr int kMaxDrafts = 16;
 
@@ -479,6 +468,6 @@ struct FlattenLayout<Head, Tail...> {
 template <typename... Items>
 struct FlattenLayout<Layout<Items...>> : FlattenLayout<Items...> {};
 
-}  // namespace ae::seg::segmented_curves_internal
+}  // namespace ae::seg::detail
 
 #endif  // AE_NUMERIC_DETAILS_SEGMENTED_CURVES_H_

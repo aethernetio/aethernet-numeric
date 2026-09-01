@@ -331,8 +331,9 @@ constexpr Target Exp2To(X y) {
       break;
     }
     if (frac >= bit) {
-      acc = MulTo<Target>(acc, cast_fixed<Target>(
-                                   Exp2Factor<Mant, Policy::kExp2FractionBits>(i)));
+      acc = MulTo<Target>(
+          acc, cast_fixed<Target>(
+                   Exp2Factor<Mant, Policy::kExp2FractionBits>(i)));
       frac = SubTo<Log>(frac, bit);
     }
   }
@@ -368,7 +369,8 @@ constexpr Log ScaleLogByInt(Log x, int n) {
   if (hi != 0U) {
     return negative ? Log::FromRaw(Log::kRawMin) : Log::FromRaw(Log::kRawMax);
   }
-  if (lo > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max())) {
+  if (lo > static_cast<std::uint32_t>(
+           std::numeric_limits<std::int32_t>::max())) {
     return negative ? Log::FromRaw(Log::kRawMin) : Log::FromRaw(Log::kRawMax);
   }
   std::int32_t out = static_cast<std::int32_t>(lo);
@@ -435,7 +437,8 @@ constexpr T Exp2(T y) {
   return Exp2To<T, T, Policy>(y);
 }
 
-template <typename Target, typename Base, typename Policy = DefaultFixedMathPolicy>
+template <typename Target, typename Base,
+          typename Policy = DefaultFixedMathPolicy>
   requires internal::is_fixed_point_v<Target> &&
            internal::is_fixed_point_v<Base>
 constexpr Target PowIntTo(Base base, int n) {
@@ -468,7 +471,8 @@ constexpr Target PowTo(Base base, Exp exponent) {
     return Target::FromRuntimeInteger(1);
   }
   bool const lneg = std::is_signed_v<typename Log::rep_value_type> &&
-                    lb.RawValue() < static_cast<typename Log::rep_value_type>(0);
+                    lb.RawValue() <
+                        static_cast<typename Log::rep_value_type>(0);
   bool const eneg =
       std::is_signed_v<typename Exp::rep_value_type> &&
       exponent.RawValue() < static_cast<typename Exp::rep_value_type>(0);
@@ -493,7 +497,8 @@ constexpr Target PowTo(Base base, Exp exponent) {
     mag = static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max());
   }
   std::int32_t prod = 0;
-  if (mag > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max())) {
+  if (mag > static_cast<std::uint32_t>(
+           std::numeric_limits<std::int32_t>::max())) {
     prod = negative ? std::numeric_limits<std::int32_t>::min()
                     : std::numeric_limits<std::int32_t>::max();
   } else {

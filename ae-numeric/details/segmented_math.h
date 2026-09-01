@@ -24,7 +24,7 @@
 // scales, overflow rules, and deterministic behavior on 32-bit MCUs.
 //
 // Analogous concept: a private numerical kernel for a quantizer compiler.
-// This details header is not a standalone public API.
+// Implementation lives in ae::seg::detail; not a standalone public API.
 //
 // How it works: exact small rationals describe schema inputs; SegWork,
 // SegPosWork, SegRatio, and SegLog are FixedPoint types with Rep <= 32
@@ -43,7 +43,20 @@
 #include "ae-numeric/fixed_point.h"
 #include "ae-numeric/integer_math.h"
 
-namespace ae::seg::segmented_math_internal {
+namespace ae::seg::detail {
+
+template <typename Rep>
+inline constexpr bool kIsSegmentedMathRep32 =
+    std::is_integral_v<Rep> && (sizeof(Rep) <= 4);
+
+template <typename FixedT>
+inline constexpr bool kIsSegmentedMathFixed32 =
+    kIsSegmentedMathRep32<typename FixedT::rep_value_type>;
+
+#define AE_SEGMENTED_MATH_REP32_MSG \
+  "The Formula backend supports FixedPoint Rep values up to 32 bits. " \
+  "A wider representation requires a separate backend because current " \
+  "MulDiv, root, coefficient, and conversion paths are 32-bit-specific."
 
 using SegPolicy = fixed_math::Segmented32MathPolicy;
 // Max covers RX 24 h (86400 s). int32 is used for signed physical values
@@ -53,10 +66,14 @@ using SegPosWork = FixedPoint<std::uint32_t, 86400>;
 using SegRatio = FixedPoint<std::uint32_t, 8>;
 using SegLog = SegPolicy::log_type;
 
-static_assert(sizeof(typename SegWork::rep_value_type) <= 4);
-static_assert(sizeof(typename SegPosWork::rep_value_type) <= 4);
-static_assert(sizeof(typename SegRatio::rep_value_type) <= 4);
-static_assert(sizeof(typename SegLog::rep_value_type) <= 4);
+static_assert(kIsSegmentedMathRep32<typename SegWork::rep_value_type>,
+              AE_SEGMENTED_MATH_REP32_MSG);
+static_assert(kIsSegmentedMathRep32<typename SegPosWork::rep_value_type>,
+              AE_SEGMENTED_MATH_REP32_MSG);
+static_assert(kIsSegmentedMathRep32<typename SegRatio::rep_value_type>,
+              AE_SEGMENTED_MATH_REP32_MSG);
+static_assert(kIsSegmentedMathRep32<typename SegLog::rep_value_type>,
+              AE_SEGMENTED_MATH_REP32_MSG);
 
 inline void SegmentedSpecError() {}
 
@@ -149,8 +166,10 @@ constexpr SegWork WorkFromRaw(typename SegWork::rep_value_type raw) {
 
 template <typename To, typename From>
 constexpr To ConvertFixed(From x) {
-  static_assert(sizeof(typename From::rep_value_type) <= 4);
-  static_assert(sizeof(typename To::rep_value_type) <= 4);
+  static_assert(kIsSegmentedMathRep32<typename From::rep_value_type>,
+                AE_SEGMENTED_MATH_REP32_MSG);
+  static_assert(kIsSegmentedMathRep32<typename To::rep_value_type>,
+                AE_SEGMENTED_MATH_REP32_MSG);
   using ToR = typename To::rep_value_type;
   ToR const aligned = fixed_point_internal::ConvertRawScaleTo<ToR>(
       x.RawValue(), From::kScaleExp, To::kScaleExp, To::kRawMin, To::kRawMax);
@@ -244,17 +263,19 @@ constexpr SegWork ScaleWorkByRatio(SegWork w, SegRatio r) {
 }
 
 constexpr SegWork ScaleWorkByInt(SegWork w, int n) {
-  if (n == 0 || w.RawValue() == static_cast<typename SegWork::rep_value_type>(0)) {
+  if (n == 0 ||
+      w.RawValue() == static_cast<typename SegWork::rep_value_type>(0)) {
     return WorkZero();
   }
   bool const negative = (w.RawValue() < 0) != (n < 0);
   std::uint32_t hi = 0;
   std::uint32_t lo = 0;
-  integer_math::MulU32Wide(integer_math::AbsI32ToU32(w.RawValue()),
-                           integer_math::AbsI32ToU32(static_cast<std::int32_t>(n)),
-                           hi, lo);
+  integer_math::MulU32Wide(
+      integer_math::AbsI32ToU32(w.RawValue()),
+      integer_math::AbsI32ToU32(static_cast<std::int32_t>(n)), hi, lo);
   if (hi != 0U ||
-      lo > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max())) {
+      lo > static_cast<std::uint32_t>(
+               std::numeric_limits<std::int32_t>::max())) {
     return negative ? SegWork::FromRaw(SegWork::kRawMin)
                     : SegWork::FromRaw(SegWork::kRawMax);
   }
@@ -698,7 +719,8 @@ consteval ContExpResult OptimizeContinuousExp(Rat vmin, Rat vmax, Rat cut1,
     std::uint32_t const n_u = static_cast<std::uint32_t>(n);
     std::uint32_t const dcut_u = integer_math::AbsI32ToU32(dcut_raw);
     std::uint32_t const span_u = integer_math::AbsI32ToU32(span_raw);
-    if (span_u == 0U || span_u > (std::numeric_limits<std::uint32_t>::max() >> 1U)) {
+    if (span_u == 0U ||
+        span_u > (std::numeric_limits<std::uint32_t>::max() >> 1U)) {
       continue;
     }
     std::uint32_t hi = 0;
@@ -847,6 +869,6 @@ consteval std::uint64_t MixRat(std::uint64_t h, Rat r) {
   return h;
 }
 
-}  // namespace ae::seg::segmented_math_internal
+}  // namespace ae::seg::detail
 
 #endif  // AE_NUMERIC_DETAILS_SEGMENTED_MATH_H_

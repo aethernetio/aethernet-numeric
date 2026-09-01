@@ -52,7 +52,7 @@ void PrintCyclic(char const* name) {
 }  // namespace
 
 int main() {
-  using CS = ae::seg::segmented_compiler_internal::CompiledSegment;
+  using CS = ae::seg::detail::CompiledSegment;
   std::printf("META sizeof_CompiledSegment=%zu alignof_CompiledSegment=%zu\n",
               sizeof(CS), alignof(CS));
 

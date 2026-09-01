@@ -305,7 +305,8 @@ AE_INTEGER_MATH_CONSTEXPR std::uint64_t SqrtU64(std::uint64_t n) noexcept {
   return x0;
 }
 
-AE_INTEGER_MATH_CONSTEXPR std::uint32_t AbsI32ToU32(std::int32_t value) noexcept {
+AE_INTEGER_MATH_CONSTEXPR std::uint32_t AbsI32ToU32(
+    std::int32_t value) noexcept {
   if (value >= 0) {
     return static_cast<std::uint32_t>(value);
   }

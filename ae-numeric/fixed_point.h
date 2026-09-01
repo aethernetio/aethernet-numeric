@@ -1091,9 +1091,11 @@ constexpr FixedPoint<ResultRep, ResultMax> MulFixedPoint(L lhs, R rhs) {
   if constexpr (kRepAtMost32<RV> && kRepAtMost32<typename L::rep_value_type> &&
                 kRepAtMost32<typename R::rep_value_type>) {
     bool const lneg = std::is_signed_v<typename L::rep_value_type> &&
-                      lhs.RawValue() < static_cast<typename L::rep_value_type>(0);
+                      lhs.RawValue() <
+                          static_cast<typename L::rep_value_type>(0);
     bool const rneg = std::is_signed_v<typename R::rep_value_type> &&
-                      rhs.RawValue() < static_cast<typename R::rep_value_type>(0);
+                      rhs.RawValue() <
+                          static_cast<typename R::rep_value_type>(0);
     std::uint32_t a = 0;
     std::uint32_t b = 0;
     if constexpr (std::is_signed_v<typename L::rep_value_type>) {

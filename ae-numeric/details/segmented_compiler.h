@@ -25,7 +25,8 @@
 // ambiguous layouts at compile time.
 //
 // Analogous concepts: a small type-level compiler and quantizer design
-// pass. Use it only through segmented_number.h and seg::Compile<Spec>.
+// pass. Implementation lives in ae::seg::detail; use only through
+// segmented_number.h and seg::Compile<Spec>.
 //
 // How it works: it flattens curve drafts, validates ranges and endpoint
 // ownership, solves interval counts and coefficients, assigns ranks,
@@ -48,50 +49,7 @@
 #include "ae-numeric/integer_math.h"
 #include "ae-numeric/tiered_int.h"
 
-namespace ae::seg::segmented_compiler_internal {
-
-using segmented_curves_internal::CurveDraft;
-using segmented_curves_internal::FlattenLayout;
-using segmented_curves_internal::kMaxDrafts;
-using segmented_curves_internal::StepMode;
-using segmented_math_internal::AutoSplitTwoExp;
-using segmented_math_internal::CeilAbsRat;
-using segmented_math_internal::ConvertFixed;
-using segmented_math_internal::GeomInterp;
-using segmented_math_internal::RatSub;
-using segmented_math_internal::RoundRatQuotient;
-using segmented_math_internal::WorkFromRaw;
-using segmented_math_internal::Exp2Ratio;
-using segmented_math_internal::Exp2Work;
-using segmented_math_internal::Log2OfRat;
-using segmented_math_internal::Log2RFromEndpoints;
-using segmented_math_internal::Log2Ratio;
-using segmented_math_internal::LogZero;
-using segmented_math_internal::MinRampIntervals;
-using segmented_math_internal::MulWorkSame;
-using segmented_math_internal::ScaleWorkByInt;
-using segmented_math_internal::ScaleWorkByRatio;
-using segmented_math_internal::MixHash;
-using segmented_math_internal::MixRat;
-using segmented_math_internal::MulLogInt;
-using segmented_math_internal::OptimizeContinuousExp;
-using segmented_math_internal::Rat;
-using segmented_math_internal::RatAbsMax;
-using segmented_math_internal::RatLess;
-using segmented_math_internal::RatioOne;
-using segmented_math_internal::SegmentedSpecError;
-using segmented_math_internal::SegLog;
-using segmented_math_internal::SegPosWork;
-using segmented_math_internal::SegRatio;
-using segmented_math_internal::SegWork;
-using segmented_math_internal::SolveQForGeomSum;
-using segmented_math_internal::TwoTierMaxU8;
-using segmented_math_internal::WorkAbs;
-using segmented_math_internal::WorkFromRat;
-using segmented_math_internal::WorkOne;
-using segmented_math_internal::WorkPositive;
-using segmented_math_internal::WorkToNearestInt;
-using segmented_math_internal::WorkZero;
+namespace ae::seg::detail {
 
 template <typename>
 inline constexpr int kMaxBytesTag = -1;
@@ -171,8 +129,9 @@ consteval SegWork DecodeMath(CurveDraft const& d, int i) {
   std::uint32_t const n_all = static_cast<std::uint32_t>(d.intervals);
   std::uint32_t const pair_i = n_u * (n_u - 1U) / 2U;
   std::uint32_t const pair_n = n_all * (n_all - 1U) / 2U;
-  SegWork const num = AddTo<SegWork>(ScaleWorkByInt(d.step0, i),
-                                      ScaleWorkByInt(d.delta, static_cast<int>(pair_i)));
+  SegWork const num = AddTo<SegWork>(
+      ScaleWorkByInt(d.step0, i),
+      ScaleWorkByInt(d.delta, static_cast<int>(pair_i)));
   SegWork const den =
       AddTo<SegWork>(ScaleWorkByInt(d.step0, d.intervals),
                      ScaleWorkByInt(d.delta, static_cast<int>(pair_n)));
@@ -188,8 +147,8 @@ consteval SegWork FirstAbsStep(CurveDraft const& d) {
 }
 
 consteval SegWork LastAbsStep(CurveDraft const& d) {
-  return WorkAbs(
-      SubTo<SegWork>(DecodeMath(d, d.intervals), DecodeMath(d, d.intervals - 1)));
+  return WorkAbs(SubTo<SegWork>(DecodeMath(d, d.intervals),
+                                DecodeMath(d, d.intervals - 1)));
 }
 
 consteval void AssignOwnership(CurveDraft* d, int n) {
@@ -533,8 +492,8 @@ consteval LogicalPlan MakeUnsplitPlan(int max_bytes) {
           a.end_rat.den != b.begin_rat.den) {
         SegmentedSpecError();
       }
-      auto const sp =
-          AutoSplitTwoExp(a.begin_rat, a.end_rat, b.end_rat, a.total_values - 1);
+      auto const sp = AutoSplitTwoExp(
+          a.begin_rat, a.end_rat, b.end_rat, a.total_values - 1);
       a.intervals = sp.n1;
       b.intervals = sp.n2;
       a.log2_r = sp.log2_r1;
@@ -551,8 +510,9 @@ consteval LogicalPlan MakeUnsplitPlan(int max_bytes) {
       bool const has4 = max_bytes >= 4;
       int const last1 = (max_bytes >= 2) ? 254 : 255;
       int const max_last2 =
-          has4 ? static_cast<int>(TwoTierMaxU8(static_cast<std::uint32_t>(last1)) -
-                                  1U)
+          has4 ? static_cast<int>(TwoTierMaxU8(
+                                    static_cast<std::uint32_t>(last1)) -
+                                1U)
                : last1 + 1;
       auto const ce = OptimizeContinuousExp(d.begin_rat, d.end_rat, d.cut1_rat,
                                             d.cut2_rat, last1, last1 + 2, 1100,
@@ -777,7 +737,8 @@ struct LogicalTypeSel;
 
 template <typename Spec>
 struct LogicalTypeSel<false, Spec> {
-  using type = FixedPoint<typename Spec::runtime_policy::rep, kMaxAbsBound<Spec>>;
+  using type =
+      FixedPoint<typename Spec::runtime_policy::rep, kMaxAbsBound<Spec>>;
 };
 
 template <typename Spec>
@@ -786,9 +747,8 @@ struct LogicalTypeSel<true, Spec> {
 };
 
 template <typename Spec>
-using LogicalTypeOf =
-    typename LogicalTypeSel<kIsFloatingRuntimePolicy<typename Spec::runtime_policy>,
-                            Spec>::type;
+using LogicalTypeOf = typename LogicalTypeSel<
+    kIsFloatingRuntimePolicy<typename Spec::runtime_policy>, Spec>::type;
 
 template <typename Spec>
 using FixedRuntimeOf = LogicalTypeOf<Spec>;
@@ -798,7 +758,7 @@ inline constexpr bool kRtSigned =
     std::is_signed_v<typename RT::rep_value_type>;
 
 template <typename RT>
-consteval std::uint32_t PackRtRaw(typename RT::rep_value_type v) {
+constexpr std::uint32_t PackRtRaw(typename RT::rep_value_type v) {
   if constexpr (kRtSigned<RT>) {
     return static_cast<std::uint32_t>(static_cast<std::int32_t>(v));
   } else {
@@ -1013,6 +973,6 @@ consteval std::size_t FormulaCoefficientBytes() {
   return n;
 }
 
-}  // namespace ae::seg::segmented_compiler_internal
+}  // namespace ae::seg::detail
 
 #endif  // AE_NUMERIC_DETAILS_SEGMENTED_COMPILER_H_

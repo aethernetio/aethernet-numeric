@@ -23,7 +23,7 @@
 
 #include "../segmented_test_formats.h"
 
-using CS = ae::seg::segmented_compiler_internal::CompiledSegment;
+using CS = ae::seg::detail::CompiledSegment;
 
 #define AE_FP_FIELD(name)                                                 \
   std::printf("  %-22s  sizeof=%zu  offset=%zu\n", #name, sizeof(CS::name), \

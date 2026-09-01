@@ -82,7 +82,8 @@ struct CyclicDecodeResult {
 // wire_traits<WireType>; restore with TryRestore / TryAdvance /
 // TryDeserializeAndRestore / TryDeserializeAndAdvance.
 //
-// No epoch / previous / decoder state is stored — sizeof equals sizeof(ValueType).
+// No epoch / previous / decoder state is stored — sizeof equals
+// sizeof(ValueType).
 template <typename WireType, typename ValueType>
   requires(std::is_integral_v<WireType> && std::is_unsigned_v<WireType> &&
            !std::is_same_v<WireType, bool> && std::is_integral_v<ValueType> &&
@@ -102,7 +103,7 @@ class CyclicCounter {
   static constexpr value_type kHalfRange = kWireSpace / value_type{2};
 
   static_assert(kWireSpace > kWireMask, "ValueType must hold wire space");
-  static_assert(kHalfRange * value_type{2} == kWireSpace,
+  static_assert(kHalfRange * value_type {2} == kWireSpace,
                 "wire space must be even");
 
   constexpr CyclicCounter() noexcept = default;
@@ -110,6 +111,8 @@ class CyclicCounter {
   constexpr explicit CyclicCounter(value_type value) noexcept : value_(value) {}
 
   constexpr value_type Value() const noexcept { return value_; }
+
+  constexpr explicit operator value_type() const noexcept { return value_; }
 
   constexpr wire_type WireValue() const noexcept {
     return static_cast<wire_type>(value_ & kWireMask);
@@ -149,7 +152,8 @@ class CyclicCounter {
   }
 
   // Returns nullopt on Ambiguous or OutOfRange.
-  constexpr std::optional<value_type> TryRestore(wire_type wire) const noexcept {
+  constexpr std::optional<value_type> TryRestore(
+      wire_type wire) const noexcept {
     value_type out{};
     if (TryRestoreStatus(wire, out) != CyclicRestoreStatus::Ok) {
       return std::nullopt;
@@ -230,6 +234,49 @@ class CyclicCounter {
     return tmp;
   }
 
+  constexpr CyclicCounter& operator--() noexcept {
+    assert(value_ > 0);
+    --value_;
+    return *this;
+  }
+
+  constexpr CyclicCounter operator--(int) noexcept {
+    CyclicCounter tmp = *this;
+    --(*this);
+    return tmp;
+  }
+
+  constexpr CyclicCounter& operator+=(value_type delta) noexcept {
+    assert(delta == 0 ||
+           value_ <= std::numeric_limits<value_type>::max() - delta);
+    value_ += delta;
+    return *this;
+  }
+
+  constexpr CyclicCounter& operator-=(value_type delta) noexcept {
+    assert(value_ >= delta);
+    value_ -= delta;
+    return *this;
+  }
+
+  friend constexpr CyclicCounter operator+(CyclicCounter value,
+                                           value_type delta) noexcept {
+    value += delta;
+    return value;
+  }
+
+  friend constexpr CyclicCounter operator+(value_type delta,
+                                           CyclicCounter value) noexcept {
+    value += delta;
+    return value;
+  }
+
+  friend constexpr CyclicCounter operator-(CyclicCounter value,
+                                           value_type delta) noexcept {
+    value -= delta;
+    return value;
+  }
+
   friend constexpr bool operator==(CyclicCounter const& a,
                                    CyclicCounter const& b) noexcept {
     return a.value_ == b.value_;
@@ -288,10 +335,9 @@ constexpr WireOrder CompareWire(WireType a, WireType b) noexcept {
   if (a == b) {
     return WireOrder::Same;
   }
-  using Widen =
-      std::conditional_t<sizeof(WireType) <= 1, std::uint16_t,
-                         std::conditional_t<sizeof(WireType) <= 2, std::uint32_t,
-                                            std::uint32_t>>;
+  using Widen = std::conditional_t<
+      (sizeof(WireType) < 2), std::uint16_t,
+      std::conditional_t<(sizeof(WireType) < 4), std::uint32_t, std::uint32_t>>;
   static_assert(sizeof(Widen) > sizeof(WireType));
   Widen const space =
       static_cast<Widen>(std::numeric_limits<WireType>::max()) + Widen{1};

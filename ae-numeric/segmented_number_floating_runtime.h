@@ -34,11 +34,11 @@
 // not change ranks, tier boundaries, schema hashes, or serialized bytes.
 
 
+#include <type_traits>
+
 #include "ae-numeric/exponential.h"
 #include "ae-numeric/exponential_floating_runtime.h"
 #include "ae-numeric/segmented_number.h"
-
-#include <type_traits>
 
 namespace ae::seg {
 
@@ -47,7 +47,7 @@ inline constexpr bool kFloatingRuntimeEnabled<float> = true;
 template <>
 inline constexpr bool kFloatingRuntimeEnabled<double> = true;
 
-namespace segmented_number_internal {
+namespace detail {
 
 template <typename Logical, typename FloatingT>
 constexpr typename Logical::rep_value_type FloatingToLogicalRaw(
@@ -103,7 +103,7 @@ struct RuntimeRawMap<Logical, double> {
   }
 };
 
-}  // namespace segmented_number_internal
+}  // namespace detail
 }  // namespace ae::seg
 
 #endif  // AE_NUMERIC_SEGMENTED_NUMBER_FLOATING_RUNTIME_H_

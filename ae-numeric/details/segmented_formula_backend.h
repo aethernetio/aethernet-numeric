@@ -24,7 +24,7 @@
 // searches whose cost grows with the number of representable values.
 //
 // Analogous concept: an analytical inverse/forward quantizer backend.
-// This is internal implementation selected by compute::Formula.
+// Implementation lives in ae::seg::detail, selected by compute::Formula.
 //
 // How it works: uniform curves use arithmetic, exponential and geometric
 // curves use FixedPoint Log2/Exp2, and step ramps use a quadratic inverse
@@ -45,27 +45,7 @@
 #include "ae-numeric/fixed_point.h"
 #include "ae-numeric/integer_math.h"
 
-namespace ae::seg::segmented_formula_internal {
-
-using segmented_compiler_internal::CompiledSegment;
-using segmented_compiler_internal::MakeCompiledSegments;
-using segmented_compiler_internal::PlanHolder;
-using segmented_math_internal::ConvertFixed;
-using segmented_math_internal::Exp2MinusOne;
-using segmented_math_internal::Exp2Pos;
-using segmented_math_internal::GeomUnitWeightPos;
-using segmented_math_internal::MulWorkSame;
-using segmented_math_internal::Log2Pos;
-using segmented_math_internal::Log2Work;
-using segmented_math_internal::LogZero;
-using segmented_math_internal::MulLogInt;
-using segmented_math_internal::SegLog;
-using segmented_math_internal::SegPosWork;
-using segmented_math_internal::SegWork;
-using segmented_math_internal::WorkAbs;
-using segmented_math_internal::WorkOne;
-using segmented_math_internal::WorkPositive;
-using segmented_math_internal::WorkZero;
+namespace ae::seg::detail {
 
 #if defined(_MSC_VER)
 #define AE_SEG_NOINLINE __declspec(noinline)
@@ -78,19 +58,6 @@ inline constexpr int kRampRefineRadius = 2;
 
 using StoredRaw = std::uint32_t;
 using WorkRaw = std::int32_t;
-
-template <typename RT>
-inline constexpr bool kRtSigned =
-    std::is_signed_v<typename RT::rep_value_type>;
-
-template <typename RT>
-constexpr StoredRaw PackRtRaw(typename RT::rep_value_type v) {
-  if constexpr (kRtSigned<RT>) {
-    return static_cast<StoredRaw>(static_cast<std::int32_t>(v));
-  } else {
-    return static_cast<StoredRaw>(v);
-  }
-}
 
 template <typename RT>
 constexpr typename RT::rep_value_type UnpackRtRaw(StoredRaw v) {
@@ -283,8 +250,9 @@ constexpr StoredRaw GeomValueAt(StoredRaw begin, StoredRaw end, SegLog log_q,
 }
 
 template <typename RT>
-constexpr StoredRaw ExpValueAt(StoredRaw begin, StoredRaw end, SegLog log2_begin,
-                               SegLog log2_r, int math_i, int intervals) {
+constexpr StoredRaw ExpValueAt(StoredRaw begin, StoredRaw end,
+                               SegLog log2_begin, SegLog log2_r, int math_i,
+                               int intervals) {
   if (math_i <= 0) {
     return begin;
   }
@@ -315,8 +283,9 @@ constexpr int ExpApproxPos(SegPosWork x, SegLog lr, SegLog lb) {
   return RoundDivLog(SubTo<SegLog>(Log2Pos(x), lb), lr);
 }
 
-AE_SEG_NOINLINE constexpr int GeomApproxWork(SegWork x, SegWork begin, SegWork end,
-                             SegLog log_q, int intervals, int math_first,
+AE_SEG_NOINLINE constexpr int GeomApproxWork(SegWork x, SegWork begin,
+                                             SegWork end, SegLog log_q,
+                                             int intervals, int math_first,
                              bool from_upper) {
   if (log_q.RawValue() <= static_cast<typename SegLog::rep_value_type>(0)) {
     return 0;
@@ -434,8 +403,9 @@ AE_SEG_NOINLINE constexpr int LinearRampApproxRuntime(
     return LinearApproxAt<kSigned>(begin, end, intervals, raw);
   }
   std::uint32_t T = 0;
-  if (!integer_math::MulDivU32Nearest(abs_den, AbsStoredDiff<kSigned>(raw, begin),
-                                      AbsStoredDiff<kSigned>(end, begin), T)) {
+  if (!integer_math::MulDivU32Nearest(
+          abs_den, AbsStoredDiff<kSigned>(raw, begin),
+          AbsStoredDiff<kSigned>(end, begin), T)) {
     return LinearApproxAt<kSigned>(begin, end, intervals, raw);
   }
   std::uint32_t const T_full = T;
@@ -504,7 +474,7 @@ struct SegScalars {
 template <typename Spec, typename RT, int I>
 consteval SegScalars MakeSegScalars() {
   CompiledSegment const p =
-      segmented_compiler_internal::CompiledSegHolder<Spec, RT>::kAll
+      detail::CompiledSegHolder<Spec, RT>::kAll
           [static_cast<std::size_t>(I)];
   SegScalars s{};
   s.kind = p.curve_kind;
@@ -586,7 +556,8 @@ constexpr int ApproxIndex(StoredRaw raw) {
     return ExpApproxPos(ConvertFixed<SegPosWork>(FromStoredRaw<RT>(raw)), lr,
                         S::kLog2Begin);
   } else if constexpr (S::kKind == CurveKind::kGeometricStep) {
-    return GeomApproxWork(WorkFromStored<RT>(raw), WorkFromStored<RT>(S::kBegin),
+    return GeomApproxWork(WorkFromStored<RT>(raw),
+                          WorkFromStored<RT>(S::kBegin),
                           WorkFromStored<RT>(S::kEnd), S::kLog2Q, S::kIntervals,
                           S::kMathFirst, S::kFromUpper != 0);
   } else if constexpr (S::kKind == CurveKind::kLinearStepRamp) {
@@ -845,6 +816,6 @@ int MaxRampIndexErrorDenseInputs() {
   return MaxRampIndexErrorRec<Spec, RT>(SegIndexSeq<Spec>{}, true);
 }
 
-}  // namespace ae::seg::segmented_formula_internal
+}  // namespace ae::seg::detail
 
 #endif  // AE_NUMERIC_DETAILS_SEGMENTED_FORMULA_BACKEND_H_

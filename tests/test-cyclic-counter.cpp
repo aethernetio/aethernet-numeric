@@ -369,6 +369,37 @@ void test_CompareWire() {
                    WireOrder::Ambiguous);
 }
 
+void test_IntegralLikeArithmetic() {
+  U8_32 c{100u};
+  TEST_ASSERT_EQUAL_UINT32(100u, static_cast<std::uint32_t>(c));
+  TEST_ASSERT_EQUAL_UINT8(c.WireValue(), c.WireValue());
+
+  c += 5u;
+  TEST_ASSERT_EQUAL_UINT32(105u, c.Value());
+  TEST_ASSERT_EQUAL_UINT8(105u & 255u, c.WireValue());
+
+  c -= 3u;
+  TEST_ASSERT_EQUAL_UINT32(102u, c.Value());
+
+  U8_32 sum = c + 8u;
+  TEST_ASSERT_EQUAL_UINT32(110u, sum.Value());
+  TEST_ASSERT_EQUAL_UINT32(102u, c.Value());
+
+  U8_32 sum2 = 10u + U8_32{20u};
+  TEST_ASSERT_EQUAL_UINT32(30u, sum2.Value());
+
+  U8_32 diff = c - 2u;
+  TEST_ASSERT_EQUAL_UINT32(100u, diff.Value());
+
+  U8_32 dec = c;
+  TEST_ASSERT_EQUAL_UINT32(102u, dec.Value());
+  auto post_dec = dec--;
+  TEST_ASSERT_EQUAL_UINT32(102u, post_dec.Value());
+  TEST_ASSERT_EQUAL_UINT32(101u, dec.Value());
+
+  static_assert(sizeof(U8_32) == sizeof(std::uint32_t));
+}
+
 void test_IncrementAndCompare() {
   U8_32 a{10u};
   U8_32 b = a;
@@ -404,6 +435,7 @@ int test_cyclic_counter() {
   RUN_TEST(ae::test_cyclic_counter::test_TruncatedInputU16);
   RUN_TEST(ae::test_cyclic_counter::test_DecodeOutOfRangeNearBounds);
   RUN_TEST(ae::test_cyclic_counter::test_CompareWire);
+  RUN_TEST(ae::test_cyclic_counter::test_IntegralLikeArithmetic);
   RUN_TEST(ae::test_cyclic_counter::test_IncrementAndCompare);
   return UNITY_END();
 }

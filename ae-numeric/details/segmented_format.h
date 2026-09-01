@@ -178,6 +178,17 @@ struct Format {
   using layout_type = LayoutT;
 };
 
+template <typename>
+inline constexpr bool kIsSegmentedFormatSpec = false;
+
+template <typename RuntimePolicy, typename WirePolicy, typename ComputePolicy,
+          typename LayoutT>
+inline constexpr bool kIsSegmentedFormatSpec<
+    Format<RuntimePolicy, WirePolicy, ComputePolicy, LayoutT>> = true;
+
+template <typename T>
+concept SegmentedFormatSpec = kIsSegmentedFormatSpec<std::remove_cvref_t<T>>;
+
 enum class CurveKind : std::uint8_t {
   kUniformStep = 1,
   kUniformValues = 2,

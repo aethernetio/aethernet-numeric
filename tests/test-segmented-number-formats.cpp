@@ -295,19 +295,19 @@ void test_Co2MatchesReferenceR() {
 
 void test_RampIndexError() {
   int const hum_codes =
-      ae::seg::segmented_formula_internal::MaxRampIndexError<
+      ae::seg::detail::MaxRampIndexError<
           Humidity::spec_type, Humidity::logical_type>();
   int const hum_dense =
-      ae::seg::segmented_formula_internal::MaxRampIndexErrorDenseInputs<
+      ae::seg::detail::MaxRampIndexErrorDenseInputs<
           Humidity::spec_type, Humidity::logical_type>();
-  int const rx_codes = ae::seg::segmented_formula_internal::MaxRampIndexError<
+  int const rx_codes = ae::seg::detail::MaxRampIndexError<
       RxWindow::spec_type, RxWindow::logical_type>();
   int const rx_dense =
-      ae::seg::segmented_formula_internal::MaxRampIndexErrorDenseInputs<
+      ae::seg::detail::MaxRampIndexErrorDenseInputs<
           RxWindow::spec_type, RxWindow::logical_type>();
-  int const temp = ae::seg::segmented_formula_internal::MaxRampIndexError<
+  int const temp = ae::seg::detail::MaxRampIndexError<
       Temperature::spec_type, Temperature::logical_type>();
-  int const co2 = ae::seg::segmented_formula_internal::MaxRampIndexError<
+  int const co2 = ae::seg::detail::MaxRampIndexError<
       Co2::spec_type, Co2::logical_type>();
   TEST_ASSERT_LESS_OR_EQUAL_INT(3, hum_codes);
   TEST_ASSERT_LESS_OR_EQUAL_INT(3, rx_codes);

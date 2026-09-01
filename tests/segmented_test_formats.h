@@ -124,11 +124,7 @@ using ConnectDuration = seg::Compile<ConnectDurationSpec>;
 
 template <typename Num>
 typename Num::wire_type WireFromRank(std::uint32_t rank) {
-  if constexpr (std::is_same_v<typename Num::wire_type, std::uint8_t>) {
-    return static_cast<std::uint8_t>(rank);
-  } else {
-    return typename Num::wire_type{rank};
-  }
+  return ae::seg::detail::RankToWire<typename Num::wire_type>(rank);
 }
 
 }  // namespace ae::test_segmented_formats
