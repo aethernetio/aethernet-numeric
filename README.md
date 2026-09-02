@@ -15,8 +15,11 @@ They are used across the Æthernet C++ client to represent durations, counters, 
 6. [Ostream IO](#ostream-io)
 7. [Wire IO](#wire-io)
 8. [Combined Types](#combined-types)
-9. [Integration Notes](#integration-notes)
-10. [Running Tests](#running-tests)
+9. [SegmentedNumber](#segmentednumber)
+10. [CyclicCounter](#cycliccounter)
+11. [Footprint and benchmarks](#footprint-and-benchmarks)
+12. [Integration Notes](#integration-notes)
+13. [Running Tests](#running-tests)
 
 ---
 
@@ -33,7 +36,8 @@ The core types are:
 
 * `TieredInt` — compact integer serialization with compile-time tier boundaries;
 * `FixedPoint` — binary-scaled fixed point over an integral or packed integral representation;
-* `Exponential` — logarithmic code mapping for values that span several orders of magnitude.
+* `Exponential` — logarithmic code mapping for values that span several orders of magnitude;
+* `CyclicCounter` — full local counter with truncated modular wire bits.
 
 ---
 
@@ -297,12 +301,156 @@ This is a linear scale: every raw step is one millisecond. Use `Exponential` ins
 
 ---
 
+## SegmentedNumber
+
+`SegmentedNumber` is a header-only piecewise quantized physical value. The object stores only the runtime `FixedPoint` (or opt-in floating runtime). Wire rank is computed at encode time and serialized through a compiled `uint8_t` or `TieredInt` wire type.
+
+Architecture:
+
+* Mathematical mapping (which physical values exist) and wire-tier placement (1/2/4/8-byte assignment) are independent layers.
+* Fractional math on the production path uses only our `FixedPoint` with underlying Rep no wider than 32 bits.
+* There are no per-code lookup tables, no runtime heap, no homemade Q30/Q31 storage, and no 64-bit arithmetic helpers on the mathematical ESP32-C6 path.
+* The number of materialized constants does not grow with the number of codes; shared `Log2`/`Exp2` FixedPoint tables are common across formats.
+
+Bounds and steps are written with `ae::Decimal` / `ae::Ratio`, not `double`.
+
+```cpp
+#include <ae-numeric/segmented_number.h>
+#include <ae-numeric/segmented_number_wire_io.h>
+
+template <std::int64_t M, int E = 0>
+using D = ae::Decimal<M, E>;
+
+using Spec = ae::seg::Format<
+    ae::seg::runtime::Fixed<std::int16_t>,
+    ae::seg::wire::AutoTiered<std::uint8_t, ae::seg::wire::MaxBytes<2>>,
+    ae::seg::compute::Formula,
+    ae::seg::Layout<
+        ae::seg::GeometricStep<
+            ae::seg::Range<D<-40>, D<10>>,
+            ae::seg::Intervals<349>,
+            ae::seg::StepAtUpper<D<1, -1>>,
+            ae::seg::Place<ae::seg::Bytes<2>>>,
+        ae::seg::UniformStep<
+            ae::seg::Range<D<10>, D<352, -1>>,
+            ae::seg::Step<D<1, -1>>,
+            ae::seg::Place<ae::seg::Bytes<1>>>,
+        ae::seg::GeometricStep<
+            ae::seg::Range<D<352, -1>, D<125>>,
+            ae::seg::Intervals<419>,
+            ae::seg::StepAtLower<D<1, -1>>,
+            ae::seg::Place<ae::seg::Bytes<2>>>>>;
+
+using Temperature = ae::seg::Compile<Spec>;
+
+static_assert(sizeof(Temperature) == sizeof(Temperature::runtime_type));
+static_assert(Temperature::kCodeCount == 1021);
+static_assert(Temperature::kMaxWireBytes == 2);
+```
+
+`Compile<Spec>` is `SegmentedNumber<Spec>`. Encode with `TryEncode` / `TryFromRuntime`; out-of-range input is rejected unless `Saturating` is used. Comparisons use the runtime value, never the packed rank (temperature packs 1-byte codes in the center and 2-byte codes on both tails).
+
+### Curves
+
+**UniformStep** — constant physical step between adjacent codes over a closed range. Encode/decode are O(1) in the number of codes (affine map with FixedPoint multiply/divide). Uses FixedPoint scale conversion only; no `Log2`/`Exp2`.
+
+**UniformValues** — packs a fixed count of evenly spaced values into a range. Same O(1) affine FixedPoint path as UniformStep; interval count is prescribed rather than implied by step size.
+
+**LinearStepRamp** — step size grows linearly along the segment (coarse then fine, or the reverse). Encode/decode solve a quadratic in FixedPoint (`Sqrt` / wide multiply-divide helpers bounded to 32-bit limbs). Complexity is O(1) in code count aside from a fixed Newton/`Sqrt` budget.
+
+**ExponentialValues** — values follow a geometric progression in physical space (constant ratio). Encode/decode use `Log2`/`Exp2` FixedPoint primitives; O(1) relative to code count (fixed iteration count for log/exp).
+
+**GeometricStep** — adjacent steps form a geometric series (useful for tails that must meet a prescribed endpoint step). Encode/decode use `Log2`/`Exp2` plus geometric weight helpers; still O(1) in code count.
+
+**ContinuousExponential** — single exponential-style continuum used inside cut optimizers / `WireCuts`. Same FixedPoint `Log2`/`Exp2` core; used when placing cuts rather than as a standalone sensor format by itself.
+
+**AutoSplit** — compile-time splitter that partitions a continuum into exponential-style pieces under an objective (for example continuous absolute step plus minimax relative error). Runs only at compile time; runtime path is the resulting ExponentialValues / GeometricStep / LinearStepRamp segments.
+
+Shared physical endpoints are encoded once (smaller wire size owns the joint). Unused packed ranks deserialize with `bytes_read == 0`.
+
+`sizeof(CompiledSegment)` is a compile-time C++ type size (~68 B on ILP32). It is **not** flash per segment: descriptors do not materialize as `68 × segments` in `.rodata`. See [docs/footprint.md](docs/footprint.md).
+
+Floating runtime is opt-in and does not change the wire ABI:
+
+```cpp
+#include <ae-numeric/segmented_number_floating_runtime.h>
+```
+
+---
+
+## CyclicCounter
+
+`CyclicCounter<WireType, ValueType>` keeps the full counter as `ValueType` at runtime and puts only the low bits of that counter on the wire as `WireType`. The default value is zero. The object contains only `ValueType value_`, so `sizeof(CyclicCounter<Wire, Value>) == sizeof(Value)`.
+
+Restoration is always relative to the current full value: missing messages do not break recovery as long as the absolute distance stays within the unambiguous half-range. An older truncated sample from another peer can still be restored and compared without changing the local base. `TryAdvance` never decreases that base. The distance must be strictly less than half the wire range; exactly half the range is ambiguous.
+
+```text
+current = 1001
+received wire = 237
+restored = 1005
+```
+
+```text
+current = 1023
+received wire = 0
+restored = 1024
+```
+
+```text
+current = 1008
+received wire corresponding to 1003
+restored = 1003
+current remains 1008
+```
+
+**Stateless deserialization of a full `CyclicCounter` is forbidden.** Without a current full value, epoch / high bits cannot be recovered. There is no `wire_traits<CyclicCounter>`, and `Deserialize<CyclicCounter>(…)` does not compile. Read a `WireType` first, then call `TryRestore`, `TryAdvance`, `TryDeserializeAndRestore`, or `TryDeserializeAndAdvance` on an existing counter.
+
+```cpp
+using Counter =
+    ae::CyclicCounter<std::uint8_t, std::uint32_t>;
+
+Counter counter;  // value = 0
+
+counter.Set(1001);
+
+std::uint8_t wire = counter.WireValue();
+
+auto restored = counter.TryRestore(wire);
+auto advanced = counter.TryAdvance(wire);
+```
+
+Supported configurations (ESP32-C6 `-Os`, object-only; see [docs/footprint.md](docs/footprint.md) for `-O2` and full section breakdown):
+
+| Wire → Value | Runtime B | Wire B | Max unambiguous distance | `.text` | `.rodata` | Heap |
+|---|---:|---:|---:|---:|---:|---|
+| `uint8_t` → `uint16_t` | 2 | 1 | 127 | 224 | 0 | 0 |
+| `uint8_t` → `uint32_t` | 4 | 1 | 127 | 182 | 0 | 0 |
+| `uint16_t` → `uint32_t` | 4 | 2 | 32767 | 136 | 0 | 0 |
+
+---
+
+## Footprint and benchmarks
+
+* [docs/footprint.md](docs/footprint.md) — ESP32-C6 `.text` / `.rodata` / RAM, constant tables, object sizes, stack usage, code sharing.
+* [docs/benchmarks.md](docs/benchmarks.md) — desktop encode/decode/serialize timings (nanoseconds, not MCU cycles).
+
+Refresh generated tables:
+
+```bash
+cmake --build build-dev --target segmented-footprint-obj
+python tools/measure_esp32c6_footprint.py --repo .
+python tools/generate_footprint_docs.py --repo .
+```
+
+---
+
 ## Integration Notes
 
 * Header-only numeric types.
 * C++20.
 * Deterministic integer runtime paths for embedded use.
 * Optional floating runtime support for `Exponential` is isolated in `ae-numeric/exponential_floating_runtime.h`.
+* Optional floating runtime support for `SegmentedNumber` is isolated in `ae-numeric/segmented_number_floating_runtime.h`.
 * Designed for low-overhead serialization on MCUs and constrained networks.
 
 ---

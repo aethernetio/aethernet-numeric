@@ -23,51 +23,58 @@ jobs:
 
       matrix:
         config:
+          # windows-latest (Server 2025) ships Visual Studio 2026 and the
+          # "Visual Studio 18 2026" CMake generator as of June 2026.
           - {
               name: "Windows MSVC",
               os: windows-latest,
               shell: "powershell",
-              generator: "Visual Studio 18 2026",
-              arch: "x64",
-              cc: "cl",
-              cxx: "cl",
+              cmake_args: '-G "Visual Studio 18 2026" -A x64',
+              build_type: Release,
+            }
+          - {
+              name: "Windows LLVM Clang",
+              os: windows-latest,
+              shell: "powershell",
+              cmake_args: '-G "Visual Studio 18 2026" -A x64 -T ClangCL',
               build_type: Release,
             }
           - {
               name: "Windows MinGW",
               os: windows-latest,
               shell: "msys2",
-              generator: "Ninja",
-              cc: "gcc",
-              cxx: "g++",
+              cmake_args: '-G Ninja',
               build_type: Release,
             }
           - {
               name: "Ubuntu GCC",
               os: ubuntu-latest,
               shell: "bash",
-              generator: "Unix Makefiles",
-              cc: "gcc",
-              cxx: "g++",
+              cmake_args: '-G "Unix Makefiles" -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++',
+              build_type: Release,
+            }
+          - {
+              name: "Ubuntu LLVM Clang",
+              os: ubuntu-latest,
+              shell: "bash",
+              cmake_args: '-G "Unix Makefiles" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++',
               build_type: Release,
             }
           - {
               name: "macOS Apple-Clang",
               os: macos-latest,
               shell: "bash",
-              generator: "Unix Makefiles",
-              cc: "clang",
-              cxx: "clang++",
+              cmake_args: '-G "Unix Makefiles" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++',
               build_type: Release,
             }
 
     steps:
-      - name: Set Windows environment
-        if: ${{ (matrix.config.os == 'windows-latest' && matrix.config.cc == 'cl') }}
+      - name: Set Windows MSVC environment
+        if: ${{ (matrix.config.os == 'windows-latest' && matrix.config.shell == 'powershell') }}
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Set MinGW environment
-        if: ${{ (matrix.config.os == 'windows-latest' && matrix.config.cc == 'gcc') }}
+        if: ${{ (matrix.config.os == 'windows-latest' && matrix.config.shell == 'msys2') }}
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -87,10 +94,7 @@ jobs:
       - name: Configure CMake
         run: >
           cmake -B build-numerics
-          -G "${{ matrix.config.generator }}"
-          -A "${{ matrix.config.arch }}"
-          -DCMAKE_CXX_COMPILER=${{ matrix.config.cxx }}
-          -DCMAKE_C_COMPILER=${{ matrix.config.cc }}
+          ${{ matrix.config.cmake_args }}
           -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }}
           -DAE_BUILD_TESTS=ON
           -S ./

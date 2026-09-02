@@ -41,6 +41,7 @@ struct RuntimeFns {
       &RoundMulPow2DivU64;
   bool (*div_pow2)(std::uint64_t, std::uint64_t, unsigned, std::uint64_t&) =
       &RoundDivPow2U64;
+  std::uint64_t (*sqrt_u64)(std::uint64_t) = &SqrtU64;
 };
 
 RuntimeFns const& Fns() {
@@ -460,6 +461,86 @@ void test_RawFromRatioExhaustiveSmall() {
   }
 }
 
+void test_SqrtU64() {
+  auto const& f = Fns();
+  TEST_ASSERT_EQUAL_UINT(0U, f.sqrt_u64(0));
+  TEST_ASSERT_EQUAL_UINT(1U, f.sqrt_u64(1));
+  TEST_ASSERT_EQUAL_UINT(1U, f.sqrt_u64(3));
+  TEST_ASSERT_EQUAL_UINT(2U, f.sqrt_u64(4));
+  TEST_ASSERT_EQUAL_UINT(10U, f.sqrt_u64(100));
+  TEST_ASSERT_EQUAL_UINT(255U, f.sqrt_u64(65535));
+  TEST_ASSERT_EQUAL_UINT(65536U, f.sqrt_u64(65536ULL * 65536ULL));
+  TEST_ASSERT_EQUAL_UINT(4294967295ULL, f.sqrt_u64(~0ULL));
+}
+
+void test_MulU32WideMatchesU64() {
+  auto check = [](std::uint32_t a, std::uint32_t b) {
+    std::uint32_t hi = 0;
+    std::uint32_t lo = 0;
+    MulU32Wide(a, b, hi, lo);
+    std::uint64_t const prod =
+        static_cast<std::uint64_t>(a) * static_cast<std::uint64_t>(b);
+    TEST_ASSERT_EQUAL_UINT32(static_cast<std::uint32_t>(prod), lo);
+    TEST_ASSERT_EQUAL_UINT32(static_cast<std::uint32_t>(prod >> 32), hi);
+  };
+  check(0, 0);
+  check(1, 1);
+  check(65535, 65535);
+  check(65536, 65536);
+  check(0xFFFFFFFFu, 0xFFFFFFFFu);
+  check(123456789u, 987654321u);
+}
+
+void test_MulDivU32NearestVsU64() {
+  auto check = [](std::uint32_t a, std::uint32_t f, std::uint32_t d) {
+    std::uint32_t out32 = 0;
+    std::uint64_t out64 = 0;
+    bool const ok32 = MulDivU32Nearest(a, f, d, out32);
+    bool const ok64 = MulDivU64Nearest(a, f, d, out64);
+    TEST_ASSERT_EQUAL(ok64, ok32);
+    if (ok32 && out64 <= std::numeric_limits<std::uint32_t>::max()) {
+      TEST_ASSERT_EQUAL_UINT32(static_cast<std::uint32_t>(out64), out32);
+    }
+  };
+  check(0, 5, 3);
+  check(7, 9, 2);
+  check(1000, 1000, 7);
+  check(0x80000000u, 3, 2);
+  check(12345, 67890, 111);
+}
+
+void test_SqrtU32MatchesU64() {
+  TEST_ASSERT_EQUAL_UINT32(0U, SqrtU32(0));
+  TEST_ASSERT_EQUAL_UINT32(1U, SqrtU32(1));
+  TEST_ASSERT_EQUAL_UINT32(10U, SqrtU32(100));
+  TEST_ASSERT_EQUAL_UINT32(65535U, SqrtU32(4294836225u));
+  for (std::uint32_t n = 0; n < 4096; ++n) {
+    TEST_ASSERT_EQUAL_UINT32(static_cast<std::uint32_t>(SqrtU64(n)), SqrtU32(n));
+  }
+  TEST_ASSERT_EQUAL_UINT32(static_cast<std::uint32_t>(SqrtU64(0xFFFFFFFFu)),
+                           SqrtU32(0xFFFFFFFFu));
+}
+
+void test_SqrtU32WideMatchesU64() {
+  auto check = [](std::uint64_t n) {
+    std::uint32_t const hi = static_cast<std::uint32_t>(n >> 32U);
+    std::uint32_t const lo = static_cast<std::uint32_t>(n);
+    TEST_ASSERT_EQUAL_UINT32(static_cast<std::uint32_t>(SqrtU64(n)),
+                             SqrtU32Wide(hi, lo));
+  };
+  check(0);
+  check(1);
+  check(100);
+  check(0xFFFFFFFFull);
+  check(0x100000000ull);
+  check(0x123456789Aull);
+  check(0xFFFFFFFF00000000ull);
+  check(0xFFFFFFFFFFFFFFFFull);
+  for (std::uint32_t i = 0; i < 256; ++i) {
+    check((static_cast<std::uint64_t>(i) << 32U) | (i * 65537U));
+  }
+}
+
 }  // namespace ae::test_integer_math
 
 int test_integer_math() {
@@ -484,5 +565,10 @@ int test_integer_math() {
   RUN_TEST(ae::test_integer_math::test_RawFromRatioGcdAndRounding);
   RUN_TEST(ae::test_integer_math::test_RawFromRatioOverflowButFitsAndBounds);
   RUN_TEST(ae::test_integer_math::test_RawFromRatioExhaustiveSmall);
+  RUN_TEST(ae::test_integer_math::test_SqrtU64);
+  RUN_TEST(ae::test_integer_math::test_MulU32WideMatchesU64);
+  RUN_TEST(ae::test_integer_math::test_MulDivU32NearestVsU64);
+  RUN_TEST(ae::test_integer_math::test_SqrtU32MatchesU64);
+  RUN_TEST(ae::test_integer_math::test_SqrtU32WideMatchesU64);
   return UNITY_END();
 }

@@ -1,0 +1,398 @@
+{
+  "toolchain": "riscv32-esp-elf-g++ (esp-14.2.0_20241119)",
+  "target": "ESP32-C6 / riscv32 ilp32",
+  "segmented": {
+    "Os": {
+      "empty": {
+        "text": 60,
+        "rodata": 0,
+        "data": 0,
+        "bss": 0,
+        "flash": 60,
+        "ram": 0,
+        "helpers64": []
+      },
+      "rssi": {
+        "text": 964,
+        "rodata": 0,
+        "data": 0,
+        "bss": 0,
+        "flash": 964,
+        "ram": 0,
+        "helpers64": []
+      },
+      "temperature": {
+        "text": 5126,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 5334,
+        "ram": 0,
+        "helpers64": []
+      },
+      "humidity": {
+        "text": 2962,
+        "rodata": 0,
+        "data": 0,
+        "bss": 0,
+        "flash": 2962,
+        "ram": 0,
+        "helpers64": []
+      },
+      "co2": {
+        "text": 3658,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 3866,
+        "ram": 0,
+        "helpers64": []
+      },
+      "rx": {
+        "text": 6596,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 6804,
+        "ram": 0,
+        "helpers64": []
+      },
+      "battery": {
+        "text": 4398,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 4606,
+        "ram": 0,
+        "helpers64": []
+      },
+      "connect": {
+        "text": 3068,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 3276,
+        "ram": 0,
+        "helpers64": []
+      },
+      "thermometer": {
+        "text": 9124,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 9332,
+        "ram": 0,
+        "helpers64": []
+      },
+      "all": {
+        "text": 12080,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 12288,
+        "ram": 0,
+        "helpers64": []
+      }
+    },
+    "O2": {
+      "empty": {
+        "text": 60,
+        "rodata": 0,
+        "data": 0,
+        "bss": 0,
+        "flash": 60,
+        "ram": 0,
+        "helpers64": []
+      },
+      "rssi": {
+        "text": 1136,
+        "rodata": 0,
+        "data": 0,
+        "bss": 0,
+        "flash": 1136,
+        "ram": 0,
+        "helpers64": []
+      },
+      "temperature": {
+        "text": 6050,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 6258,
+        "ram": 0,
+        "helpers64": []
+      },
+      "humidity": {
+        "text": 5800,
+        "rodata": 0,
+        "data": 0,
+        "bss": 0,
+        "flash": 5800,
+        "ram": 0,
+        "helpers64": []
+      },
+      "co2": {
+        "text": 3890,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 4098,
+        "ram": 0,
+        "helpers64": []
+      },
+      "rx": {
+        "text": 8536,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 8744,
+        "ram": 0,
+        "helpers64": []
+      },
+      "battery": {
+        "text": 4252,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 4460,
+        "ram": 0,
+        "helpers64": []
+      },
+      "connect": {
+        "text": 2786,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 2994,
+        "ram": 0,
+        "helpers64": []
+      },
+      "thermometer": {
+        "text": 14868,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 15076,
+        "ram": 0,
+        "helpers64": []
+      },
+      "all": {
+        "text": 19838,
+        "rodata": 208,
+        "data": 0,
+        "bss": 0,
+        "flash": 20046,
+        "ram": 0,
+        "helpers64": []
+      }
+    }
+  },
+  "cyclic": {
+    "Os": {
+      "cyclic_u8_u16": {
+        "text": 224,
+        "rodata": 0,
+        "data": 0,
+        "bss": 0,
+        "flash": 224,
+        "ram": 0,
+        "helpers64": []
+      },
+      "cyclic_u8_u32": {
+        "text": 182,
+        "rodata": 0,
+        "data": 0,
+        "bss": 0,
+        "flash": 182,
+        "ram": 0,
+        "helpers64": []
+      },
+      "cyclic_u16_u32": {
+        "text": 136,
+        "rodata": 0,
+        "data": 0,
+        "bss": 0,
+        "flash": 136,
+        "ram": 0,
+        "helpers64": []
+      }
+    },
+    "O2": {
+      "cyclic_u8_u16": {
+        "text": 244,
+        "rodata": 0,
+        "data": 0,
+        "bss": 0,
+        "flash": 244,
+        "ram": 0,
+        "helpers64": []
+      },
+      "cyclic_u8_u32": {
+        "text": 188,
+        "rodata": 0,
+        "data": 0,
+        "bss": 0,
+        "flash": 188,
+        "ram": 0,
+        "helpers64": []
+      },
+      "cyclic_u16_u32": {
+        "text": 136,
+        "rodata": 0,
+        "data": 0,
+        "bss": 0,
+        "flash": 136,
+        "ram": 0,
+        "helpers64": []
+      }
+    }
+  },
+  "stack_usage": {
+    "temperature": {
+      "TieredInt<unsigned char, 252>]": 0,
+      "MulU32Wide(uint32_t, uint32_t, uint32_t&, uint32_t&)": 0,
+      "DivU32Wide(uint32_t, uint32_t, uint32_t, uint32_t&, uint32_t&)": 0,
+      "MulDivU32Nearest(uint32_t, uint32_t, uint32_t, uint32_t&)": 32,
+      "ShlU32WideChecked(uint32_t&, uint32_t&, unsigned int)": 0,
+      "ShrU32Wide(uint32_t&, uint32_t&, unsigned int, bool)": 0,
+      "CmpMulU32(uint32_t, uint32_t, uint32_t, uint32_t)": 32,
+      "FromRuntimeInteger(int64_t) [with Rep = long int; auto Max = 32]": 32,
+      "MakeRawFromLogicalRuntime32(int32_t, int32_t) [with Rep = long unsigned int; auto Max = 86400; bool kIsSigned = false]": 32,
+      "ConvertRawScale(RepValue, int, int, RepValue, RepValue) [with RepValue = long int]": 0,
+      "SaturatingSub32(RV, RV, RV, RV) [with RV = long int]": 0,
+      "FixedPoint<long int, 86400>]": 16,
+      "SaturatingAdd32(RV, RV, RV, RV) [with RV = long int]": 0,
+      "FromWideProduct32(uint32_t, uint32_t, bool, int) [with ResultRep = long int; auto ResultMax = 86400]": 32,
+      "ConvertRawScale(RepValue, int, int, RepValue, RepValue) [with RepValue = long unsigned int]": 0,
+      "FixedPoint<long int, 32>]": 32,
+      "FixedPoint<long unsigned int, 86400>]": 16,
+      "DivTo(L, R) [with Target = FixedPoint<long unsigned int, 86400>; L = FixedPoint<long unsigned int, 86400>; R = FixedPoint<long unsigned int, 86400>]": 32,
+      "Segmented32MathPolicy]": 48,
+      "Exp2PosMinusOne(SegLog)": 16,
+      "GeomUnitWeightPos(SegLog, int, int)": 32,
+      "uint32_t TestMeta()": 16,
+      "DivTo(L, R) [with Target = FixedPoint<long int, 86400>; L = FixedPoint<long int, 86400>; R = FixedPoint<long int, 86400>]": 32,
+      "SegLog, int, int, bool)": 64,
+      "FixedPoint<short int, 125>, 1>]": 32,
+      "FixedPoint<short int, 125>, 0>]": 32,
+      "FixedPoint<short int, 125>, 2>]": 32,
+      "FixedPoint<short int, 125>]": 48,
+      "uint32_t TestDecode(uint32_t)": 32,
+      "FixedPoint<short int, 125>; int I = 0]": 32,
+      "FixedPoint<short int, 125>; int I = 1]": 48,
+      "FixedPoint<short int, 125>; int I = 2]": 32,
+      "Bytes<2> > > > >]": 32,
+      "uint32_t TestEncode(uint32_t)": 32,
+      "size_t TestSerialize(uint32_t, uint8_t*)": 32
+    },
+    "co2": {
+      "TieredInt<unsigned char, 254, 477>]": 0,
+      "MulU32Wide(uint32_t, uint32_t, uint32_t&, uint32_t&)": 0,
+      "DivU32Wide(uint32_t, uint32_t, uint32_t, uint32_t&, uint32_t&)": 0,
+      "ShrU32Wide(uint32_t&, uint32_t&, unsigned int, bool)": 0,
+      "FromRuntimeInteger(int64_t) [with Rep = long int; auto Max = 32]": 32,
+      "DivTo(L, R) [with Target = FixedPoint<long unsigned int, 86400>; L = FixedPoint<long unsigned int, 86400>; R = FixedPoint<long unsigned int, 86400>]": 32,
+      "ConvertRawScale(RepValue, int, int, RepValue, RepValue) [with RepValue = long unsigned int]": 0,
+      "ConvertRawScale(RepValue, int, int, RepValue, RepValue) [with RepValue = long int]": 0,
+      "FixedPoint<long int, 32>]": 16,
+      "FixedPoint<long unsigned int, 86400>]": 16,
+      "Segmented32MathPolicy]": 48,
+      "SegLog)": 32,
+      "uint32_t TestMeta()": 16,
+      "FixedPoint<short unsigned int, 32000>]": 48,
+      "FixedPoint<short unsigned int, 32000>, 0>]": 32,
+      "FixedPoint<short unsigned int, 32000>, 1>]": 32,
+      "FixedPoint<short unsigned int, 32000>, 2>]": 32,
+      "uint32_t TestDecode(uint32_t)": 32,
+      "FixedPoint<short unsigned int, 32000>; int I = 0]": 32,
+      "FixedPoint<short unsigned int, 32000>; int I = 1]": 32,
+      "FixedPoint<short unsigned int, 32000>; int I = 2]": 32,
+      "OptimizeCuts> > >]": 32,
+      "uint32_t TestEncode(uint32_t)": 32,
+      "size_t TestSerialize(uint32_t, uint8_t*)": 32
+    },
+    "rx": {
+      "TieredInt<unsigned char, 254, 509>]": 0,
+      "MulU32Checked(uint32_t, uint32_t, uint32_t&)": 0,
+      "MulU32Wide(uint32_t, uint32_t, uint32_t&, uint32_t&)": 0,
+      "DivU32Wide(uint32_t, uint32_t, uint32_t, uint32_t&, uint32_t&)": 0,
+      "MulDivU32Nearest(uint32_t, uint32_t, uint32_t, uint32_t&)": 32,
+      "ShlU32WideChecked(uint32_t&, uint32_t&, unsigned int)": 0,
+      "ShrU32Wide(uint32_t&, uint32_t&, unsigned int, bool)": 0,
+      "CmpMulU32(uint32_t, uint32_t, uint32_t, uint32_t)": 32,
+      "FromRuntimeInteger(int64_t) [with Rep = long int; auto Max = 32]": 32,
+      "MakeRawFromLogicalRuntime32(int32_t, int32_t) [with Rep = long unsigned int; auto Max = 86400; bool kIsSigned = false]": 32,
+      "SegLog)": 32,
+      "LinearShapeMag(int, int32_t, int32_t)": 32,
+      "DiscWide(uint32_t, uint32_t, uint32_t, bool, uint32_t&, uint32_t&)": 48,
+      "ConvertRawScale(RepValue, int, int, RepValue, RepValue) [with RepValue = long unsigned int]": 0,
+      "DivTo(L, R) [with Target = FixedPoint<long unsigned int, 86400>; L = FixedPoint<long unsigned int, 86400>; R = FixedPoint<long unsigned int, 86400>]": 32,
+      "ConvertRawScale(RepValue, int, int, RepValue, RepValue) [with RepValue = long int]": 0,
+      "SaturatingAdd32(RV, RV, RV, RV) [with RV = long int]": 0,
+      "FixedPoint<long int, 32>]": 32,
+      "SaturatingSub32(RV, RV, RV, RV) [with RV = long int]": 0,
+      "FixedPoint<long int, 86400>]": 16,
+      "FromWideProduct32(uint32_t, uint32_t, bool, int) [with ResultRep = long int; auto ResultMax = 86400]": 32,
+      "DivTo(L, R) [with Target = FixedPoint<long int, 86400>; L = FixedPoint<long int, 86400>; R = FixedPoint<long int, 86400>]": 32,
+      "FixedPoint<long unsigned int, 86400>]": 32,
+      "Segmented32MathPolicy]": 48,
+      "Exp2PosMinusOne(SegLog)": 16,
+      "SegLog, int, int, bool)": 64,
+      "uint32_t TestMeta()": 16,
+      "AvoidEndpointCollision(StoredRaw, StoredRaw, StoredRaw, int, int) [with bool kSigned = false]": 0,
+      "FixedPoint<long unsigned int, 86400>, 0>]": 32,
+      "FixedPoint<long unsigned int, 86400>; int I = 0]": 32,
+      "FixedPoint<long unsigned int, 86400>, 1>]": 32,
+      "FixedPoint<long unsigned int, 86400>; int I = 1]": 32,
+      "FixedPoint<long unsigned int, 86400>, 2>]": 32,
+      "LinearApproxAt(StoredRaw, StoredRaw, int, StoredRaw) [with bool kSigned = false]": 32,
+      "FixedPoint<long unsigned int, 86400>; int I = 2]": 32,
+      "FixedPoint<long unsigned int, 86400>, 3>]": 48,
+      "uint32_t TestDecode(uint32_t)": 48,
+      "LinearRampApproxRuntime(StoredRaw, StoredRaw, int32_t, int32_t, int, StoredRaw) [with bool kSigned = false]": 112,
+      "FixedPoint<long unsigned int, 86400>; int I = 3]": 32,
+      "Bytes<4> > > > >]": 32,
+      "uint32_t TestEncode(uint32_t)": 32,
+      "size_t TestSerialize(uint32_t, uint8_t*)": 32
+    },
+    "battery": {
+      "uint32_t AeFpWireToU32(const Wire&) [with Wire = unsigned char]": 0,
+      "MulU32Wide(uint32_t, uint32_t, uint32_t&, uint32_t&)": 0,
+      "DivU32Wide(uint32_t, uint32_t, uint32_t, uint32_t&, uint32_t&)": 0,
+      "MulDivU32Nearest(uint32_t, uint32_t, uint32_t, uint32_t&)": 32,
+      "ShlU32WideChecked(uint32_t&, uint32_t&, unsigned int)": 0,
+      "ShrU32Wide(uint32_t&, uint32_t&, unsigned int, bool)": 0,
+      "CmpMulU32(uint32_t, uint32_t, uint32_t, uint32_t)": 32,
+      "FromRuntimeInteger(int64_t) [with Rep = long int; auto Max = 32]": 32,
+      "MakeRawFromLogicalRuntime32(int32_t, int32_t) [with Rep = long unsigned int; auto Max = 86400; bool kIsSigned = false]": 32,
+      "ConvertRawScale(RepValue, int, int, RepValue, RepValue) [with RepValue = long int]": 0,
+      "SaturatingSub32(RV, RV, RV, RV) [with RV = long int]": 0,
+      "FixedPoint<long int, 86400>]": 16,
+      "SaturatingAdd32(RV, RV, RV, RV) [with RV = long int]": 0,
+      "FromWideProduct32(uint32_t, uint32_t, bool, int) [with ResultRep = long int; auto ResultMax = 86400]": 32,
+      "ConvertRawScale(RepValue, int, int, RepValue, RepValue) [with RepValue = long unsigned int]": 0,
+      "FixedPoint<long int, 32>]": 32,
+      "FixedPoint<long unsigned int, 86400>]": 16,
+      "uint32_t TestMeta()": 16,
+      "DivTo(L, R) [with Target = FixedPoint<long unsigned int, 86400>; L = FixedPoint<long unsigned int, 86400>; R = FixedPoint<long unsigned int, 86400>]": 32,
+      "Segmented32MathPolicy]": 48,
+      "Exp2PosMinusOne(SegLog)": 16,
+      "DivTo(L, R) [with Target = FixedPoint<long int, 86400>; L = FixedPoint<long int, 86400>; R = FixedPoint<long int, 86400>]": 32,
+      "Wire AeFpU32ToWire(uint32_t) [with Wire = unsigned char]": 0,
+      "SegLog, int, int, bool)": 64,
+      "FixedPoint<short unsigned int, 3>, 0>]": 32,
+      "FixedPoint<short unsigned int, 3>; int I = 0]": 32,
+      "FixedPoint<short unsigned int, 3>, 1>]": 32,
+      "FixedPoint<short unsigned int, 3>]": 48,
+      "uint32_t TestDecode(uint32_t)": 32,
+      "FixedPoint<short unsigned int, 3>; int I = 1]": 48,
+      "Bytes<1> > > > >]": 32,
+      "uint32_t TestEncode(uint32_t)": 32,
+      "size_t TestSerialize(uint32_t, uint8_t*)": 32
+    },
+    "cyclic_u8_u32": {
+      "uint32_t TestRestore(uint32_t, uint32_t)": 16,
+      "uint32_t TestAdvance(uint32_t, uint32_t)": 32
+    }
+  }
+}

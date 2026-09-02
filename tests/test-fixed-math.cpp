@@ -17,6 +17,7 @@
 #include <unity.h>
 
 #include <cstdint>
+#include <limits>
 
 #include <ae-numeric/fixed_math.h>
 #include <ae-numeric/fixed_point.h>
@@ -83,6 +84,8 @@ void test_Exp2FractionalValues() {
 }
 
 void test_RoundTrip() {
+  using HP = fixed_math::HighPrecisionFixedMathPolicy;
+  using HPLog = HP::log_type;
   constexpr Runtime values[] = {Runtime{1}, Runtime{2},  Runtime{3},
                                 Runtime{5}, Runtime{10}, Runtime{30},
                                 Runtime{60}};
@@ -90,8 +93,8 @@ void test_RoundTrip() {
                                      200000, 2500000, 5000000};
   for (std::size_t i = 0; i < sizeof(values) / sizeof(values[0]); ++i) {
     const Runtime x = values[i];
-    const Log lx = fixed_math::Log2To<Log>(x);
-    const Runtime y = fixed_math::Exp2To<Runtime>(lx);
+    const HPLog lx = fixed_math::Log2To<HPLog, Runtime, HP>(x);
+    const Runtime y = fixed_math::Exp2To<Runtime, HPLog, HP>(lx);
     TEST_ASSERT(NearRaw(y, x, tolerances[i]));
   }
 }
@@ -104,10 +107,57 @@ void test_SmallRuntimeRoundTrip() {
 
 void test_FromClampedRawClampsLargeValue() {
   using Target = FixedPoint<std::uint16_t, 60.0>;
-  constexpr auto clamped =
-      fixed_math::internal::from_clamped_raw<Target>(std::int64_t{1} << 40);
+  constexpr auto clamped = fixed_math::internal::from_clamped_i32<Target>(
+      std::numeric_limits<std::int32_t>::max());
   TEST_ASSERT_EQUAL(static_cast<std::int64_t>(Target::kRawMax),
                     static_cast<std::int64_t>(clamped.RawValue()));
+}
+
+using HP = fixed_math::HighPrecisionFixedMathPolicy;
+using Near = FixedPoint<std::uint32_t, 8>;
+using HPLog = HP::log_type;
+
+void test_SqrtOfFour() {
+  TEST_ASSERT(NearRaw(fixed_math::Sqrt(Runtime{4}), Runtime{2}, 8));
+}
+
+void test_ValuesNearOne() {
+  Near const samples[] = {Near::FromRatio(1001, 1000),
+                            Near::FromRatio(1005, 1000),
+                            Near::FromRatio(101, 100),
+                            Near::FromRatio(103, 100)};
+  for (Near const x : samples) {
+    HPLog const lx = fixed_math::Log2To<HPLog, Near, HP>(x);
+    Near const y = fixed_math::Exp2To<Near, HPLog, HP>(lx);
+    TEST_ASSERT(NearRaw(y, x, 64));
+    Near const sq = fixed_math::PowIntTo<Near, Near, HP>(x, 2);
+    Near const back = fixed_math::NthRoot<Near, HP>(sq, 2);
+    TEST_ASSERT(NearRaw(back, x, 256));
+  }
+}
+
+void test_PowIntNearOne() {
+  Near const q = Near::FromRatio(1001957, 1000000);
+  Near const p = fixed_math::PowIntTo<Near, Near, HP>(q, 349);
+  TEST_ASSERT(p > Near::FromRuntimeInteger(1));
+  TEST_ASSERT(p < Near::FromRuntimeInteger(3));
+}
+
+void test_PowIntExp2Agreement() {
+  Near const base = Near::FromRatio(103, 100);
+  Near const p4 = fixed_math::PowIntTo<Near, Near, HP>(base, 4);
+  HPLog const l = fixed_math::ScaleLogByInt(
+      fixed_math::Log2To<HPLog, Near, HP>(base), 4);
+  Near const e = fixed_math::Exp2To<Near, HPLog, HP>(l);
+  TEST_ASSERT(NearRaw(p4, e, 64));
+}
+
+void test_HpRoundTrip380() {
+  using W = FixedPoint<std::int32_t, 86400>;
+  W const x = W::FromInteger(380);
+  HPLog const lx = fixed_math::Log2To<HPLog, W, HP>(x);
+  W const y = fixed_math::Exp2To<W, HPLog, HP>(lx);
+  TEST_ASSERT(NearRaw(y, x, 1024));
 }
 
 }  // namespace ae::test_fixed_math
@@ -121,5 +171,10 @@ int test_fixed_math() {
   RUN_TEST(ae::test_fixed_math::test_RoundTrip);
   RUN_TEST(ae::test_fixed_math::test_SmallRuntimeRoundTrip);
   RUN_TEST(ae::test_fixed_math::test_FromClampedRawClampsLargeValue);
+  RUN_TEST(ae::test_fixed_math::test_SqrtOfFour);
+  RUN_TEST(ae::test_fixed_math::test_ValuesNearOne);
+  RUN_TEST(ae::test_fixed_math::test_PowIntNearOne);
+  RUN_TEST(ae::test_fixed_math::test_PowIntExp2Agreement);
+  RUN_TEST(ae::test_fixed_math::test_HpRoundTrip380);
   return UNITY_END();
 }
