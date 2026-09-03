@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <ae-numeric/percentile8.h>
+#include <ae-numeric/percentile.h>
 
 // Out-of-range compile-time percentile must fail to compile.
-constexpr auto kBad = ae::Percentile8::FromPercent(20.0);
+constexpr auto kBad = ae::Percentile::FromPercent(20.0);

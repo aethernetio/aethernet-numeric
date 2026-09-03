@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <ae-numeric/percentile8.h>
+#include <ae-numeric/percentile.h>
 
-// Gap between 99.99 and 100 must not silently clamp.
-constexpr auto kBad = ae::Percentile8::FromPercent(99.995);
+// Above 100 must not silently clamp.
+constexpr auto kBad = ae::Percentile::FromPercent(100.1);
