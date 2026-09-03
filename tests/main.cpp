@@ -45,6 +45,7 @@ extern int test_fixed_math();
 extern int test_integer_math();
 extern int test_tiered_int_aether_compat();
 extern int test_type_size();
+extern int test_percentile8();
 
 int main() {
   int res = 0;
@@ -72,6 +73,7 @@ int main() {
   res += test_segmented_number_size();
   res += test_fixed_math();
   res += test_integer_math();
+  res += test_percentile8();
   res += test_tiered_int_aether_compat();
   res += test_type_size();
   return res;
