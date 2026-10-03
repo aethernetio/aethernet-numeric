@@ -118,6 +118,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   test-segmented-number-size.cpp
   test-fixed-math.cpp
   test-integer-math.cpp
+  test-percentile.cpp
   test-tiered-int-aether-compat.cpp
   test-type-size.cpp
 )
@@ -186,7 +187,9 @@ foreach(fail_case
     segmented_impossible_continuous_step
     cyclic_counter_stateless_deserialize
     segmented_invalid_spec
-    segmented_rank_wire_overflow)
+    segmented_rank_wire_overflow
+    percentile_out_of_range
+    percentile_above_100)
   add_executable(fail-${fail_case} EXCLUDE_FROM_ALL
     compile-fail/${fail_case}.cpp)
   target_link_libraries(fail-${fail_case} PRIVATE ae-numeric)
