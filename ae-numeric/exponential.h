@@ -599,7 +599,8 @@ class Exponential {
 
   constexpr bool IsNegative() const {
     if constexpr (kIsSigned) {
-      return !IsZero() && CodeValue() % wire_value_type{2} == wire_value_type{1};
+      return !IsZero() &&
+             CodeValue() % wire_value_type{2} == wire_value_type{1};
     } else {
       return false;
     }
