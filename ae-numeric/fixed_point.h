@@ -398,10 +398,12 @@ constexpr RepValue RoundDivNearest(RepValue num, RepValue den) {
   using U = std::make_unsigned_t<RepValue>;
   const auto q = static_cast<RepValue>(num / den);
   const auto r = static_cast<RepValue>(num % den);
-  const auto den_mag =
-      static_cast<U>(den < 0 ? -static_cast<U>(den) : static_cast<U>(den));
-  const auto rem_mag =
-      static_cast<U>(r < 0 ? -static_cast<U>(r) : static_cast<U>(r));
+  const auto magnitude = [](RepValue value) {
+    const auto u = static_cast<U>(value);
+    return value < 0 ? static_cast<U>(static_cast<U>(0) - u) : u;
+  };
+  const auto den_mag = magnitude(den);
+  const auto rem_mag = magnitude(r);
   if (rem_mag < den_mag - rem_mag) {
     return q;
   }
