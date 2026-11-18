@@ -592,15 +592,17 @@ class Exponential {
     }
     if constexpr (kIsSigned) {
       return CodeValue() % wire_value_type{2} == wire_value_type{0};
+    } else {
+      return true;
     }
-    return true;
   }
 
   constexpr bool IsNegative() const {
-    if constexpr (!kIsSigned) {
+    if constexpr (kIsSigned) {
+      return !IsZero() && CodeValue() % wire_value_type{2} == wire_value_type{1};
+    } else {
       return false;
     }
-    return !IsZero() && CodeValue() % wire_value_type{2} == wire_value_type{1};
   }
 
   constexpr wire_value_type MagnitudeIndex() const {
@@ -614,8 +616,9 @@ class Exponential {
       }
       return static_cast<wire_value_type>((code + wire_value_type{1}) /
                                           wire_value_type{2});
+    } else {
+      return code;
     }
-    return code;
   }
 
   constexpr RuntimeT ToRuntime() const {
@@ -624,9 +627,11 @@ class Exponential {
       return RuntimeTraits::FromInteger(0);
     }
     const RuntimeT magnitude = MagnitudeAt(index);
-    if (IsNegative()) {
-      return exponential_internal::RuntimeSub(RuntimeTraits::FromInteger(0),
-                                              magnitude);
+    if constexpr (kIsSigned) {
+      if (IsNegative()) {
+        return exponential_internal::RuntimeSub(RuntimeTraits::FromInteger(0),
+                                                magnitude);
+      }
     }
     return magnitude;
   }
