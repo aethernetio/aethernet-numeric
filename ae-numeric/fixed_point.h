@@ -379,9 +379,9 @@ constexpr ToR ConvertRawScaleTo(FromR raw, int source_scale_exp,
                         static_cast<std::int32_t>(raw_max)));
   } else {
     const auto positive = raw < FromR{0} ? 0U : static_cast<std::uint32_t>(raw);
-    return static_cast<ToR>(
-        ConvertRawScale(positive, source_scale_exp, target_scale_exp, 0U,
-                        static_cast<std::uint32_t>(raw_max)));
+    return static_cast<ToR>(ConvertRawScale<std::uint32_t>(
+        positive, source_scale_exp, target_scale_exp, 0,
+        static_cast<std::uint32_t>(raw_max)));
   }
 }
 
