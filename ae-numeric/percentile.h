@@ -126,7 +126,7 @@ static_assert(Percentile::FromPercent(30.0) < Percentile::FromPercent(100.0));
     return 0;
   }
 
-  const std::uint64_t m = static_cast<std::uint64_t>(sample_count - 1);
+  const std::size_t m = sample_count - 1;
   if (percentile.IsExactHundred()) {
     return static_cast<std::size_t>(m);
   }
@@ -135,14 +135,16 @@ static_assert(Percentile::FromPercent(30.0) < Percentile::FromPercent(100.0));
   static_assert(Tail::kScaleExp < 0,
                 "PercentileIndex assumes fractional FixedPoint scale");
   constexpr int frac_bits = -Tail::kScaleExp;
-  constexpr std::uint64_t scale = std::uint64_t{1} << frac_bits;
-  constexpr std::uint64_t den = 100ull * scale;
+  constexpr std::uint32_t scale = std::uint32_t{1} << frac_bits;
+  constexpr std::uint32_t den = 100U * scale;
+  static_assert(den <= 65536U);
 
-  const std::uint64_t tail_raw =
-      static_cast<std::uint64_t>(percentile.TailPercent().RawValue());
+  const std::uint32_t tail_raw = percentile.TailPercent().RawValue();
   // floor(M * tail_percent / 100) with trunc for non-negative.
-  const std::uint64_t floor_mq = (m * tail_raw) / den;
-  return static_cast<std::size_t>(m - floor_mq);
+  const std::size_t floor_mq =
+      (m / den) * tail_raw +
+      (static_cast<std::uint32_t>(m % den) * tail_raw) / den;
+  return m - floor_mq;
 }
 
 // Integer percentile 0..100 rank: ceil(M * p / 100), no floating point.
@@ -157,9 +159,10 @@ static_assert(Percentile::FromPercent(30.0) < Percentile::FromPercent(100.0));
   if (percentile_0_100 >= 100) {
     return sample_count - 1;
   }
-  const std::uint64_t m = static_cast<std::uint64_t>(sample_count - 1);
+  const std::size_t m = sample_count - 1;
   // ceil(M * p / 100) = (M * p + 99) / 100
-  return static_cast<std::size_t>((m * percentile_0_100 + 99ull) / 100ull);
+  return (m / 100U) * percentile_0_100 +
+         ((m % 100U) * percentile_0_100 + 99U) / 100U;
 }
 
 }  // namespace ae

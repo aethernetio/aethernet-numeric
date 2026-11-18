@@ -72,17 +72,6 @@ constexpr WireValue ClampCode(WireValue code, WireValue boundary_code) {
   return code;
 }
 
-template <typename WireValue>
-constexpr WireValue ClampIndex(WireValue index, WireValue max_index) {
-  if (index < WireValue{1}) {
-    return WireValue{1};
-  }
-  if (index > max_index) {
-    return max_index;
-  }
-  return index;
-}
-
 template <typename RuntimeT>
 constexpr RuntimeT RuntimeSub(RuntimeT const& lhs, RuntimeT const& rhs) {
   if constexpr (std::is_floating_point_v<RuntimeT>) {
@@ -109,17 +98,15 @@ constexpr RuntimeT AbsRuntime(RuntimeT value) {
 
 template <typename LogT, typename WireValue>
 constexpr LogT LogAtIndexRaw(WireValue index, LogT log_min,
-                             std::int64_t log_span_raw, WireValue max_index) {
+                             std::uint32_t log_span_raw, WireValue max_index) {
   if (index <= WireValue{1}) {
     return log_min;
   }
-  const std::int64_t num =
-      log_span_raw * (static_cast<std::int64_t>(index) - 1);
-  const std::int64_t den = static_cast<std::int64_t>(max_index) - 1;
-  const std::int64_t offset_raw =
-      fixed_point_internal::RoundDivNearest(num, den);
-  const std::int64_t raw =
-      static_cast<std::int64_t>(log_min.RawValue()) + offset_raw;
+  std::uint32_t offset = 0;
+  integer_math::MulDivU32Nearest(
+      log_span_raw, static_cast<std::uint32_t>(index) - 1U,
+      static_cast<std::uint32_t>(max_index) - 1U, offset);
+  const auto raw = static_cast<std::uint32_t>(log_min.RawValue()) + offset;
   return LogT::FromRaw(
       fixed_point_internal::RepFromRawValue<typename LogT::rep_type>(
           static_cast<typename LogT::rep_value_type>(raw)));
@@ -127,7 +114,7 @@ constexpr LogT LogAtIndexRaw(WireValue index, LogT log_min,
 
 template <typename LogT, typename WireValue>
 constexpr WireValue EncodeMagnitudeIndexRaw(LogT log_min,
-                                            std::int64_t log_span_raw,
+                                            std::uint32_t log_span_raw,
                                             WireValue max_index,
                                             LogT log_value) {
   if (max_index <= WireValue{1}) {
@@ -137,12 +124,18 @@ constexpr WireValue EncodeMagnitudeIndexRaw(LogT log_min,
     return WireValue{1};
   }
 
-  const std::int64_t pos_raw = static_cast<std::int64_t>(log_value.RawValue()) -
-                               static_cast<std::int64_t>(log_min.RawValue());
-  const std::int64_t den = static_cast<std::int64_t>(max_index) - 1;
-  const std::int64_t index_offset =
-      fixed_point_internal::RoundDivNearest(pos_raw * den, log_span_raw);
-  return ClampIndex(static_cast<WireValue>(index_offset + 1), max_index);
+  if (log_value <= log_min) {
+    return WireValue{1};
+  }
+  const auto pos = static_cast<std::uint32_t>(log_value.RawValue()) -
+                   static_cast<std::uint32_t>(log_min.RawValue());
+  if (pos >= log_span_raw) {
+    return max_index;
+  }
+  std::uint32_t offset = 0;
+  integer_math::MulDivU32Nearest(
+      pos, static_cast<std::uint32_t>(max_index) - 1U, log_span_raw, offset);
+  return static_cast<WireValue>(offset + 1U);
 }
 
 template <typename FloatingT>
@@ -353,7 +346,7 @@ class Exponential {
   static_assert(!numeric_traits<WireT>::kIsSigned,
                 "Exponential WireT must be unsigned for now");
   static_assert(BoundaryCode > 0, "Exponential BoundaryCode must be positive");
-  static_assert(BoundaryCode <= numeric_traits<WireT>::kMaxBoundaryCode,
+  static_assert(BoundaryCode <= numeric_traits<WireT>::kRawMax,
                 "Exponential BoundaryCode must fit in WireT range");
   static_assert(RuntimeTraits::FromDouble(MinMagnitude) >
                     RuntimeTraits::FromInteger(0),
@@ -376,9 +369,12 @@ class Exponential {
   static constexpr LogT kLogBoundary =
       fixed_math::Log2To<LogT, WorkT, MathPolicy>(
           WorkT::FromDouble(static_cast<double>(BoundaryMagnitude)));
-  static constexpr std::int64_t kLogSpanRaw =
-      static_cast<std::int64_t>(kLogBoundary.RawValue()) -
-      static_cast<std::int64_t>(kLogMin.RawValue());
+  static_assert(std::in_range<std::uint32_t>(BoundaryCode),
+                "Exponential supports at most 32 bits of magnitude codes");
+  static_assert(sizeof(typename LogT::rep_value_type) <= 4);
+  static constexpr std::uint32_t kLogSpanRaw =
+      static_cast<std::uint32_t>(kLogBoundary.RawValue()) -
+      static_cast<std::uint32_t>(kLogMin.RawValue());
 
   static constexpr RuntimeT MagnitudeAt(wire_value_type MagnitudeIndex) {
     if (MagnitudeIndex == wire_value_type{0}) {
@@ -464,7 +460,7 @@ class Exponential {
 
     const RuntimeT abs_value =
         exponential_internal::AbsRuntime<RuntimeT, kIsSigned>(value);
-    const RuntimeT boundary = MagnitudeAt(kMaxMagnitudeIndex);
+    constexpr RuntimeT boundary = MagnitudeAt(kMaxMagnitudeIndex);
 
     if (abs_value >= boundary) {
       if constexpr (kIsSigned) {
@@ -596,15 +592,18 @@ class Exponential {
     }
     if constexpr (kIsSigned) {
       return CodeValue() % wire_value_type{2} == wire_value_type{0};
+    } else {
+      return true;
     }
-    return true;
   }
 
   constexpr bool IsNegative() const {
-    if constexpr (!kIsSigned) {
+    if constexpr (kIsSigned) {
+      return !IsZero() &&
+             CodeValue() % wire_value_type{2} == wire_value_type{1};
+    } else {
       return false;
     }
-    return !IsZero() && CodeValue() % wire_value_type{2} == wire_value_type{1};
   }
 
   constexpr wire_value_type MagnitudeIndex() const {
@@ -618,8 +617,9 @@ class Exponential {
       }
       return static_cast<wire_value_type>((code + wire_value_type{1}) /
                                           wire_value_type{2});
+    } else {
+      return code;
     }
-    return code;
   }
 
   constexpr RuntimeT ToRuntime() const {
@@ -628,9 +628,11 @@ class Exponential {
       return RuntimeTraits::FromInteger(0);
     }
     const RuntimeT magnitude = MagnitudeAt(index);
-    if (IsNegative()) {
-      return exponential_internal::RuntimeSub(RuntimeTraits::FromInteger(0),
-                                              magnitude);
+    if constexpr (kIsSigned) {
+      if (IsNegative()) {
+        return exponential_internal::RuntimeSub(RuntimeTraits::FromInteger(0),
+                                                magnitude);
+      }
     }
     return magnitude;
   }

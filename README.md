@@ -122,7 +122,11 @@ For tiny ranges, the raw byte becomes a fine fractional value. For huge ranges, 
 
 Signed storage uses a symmetric raw range around zero. For example, `std::int8_t` uses `-127..+127`, not the full `INT8_MIN..INT8_MAX` asymmetry.
 
-Runtime arithmetic is integer-only: shifts, rounding, saturated raw add/sub, and scale conversion. Floating-point appears only at compile-time or parse/debug boundaries.
+FixedPoint supports representations up to 32 bits. Runtime arithmetic uses
+operands up to 32 bits, with two 32-bit limbs where a product or dividend
+needs more space. Choose an explicit result with `AddTo`, `SubTo`, or
+`MulTo` when mixing a full-range unsigned 32-bit value with a signed value.
+Floating-point appears only at compile-time or parse/debug boundaries.
 
 ---
 
