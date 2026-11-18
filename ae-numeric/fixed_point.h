@@ -35,7 +35,7 @@
 // logical range is distinct from the full representable raw range.
 // sizeof(FixedPoint) equals sizeof(Rep).
 
-
+#include <algorithm>
 #include <concepts>
 #include <cstdint>
 #include <functional>
@@ -128,13 +128,13 @@ struct BoundRatio {
   static constexpr bool kIsPositive = (num > 0) && (den > 0);
 };
 
-constexpr bool PositiveRationalLE(std::int64_t an, std::int64_t ad,
+consteval bool PositiveRationalLE(std::int64_t an, std::int64_t ad,
                                   std::int64_t bn, std::int64_t bd) {
   return an * bd <= bn * ad;
 }
 
 template <auto Max, bool kIsSigned>
-constexpr bool LogicalWithinDeclaredMax(std::int64_t num, std::int64_t den) {
+consteval bool LogicalWithinDeclaredMax(std::int64_t num, std::int64_t den) {
   if (den <= 0) {
     return false;
   }
@@ -164,7 +164,7 @@ constexpr bool LogicalWithinDeclaredMax(std::int64_t num, std::int64_t den) {
 inline void FixedPointConstantExceedsDeclaredMax() {}
 
 template <auto Max, bool kIsSigned>
-constexpr std::pair<std::int64_t, std::int64_t> ClampLogicalRational(
+consteval std::pair<std::int64_t, std::int64_t> ClampLogicalRational(
     std::int64_t num, std::int64_t den) {
   if (den <= 0) {
     den = 1;
@@ -336,45 +336,19 @@ constexpr RepValue RoundShiftRight(RepValue raw, unsigned bits) {
   if (bits == 0) {
     return raw;
   }
-
-  using Unsigned = std::make_unsigned_t<RepValue>;
-  constexpr unsigned kWidth = sizeof(RepValue) * 8;
-
-  if (bits >= kWidth) {
-    if (raw == RepValue{0}) {
+  bool const negative = std::is_signed_v<RepValue> && raw < RepValue{0};
+  auto const raw32 = static_cast<std::uint32_t>(raw);
+  auto const magnitude = negative ? 0U - raw32 : raw32;
+  if (bits >= 32U) {
+    if (bits != 32U || magnitude < (1U << 31U)) {
       return RepValue{0};
     }
-    if (bits > kWidth) {
-      return RepValue{0};
-    }
-    const Unsigned threshold = Unsigned{1} << (kWidth - 1);
-    if constexpr (std::is_signed_v<RepValue>) {
-      const Unsigned magnitude =
-          raw >= RepValue{0}
-              ? static_cast<Unsigned>(raw)
-              : static_cast<Unsigned>(static_cast<RepValue>(-raw));
-      if (magnitude >= threshold) {
-        return raw >= RepValue{0} ? RepValue{1} : RepValue{-1};
-      }
-      return RepValue{0};
-    }
-    const Unsigned magnitude = static_cast<Unsigned>(raw);
-    return magnitude >= threshold ? RepValue{1} : RepValue{0};
+    return static_cast<RepValue>(negative ? -1 : 1);
   }
-
-  const Unsigned divisor = Unsigned{1} << bits;
-  const Unsigned bias = divisor / Unsigned{2};
-  if constexpr (std::is_signed_v<RepValue>) {
-    if (raw >= RepValue{0}) {
-      return static_cast<RepValue>((static_cast<Unsigned>(raw) + bias) /
-                                   divisor);
-    }
-    const Unsigned magnitude =
-        static_cast<Unsigned>(static_cast<RepValue>(-raw));
-    return static_cast<RepValue>(
-        -static_cast<RepValue>((magnitude + bias) / divisor));
-  }
-  return static_cast<RepValue>((static_cast<Unsigned>(raw) + bias) / divisor);
+  // Avoid overflowing the raw magnitude when rounding near UINT32_MAX.
+  auto const rounded = (magnitude >> bits) + ((magnitude >> (bits - 1)) & 1U);
+  return negative ? static_cast<RepValue>(-static_cast<std::int32_t>(rounded))
+                  : static_cast<RepValue>(rounded);
 }
 
 template <typename RepValue>
@@ -393,55 +367,21 @@ constexpr RepValue ConvertRawScale(RepValue raw, int source_scale_exp,
   return ClampRaw(raw, raw_min, raw_max);
 }
 
-template <typename RV>
-inline constexpr bool kRepAtMost32 = sizeof(RV) <= 4;
-
 template <typename ToR, typename FromR>
 constexpr ToR ConvertRawScaleTo(FromR raw, int source_scale_exp,
                                 int target_scale_exp, ToR raw_min,
                                 ToR raw_max) {
-  if constexpr (std::is_same_v<ToR, FromR>) {
-    return ConvertRawScale(raw, source_scale_exp, target_scale_exp, raw_min,
-                           raw_max);
-  } else if constexpr (kRepAtMost32<ToR> && kRepAtMost32<FromR>) {
-    if constexpr (std::is_signed_v<ToR>) {
-      std::int32_t src = 0;
-      if constexpr (std::is_signed_v<FromR>) {
-        src = static_cast<std::int32_t>(raw);
-      } else {
-        auto const u = static_cast<std::uint32_t>(raw);
-        constexpr auto kI32Max = static_cast<std::uint32_t>(
-            std::numeric_limits<std::int32_t>::max());
-        src = u > kI32Max ? std::numeric_limits<std::int32_t>::max()
-                          : static_cast<std::int32_t>(u);
-      }
-      std::int32_t const aligned = ConvertRawScale(
-          src, source_scale_exp, target_scale_exp,
-          static_cast<std::int32_t>(raw_min),
-          static_cast<std::int32_t>(raw_max));
-      return static_cast<ToR>(aligned);
-    } else {
-      std::uint32_t src = 0;
-      if constexpr (std::is_signed_v<FromR>) {
-        src = raw < static_cast<FromR>(0) ? 0U
-                                          : static_cast<std::uint32_t>(raw);
-      } else {
-        src = static_cast<std::uint32_t>(raw);
-      }
-      std::uint32_t const aligned = ConvertRawScale(
-          src, source_scale_exp, target_scale_exp,
-          static_cast<std::uint32_t>(raw_min),
-          static_cast<std::uint32_t>(raw_max));
-      if (aligned > static_cast<std::uint32_t>(raw_max)) {
-        return raw_max;
-      }
-      return static_cast<ToR>(aligned);
-    }
+  static_assert(sizeof(ToR) <= 4 && sizeof(FromR) <= 4);
+  if constexpr (std::is_signed_v<ToR> && std::is_signed_v<FromR>) {
+    return static_cast<ToR>(
+        ConvertRawScale(static_cast<std::int32_t>(raw), source_scale_exp,
+                        target_scale_exp, static_cast<std::int32_t>(raw_min),
+                        static_cast<std::int32_t>(raw_max)));
   } else {
-    const std::int64_t aligned = ConvertRawScale(
-        static_cast<std::int64_t>(raw), source_scale_exp, target_scale_exp,
-        static_cast<std::int64_t>(raw_min), static_cast<std::int64_t>(raw_max));
-    return static_cast<ToR>(aligned);
+    const auto positive = raw < FromR{0} ? 0U : static_cast<std::uint32_t>(raw);
+    return static_cast<ToR>(
+        ConvertRawScale(positive, source_scale_exp, target_scale_exp, 0U,
+                        static_cast<std::uint32_t>(raw_max)));
   }
 }
 
@@ -451,23 +391,25 @@ constexpr RepValue RoundDivNearest(RepValue num, RepValue den) {
     return num;
   }
   if constexpr (std::is_signed_v<RepValue>) {
-    if (num >= 0 && den > 0) {
-      return static_cast<RepValue>((num + den / RepValue{2}) / den);
+    if (num == std::numeric_limits<RepValue>::min() && den == RepValue{-1}) {
+      return std::numeric_limits<RepValue>::max();
     }
-    if (num < 0 && den > 0) {
-      return static_cast<RepValue>((num - den / RepValue{2}) / den);
-    }
-    if (num >= 0 && den < 0) {
-      return static_cast<RepValue>((num - den / RepValue{2}) / den);
-    }
-    return static_cast<RepValue>((num + den / RepValue{2}) / den);
-  } else {
-    return static_cast<RepValue>((num + den / RepValue{2}) / den);
   }
+  using U = std::make_unsigned_t<RepValue>;
+  const auto q = static_cast<RepValue>(num / den);
+  const auto r = static_cast<RepValue>(num % den);
+  const auto den_mag =
+      static_cast<U>(den < 0 ? -static_cast<U>(den) : static_cast<U>(den));
+  const auto rem_mag =
+      static_cast<U>(r < 0 ? -static_cast<U>(r) : static_cast<U>(r));
+  if (rem_mag < den_mag - rem_mag) {
+    return q;
+  }
+  return static_cast<RepValue>((num < 0) == (den < 0) ? q + 1 : q - 1);
 }
 
 template <typename RepValue>
-constexpr RepValue RawFromRatioAtScale(std::int64_t num, std::int64_t den,
+consteval RepValue RawFromRatioAtScale(std::int64_t num, std::int64_t den,
                                        int scale_exp, RepValue raw_min,
                                        RepValue raw_max) {
   if (den == 0) {
@@ -502,22 +444,13 @@ constexpr RepValue RawFromRatioAtScale(std::int64_t num, std::int64_t den,
   return static_cast<RepValue>(clamped);
 }
 
-// 32-bit-only logical→raw conversion for Rep <= 32 bits. Uses MulU32Wide /
-// DivU32Wide / ShlU32WideChecked — no int64_t/uint64_t arithmetic types.
+// Scale an unsigned rational magnitude using two 32-bit limbs.
 template <typename RepValue>
-constexpr RepValue RawFromRatioAtScale32(std::int32_t num, std::int32_t den,
-                                         int scale_exp, RepValue raw_min,
-                                         RepValue raw_max) {
-  if (den == 0) {
-    return raw_min;
-  }
-
-  bool const negative = (num < 0) != (den < 0);
-  std::uint32_t un = integer_math::AbsI32ToU32(num);
-  std::uint32_t ud = integer_math::AbsI32ToU32(den);
-
+constexpr RepValue RawFromRatioAtScale32(std::uint32_t num, std::uint32_t den,
+                                         bool negative, int scale_exp,
+                                         RepValue raw_min, RepValue raw_max) {
   std::uint32_t hi = 0;
-  std::uint32_t lo = un;
+  std::uint32_t lo = num;
   if (scale_exp < 0) {
     if (!integer_math::ShlU32WideChecked(
             hi, lo, static_cast<unsigned>(-scale_exp))) {
@@ -525,111 +458,59 @@ constexpr RepValue RawFromRatioAtScale32(std::int32_t num, std::int32_t den,
     }
   } else if (scale_exp > 0) {
     std::uint32_t dhi = 0;
-    std::uint32_t dlo = ud;
-    if (!integer_math::ShlU32WideChecked(dhi, dlo,
-                                         static_cast<unsigned>(scale_exp))) {
+    if (!integer_math::ShlU32WideChecked(dhi, den,
+                                         static_cast<unsigned>(scale_exp)) ||
+        dhi > 1U) {
       return RepValue{0};
     }
-    if (dhi != 0U) {
-      // Divisor >= 2^32 and dividend < 2^32 ⇒ quotient 0 (after rounding: 0).
-      return RepValue{0};
+    if (dhi == 1U) {
+      // The quotient is below one. Round up if the dividend reaches half.
+      const auto half = (1U << 31U) + (den >> 1U);
+      return num < half ? RepValue{0}
+                        : static_cast<RepValue>(negative ? -1 : 1);
     }
-    ud = dlo;
-    hi = 0;
-    lo = un;
   }
 
   std::uint32_t q = 0;
   std::uint32_t r = 0;
-  if (!integer_math::DivU32Wide(hi, lo, ud, q, r)) {
+  if (!integer_math::DivU32Wide(hi, lo, den, q, r)) {
     return negative ? raw_min : raw_max;
   }
-  if (r >= ud - r) {
-    if (q == std::numeric_limits<std::uint32_t>::max()) {
-      return negative ? raw_min : raw_max;
-    }
+  if (r >= den - r && q < std::numeric_limits<std::uint32_t>::max()) {
     ++q;
   }
-
   if (!negative) {
-    if (q > static_cast<std::uint32_t>(raw_max)) {
-      return raw_max;
-    }
-    return static_cast<RepValue>(q);
+    return static_cast<RepValue>(
+        std::min(q, static_cast<std::uint32_t>(raw_max)));
   }
   if constexpr (std::is_signed_v<RepValue>) {
-    auto const min_mag =
+    const auto min_mag =
         integer_math::AbsI32ToU32(static_cast<std::int32_t>(raw_min));
-    if (q > min_mag) {
-      return raw_min;
-    }
-    return static_cast<RepValue>(-static_cast<std::int32_t>(q));
-  } else {
-    return raw_min;
+    return q >= min_mag ? raw_min
+                        : static_cast<RepValue>(-static_cast<std::int32_t>(q));
   }
+  return raw_min;
 }
 
-template <auto Max, bool kIsSigned>
-constexpr bool LogicalWithinDeclaredMax32(std::int32_t num, std::int32_t den) {
-  if (den <= 0) {
-    return false;
-  }
-  constexpr std::int64_t max_num64 = BoundRatio<Max>::num;
-  constexpr std::int64_t max_den64 = BoundRatio<Max>::den;
-  static_assert(max_num64 > 0 && max_den64 > 0);
-  static_assert(max_num64 <= std::numeric_limits<std::int32_t>::max());
-  static_assert(max_den64 <= std::numeric_limits<std::int32_t>::max());
-  constexpr auto max_num = static_cast<std::uint32_t>(max_num64);
-  constexpr auto max_den = static_cast<std::uint32_t>(max_den64);
-  if constexpr (!kIsSigned) {
-    if (num < 0) {
-      return false;
+template <std::integral T>
+constexpr std::uint32_t MagnitudeAsU32(T v) {
+  if constexpr (sizeof(T) > 4) {
+    constexpr auto limit = std::numeric_limits<std::uint32_t>::max();
+    if (v > static_cast<T>(limit)) {
+      return limit;
+    }
+    if constexpr (std::is_signed_v<T>) {
+      if (v < -static_cast<T>(limit)) {
+        return limit;
+      }
     }
   }
-  return integer_math::CmpMulU32(integer_math::AbsI32ToU32(num), max_den,
-                                 max_num, integer_math::AbsI32ToU32(den)) <= 0;
-}
-
-template <auto Max, bool kIsSigned>
-constexpr std::pair<std::int32_t, std::int32_t> ClampLogicalRational32(
-    std::int32_t num, std::int32_t den) {
-  if (den <= 0) {
-    den = 1;
-  }
-  if (LogicalWithinDeclaredMax32<Max, kIsSigned>(num, den)) {
-    return {num, den};
-  }
-  constexpr auto max_num = static_cast<std::int32_t>(BoundRatio<Max>::num);
-  constexpr auto max_den = static_cast<std::int32_t>(BoundRatio<Max>::den);
-  if constexpr (kIsSigned) {
-    if (num < 0) {
-      return {-max_num, max_den};
-    }
-  }
-  return {max_num, max_den};
+  const auto u = static_cast<std::uint32_t>(v);
+  return v < 0 ? 0U - u : u;
 }
 
 template <typename Rep, auto Max, bool kIsSigned>
-constexpr typename numeric_traits<Rep>::rep_value_type
-MakeRawFromLogicalRuntime32(std::int32_t num, std::int32_t den) {
-  using RepValue = typename numeric_traits<Rep>::rep_value_type;
-  static_assert(sizeof(RepValue) <= 4,
-                "MakeRawFromLogicalRuntime32 requires Rep <= 32 bits");
-  constexpr RepValue kRawMax = numeric_traits<Rep>::kRawMax;
-  constexpr RepValue kRawMin =
-      kIsSigned ? static_cast<RepValue>(-static_cast<std::int32_t>(
-                      static_cast<std::uint32_t>(kRawMax)))
-                : RepValue{0};
-  constexpr int kScaleExp =
-      ComputeScaleExp(static_cast<std::int64_t>(kRawMax), BoundRatio<Max>::num,
-                      BoundRatio<Max>::den);
-  auto const clamped = ClampLogicalRational32<Max, kIsSigned>(num, den);
-  return RawFromRatioAtScale32(clamped.first, clamped.second, kScaleExp,
-                               kRawMin, kRawMax);
-}
-
-template <typename Rep, auto Max, bool kIsSigned>
-constexpr typename numeric_traits<Rep>::rep_value_type MakeRawFromLogical(
+consteval typename numeric_traits<Rep>::rep_value_type MakeRawFromLogical(
     std::int64_t num, std::int64_t den) {
   using RepValue = typename numeric_traits<Rep>::rep_value_type;
   constexpr RepValue kRawMax = numeric_traits<Rep>::kRawMax;
@@ -665,26 +546,20 @@ struct StorageForDigits;
 
 template <int kDigits>
 struct StorageForDigits<false, kDigits> {
-  static_assert(kDigits <= 64,
-                "PromoteRep: unsigned result requires more than 64 bits");
+  static_assert(kDigits <= 32, "PromoteRep exceeds 32 bits");
 
   using type = std::conditional_t<
       (kDigits <= 8), std::uint8_t,
-      std::conditional_t<
-          (kDigits <= 16), std::uint16_t,
-          std::conditional_t<(kDigits <= 32), std::uint32_t, std::uint64_t>>>;
+      std::conditional_t<(kDigits <= 16), std::uint16_t, std::uint32_t>>;
 };
 
 template <int kDigits>
 struct StorageForDigits<true, kDigits> {
-  static_assert(kDigits <= 63,
-                "PromoteRep: signed result requires more than 64 bits");
+  static_assert(kDigits <= 31, "Use an explicit signed result type");
 
   using type = std::conditional_t<
       (kDigits <= 7), std::int8_t,
-      std::conditional_t<
-          (kDigits <= 15), std::int16_t,
-          std::conditional_t<(kDigits <= 31), std::int32_t, std::int64_t>>>;
+      std::conditional_t<(kDigits <= 15), std::int16_t, std::int32_t>>;
 };
 
 template <typename RepA, typename RepB>
@@ -729,6 +604,9 @@ class FixedPoint {
  public:
   using rep_type = Rep;
   using rep_value_type = typename numeric_traits<Rep>::rep_value_type;
+
+  static_assert(sizeof(rep_value_type) <= 4,
+                "FixedPoint supports representations up to 32 bits");
 
   static constexpr auto kDeclaredMax = Max;
   static constexpr auto kRequiredMax = Max;
@@ -785,46 +663,66 @@ class FixedPoint {
     return FromRaw(raw);
   }
 
-  // For Rep<=32 always use the 32-bit-only logical→raw path so runtime
-  // encode/decode cannot pull in int64 division helpers (__divdi3 etc.).
-  // Compile-time values for SegmentedNumber fit int32 (Rat / interval counts).
-  // Wider-Rep FixedPoint (e.g. Instant) keeps the legacy int64 converter.
-  static constexpr FixedPoint FromRatio(std::int64_t num, std::int64_t den) {
-    if constexpr (sizeof(rep_value_type) <= 4) {
-      return FixedPoint(
-          fixed_point_internal::raw_storage_t{},
-          fixed_point_internal::RepFromRawValue<Rep>(
-              fixed_point_internal::MakeRawFromLogicalRuntime32<Rep, Max,
-                                                               kIsSigned>(
-                  static_cast<std::int32_t>(num),
-                  static_cast<std::int32_t>(den))));
-    } else {
-      return FixedPoint(fixed_point_internal::logical_storage_t{}, num, den);
+  template <std::integral N, std::integral D>
+  static constexpr FixedPoint FromRatio(N num, D den) {
+    constexpr auto max_num = static_cast<std::uint32_t>(kMaxNum);
+    constexpr auto max_den = static_cast<std::uint32_t>(kMaxDen);
+    static_assert(kMaxNum <= std::numeric_limits<std::uint32_t>::max() &&
+                  kMaxDen <= std::numeric_limits<std::uint32_t>::max());
+    const bool negative = num < N{0};
+    if constexpr (!kIsSigned) {
+      if (negative) {
+        return FixedPoint{};
+      }
     }
+    auto magnitude = fixed_point_internal::MagnitudeAsU32(num);
+    auto denominator = den > 0 ? fixed_point_internal::MagnitudeAsU32(den) : 1U;
+    if (integer_math::CmpMulU32(magnitude, max_den, max_num, denominator) > 0) {
+      magnitude = max_num;
+      denominator = max_den;
+    }
+    return FromRaw(fixed_point_internal::RepFromRawValue<Rep>(
+        fixed_point_internal::RawFromRatioAtScale32(
+            magnitude, denominator, negative, kScaleExp, kRawMin, kRawMax)));
   }
 
-  static constexpr FixedPoint FromInteger(std::int64_t value) {
-    return FromRatio(value, static_cast<std::int64_t>(1));
+  template <std::integral T>
+  static constexpr FixedPoint FromInteger(T value) {
+    return FromRatio(value, 1);
   }
 
-  // Explicit runtime conversion: clamps to the declared logical range.
-  static constexpr FixedPoint FromRuntimeInteger(std::int64_t value) {
-    return FromRatio(value, static_cast<std::int64_t>(1));
+  template <std::integral T>
+  static constexpr FixedPoint FromRuntimeInteger(T value) {
+    return FromRatio(value, 1);
   }
 
-  // Explicit saturating runtime conversion: clamps to the declared range.
-  static constexpr FixedPoint Saturating(std::int64_t value) {
-    return FromRatio(value, static_cast<std::int64_t>(1));
+  template <std::integral T>
+  static constexpr FixedPoint Saturating(T value) {
+    return FromRatio(value, 1);
   }
 
-  // Checked runtime conversion: nullopt when value exceeds the declared range.
-  static constexpr std::optional<FixedPoint> TryFromRuntimeInteger(
-      std::int64_t value) {
-    if (!fixed_point_internal::LogicalWithinDeclaredMax<Max, kIsSigned>(value,
-                                                                        1)) {
+  template <std::integral T>
+  static constexpr std::optional<FixedPoint> TryFromRuntimeInteger(T value) {
+    constexpr auto limit = static_cast<std::uint32_t>(kMaxNum / kMaxDen);
+    if constexpr (!kIsSigned && std::is_signed_v<T>) {
+      if (value < 0) {
+        return std::nullopt;
+      }
+    }
+    if constexpr (sizeof(T) > 4) {
+      if (value > static_cast<T>(limit)) {
+        return std::nullopt;
+      }
+      if constexpr (std::is_signed_v<T>) {
+        if (value < -static_cast<T>(limit)) {
+          return std::nullopt;
+        }
+      }
+    }
+    if (fixed_point_internal::MagnitudeAsU32(value) > limit) {
       return std::nullopt;
     }
-    return FromRatio(value, static_cast<std::int64_t>(1));
+    return FromRatio(value, 1);
   }
 
   static consteval FixedPoint FromDouble(double value) {
@@ -908,7 +806,7 @@ class FixedPoint {
       : raw_(fixed_point_internal::RepFromRawValue<Rep>(
             ClampRaw(fixed_point_internal::RepRawValue(raw)))) {}
 
-  constexpr FixedPoint(fixed_point_internal::logical_storage_t,
+  consteval FixedPoint(fixed_point_internal::logical_storage_t,
                        std::int64_t num, std::int64_t den)
       : raw_(fixed_point_internal::RepFromRawValue<Rep>(
             fixed_point_internal::MakeRawFromLogical<Rep, Max, kIsSigned>(
@@ -936,7 +834,8 @@ constexpr RV SaturatingAdd32(RV a, RV b, RV raw_min, RV raw_max) {
     if (a_neg && b_neg && sum >= 0) {
       return raw_min;
     }
-    return ClampRaw(static_cast<RV>(sum), raw_min, raw_max);
+    return static_cast<RV>(std::clamp(sum, static_cast<std::int32_t>(raw_min),
+                                      static_cast<std::int32_t>(raw_max)));
   } else {
     auto const ua = static_cast<std::uint32_t>(a);
     auto const ub = static_cast<std::uint32_t>(b);
@@ -968,7 +867,8 @@ constexpr RV SaturatingSub32(RV a, RV b, RV raw_min, RV raw_max) {
     if (a_neg && b_pos && diff >= 0) {
       return raw_min;
     }
-    return ClampRaw(static_cast<RV>(diff), raw_min, raw_max);
+    return static_cast<RV>(std::clamp(diff, static_cast<std::int32_t>(raw_min),
+                                      static_cast<std::int32_t>(raw_max)));
   } else {
     auto const ua = static_cast<std::uint32_t>(a);
     auto const ub = static_cast<std::uint32_t>(b);
@@ -1035,99 +935,55 @@ template <typename ResultRep, auto ResultMax, typename L, typename R>
 constexpr FixedPoint<ResultRep, ResultMax> AddFixedPoint(L lhs, R rhs) {
   using Result = FixedPoint<ResultRep, ResultMax>;
   using RV = typename Result::rep_value_type;
-  if constexpr (kRepAtMost32<RV> && kRepAtMost32<typename L::rep_value_type> &&
-                kRepAtMost32<typename R::rep_value_type>) {
-    RV const lhs_raw = ConvertRawScaleTo<RV>(
-        lhs.RawValue(), L::kScaleExp, Result::kScaleExp, Result::kRawMin,
-        Result::kRawMax);
-    RV const rhs_raw = ConvertRawScaleTo<RV>(
-        rhs.RawValue(), R::kScaleExp, Result::kScaleExp, Result::kRawMin,
-        Result::kRawMax);
-    return Result::FromRaw(RepFromRawValue<ResultRep>(
-        SaturatingAdd32(lhs_raw, rhs_raw, Result::kRawMin, Result::kRawMax)));
-  } else {
-    const auto lhs_raw =
-        Result::AlignRawFromScale(lhs.RawValue(), L::kScaleExp);
-    const auto rhs_raw =
-        Result::AlignRawFromScale(rhs.RawValue(), R::kScaleExp);
-    const std::int64_t sum =
-        static_cast<std::int64_t>(lhs_raw) + static_cast<std::int64_t>(rhs_raw);
-    return Result::FromRaw(RepFromRawValue<ResultRep>(
-        Result::ClampRaw(static_cast<RV>(sum))));
-  }
+  RV const lhs_raw =
+      ConvertRawScaleTo<RV>(lhs.RawValue(), L::kScaleExp, Result::kScaleExp,
+                            Result::kRawMin, Result::kRawMax);
+  RV const rhs_raw =
+      ConvertRawScaleTo<RV>(rhs.RawValue(), R::kScaleExp, Result::kScaleExp,
+                            Result::kRawMin, Result::kRawMax);
+  return Result::FromRaw(RepFromRawValue<ResultRep>(
+      SaturatingAdd32(lhs_raw, rhs_raw, Result::kRawMin, Result::kRawMax)));
 }
 
 template <typename ResultRep, auto ResultMax, typename L, typename R>
 constexpr FixedPoint<ResultRep, ResultMax> SubFixedPoint(L lhs, R rhs) {
   using Result = FixedPoint<ResultRep, ResultMax>;
   using RV = typename Result::rep_value_type;
-  if constexpr (kRepAtMost32<RV> && kRepAtMost32<typename L::rep_value_type> &&
-                kRepAtMost32<typename R::rep_value_type>) {
-    RV const lhs_raw = ConvertRawScaleTo<RV>(
-        lhs.RawValue(), L::kScaleExp, Result::kScaleExp, Result::kRawMin,
-        Result::kRawMax);
-    RV const rhs_raw = ConvertRawScaleTo<RV>(
-        rhs.RawValue(), R::kScaleExp, Result::kScaleExp, Result::kRawMin,
-        Result::kRawMax);
-    return Result::FromRaw(RepFromRawValue<ResultRep>(
-        SaturatingSub32(lhs_raw, rhs_raw, Result::kRawMin, Result::kRawMax)));
-  } else {
-    const auto lhs_raw =
-        Result::AlignRawFromScale(lhs.RawValue(), L::kScaleExp);
-    const auto rhs_raw =
-        Result::AlignRawFromScale(rhs.RawValue(), R::kScaleExp);
-    const std::int64_t diff =
-        static_cast<std::int64_t>(lhs_raw) - static_cast<std::int64_t>(rhs_raw);
-    return Result::FromRaw(RepFromRawValue<ResultRep>(
-        Result::ClampRaw(static_cast<RV>(diff))));
-  }
+  RV const lhs_raw =
+      ConvertRawScaleTo<RV>(lhs.RawValue(), L::kScaleExp, Result::kScaleExp,
+                            Result::kRawMin, Result::kRawMax);
+  RV const rhs_raw =
+      ConvertRawScaleTo<RV>(rhs.RawValue(), R::kScaleExp, Result::kScaleExp,
+                            Result::kRawMin, Result::kRawMax);
+  return Result::FromRaw(RepFromRawValue<ResultRep>(
+      SaturatingSub32(lhs_raw, rhs_raw, Result::kRawMin, Result::kRawMax)));
 }
 
 template <typename ResultRep, auto ResultMax, typename L, typename R>
 constexpr FixedPoint<ResultRep, ResultMax> MulFixedPoint(L lhs, R rhs) {
   using Result = FixedPoint<ResultRep, ResultMax>;
-  using RV = typename Result::rep_value_type;
   const int scale_adjust = L::kScaleExp + R::kScaleExp - Result::kScaleExp;
-  if constexpr (kRepAtMost32<RV> && kRepAtMost32<typename L::rep_value_type> &&
-                kRepAtMost32<typename R::rep_value_type>) {
-    bool const lneg = std::is_signed_v<typename L::rep_value_type> &&
-                      lhs.RawValue() <
-                          static_cast<typename L::rep_value_type>(0);
-    bool const rneg = std::is_signed_v<typename R::rep_value_type> &&
-                      rhs.RawValue() <
-                          static_cast<typename R::rep_value_type>(0);
-    std::uint32_t a = 0;
-    std::uint32_t b = 0;
-    if constexpr (std::is_signed_v<typename L::rep_value_type>) {
-      a = integer_math::AbsI32ToU32(static_cast<std::int32_t>(lhs.RawValue()));
-    } else {
-      a = static_cast<std::uint32_t>(lhs.RawValue());
-    }
-    if constexpr (std::is_signed_v<typename R::rep_value_type>) {
-      b = integer_math::AbsI32ToU32(static_cast<std::int32_t>(rhs.RawValue()));
-    } else {
-      b = static_cast<std::uint32_t>(rhs.RawValue());
-    }
-    std::uint32_t hi = 0;
-    std::uint32_t lo = 0;
-    integer_math::MulU32Wide(a, b, hi, lo);
-    return FromWideProduct32<ResultRep, ResultMax>(hi, lo, lneg != rneg,
-                                                   scale_adjust);
+  bool const lneg = std::is_signed_v<typename L::rep_value_type> &&
+                    lhs.RawValue() < static_cast<typename L::rep_value_type>(0);
+  bool const rneg = std::is_signed_v<typename R::rep_value_type> &&
+                    rhs.RawValue() < static_cast<typename R::rep_value_type>(0);
+  std::uint32_t a = 0;
+  std::uint32_t b = 0;
+  if constexpr (std::is_signed_v<typename L::rep_value_type>) {
+    a = integer_math::AbsI32ToU32(static_cast<std::int32_t>(lhs.RawValue()));
   } else {
-    std::int64_t num = static_cast<std::int64_t>(lhs.RawValue()) *
-                       static_cast<std::int64_t>(rhs.RawValue());
-    if constexpr (scale_adjust > 0) {
-      for (int i = 0; i < scale_adjust; ++i) {
-        num *= 2;
-      }
-    } else if constexpr (scale_adjust < 0) {
-      for (int i = 0; i < -scale_adjust; ++i) {
-        num = RoundDivNearest(num, std::int64_t{2});
-      }
-    }
-    return Result::FromRaw(RepFromRawValue<ResultRep>(
-        Result::ClampRaw(static_cast<RV>(num))));
+    a = static_cast<std::uint32_t>(lhs.RawValue());
   }
+  if constexpr (std::is_signed_v<typename R::rep_value_type>) {
+    b = integer_math::AbsI32ToU32(static_cast<std::int32_t>(rhs.RawValue()));
+  } else {
+    b = static_cast<std::uint32_t>(rhs.RawValue());
+  }
+  std::uint32_t hi = 0;
+  std::uint32_t lo = 0;
+  integer_math::MulU32Wide(a, b, hi, lo);
+  return FromWideProduct32<ResultRep, ResultMax>(hi, lo, lneg != rneg,
+                                                 scale_adjust);
 }
 
 }  // namespace fixed_point_internal
@@ -1203,82 +1059,59 @@ constexpr Target DivTo(L lhs, R rhs) {
 
   const int scale_adjust = L::kScaleExp - R::kScaleExp - Target::kScaleExp;
 
-  if constexpr (fixed_point_internal::kRepAtMost32<TR> &&
-                fixed_point_internal::kRepAtMost32<LR> &&
-                fixed_point_internal::kRepAtMost32<RR>) {
-    bool const lneg =
-        std::is_signed_v<LR> && lhs_raw < static_cast<LR>(0);
-    bool const rneg =
-        std::is_signed_v<RR> && rhs_raw < static_cast<RR>(0);
-    bool const negative = lneg != rneg;
-    std::uint32_t a = 0;
-    std::uint32_t d = 0;
-    if constexpr (std::is_signed_v<LR>) {
-      a = integer_math::AbsI32ToU32(static_cast<std::int32_t>(lhs_raw));
-    } else {
-      a = static_cast<std::uint32_t>(lhs_raw);
-    }
-    if constexpr (std::is_signed_v<RR>) {
-      d = integer_math::AbsI32ToU32(static_cast<std::int32_t>(rhs_raw));
-    } else {
-      d = static_cast<std::uint32_t>(rhs_raw);
-    }
-    std::uint32_t hi = 0;
-    std::uint32_t lo = a;
-    std::uint32_t dhi = 0;
-    std::uint32_t dlo = d;
-    if (scale_adjust > 0) {
-      if (!integer_math::ShlU32WideChecked(
-              hi, lo, static_cast<unsigned>(scale_adjust))) {
-        return negative ? Target::FromRaw(Target::kRawMin)
-                        : Target::FromRaw(Target::kRawMax);
-      }
-    } else if (scale_adjust < 0) {
-      if (!integer_math::ShlU32WideChecked(
-              dhi, dlo, static_cast<unsigned>(-scale_adjust))) {
-        return Target::FromRaw(static_cast<TR>(0));
-      }
-    }
-    while (dhi != 0U) {
-      integer_math::ShrU32Wide(hi, lo, 1U, false);
-      integer_math::ShrU32Wide(dhi, dlo, 1U, false);
-    }
-    if (dlo == 0U) {
-      return negative ? Target::FromRaw(Target::kRawMin)
-                      : Target::FromRaw(Target::kRawMax);
-    }
-    std::uint32_t q = 0;
-    std::uint32_t rem = 0;
-    if (!integer_math::DivU32Wide(hi, lo, dlo, q, rem)) {
-      return negative ? Target::FromRaw(Target::kRawMin)
-                      : Target::FromRaw(Target::kRawMax);
-    }
-    if (rem >= dlo - rem) {
-      if (q != std::numeric_limits<std::uint32_t>::max()) {
-        ++q;
-      }
-    }
-    return fixed_point_internal::FromWideProduct32<
-        typename Target::rep_type, Target::kDeclaredMax>(0U, q, negative, 0);
+  bool const lneg = std::is_signed_v<LR> && lhs_raw < static_cast<LR>(0);
+  bool const rneg = std::is_signed_v<RR> && rhs_raw < static_cast<RR>(0);
+  bool const negative = lneg != rneg;
+  std::uint32_t a = 0;
+  std::uint32_t d = 0;
+  if constexpr (std::is_signed_v<LR>) {
+    a = integer_math::AbsI32ToU32(static_cast<std::int32_t>(lhs_raw));
   } else {
-    std::int64_t num = static_cast<std::int64_t>(lhs_raw);
-    std::int64_t den = static_cast<std::int64_t>(rhs_raw);
-
-    if constexpr (scale_adjust > 0) {
-      for (int i = 0; i < scale_adjust; ++i) {
-        num *= 2;
-      }
-    } else if constexpr (scale_adjust < 0) {
-      for (int i = 0; i < -scale_adjust; ++i) {
-        den *= 2;
-      }
-    }
-
-    const auto quotient = fixed_point_internal::RoundDivNearest(num, den);
-    return Target::FromRaw(
-        fixed_point_internal::RepFromRawValue<typename Target::rep_type>(
-            Target::ClampRaw(static_cast<TR>(quotient))));
+    a = static_cast<std::uint32_t>(lhs_raw);
   }
+  if constexpr (std::is_signed_v<RR>) {
+    d = integer_math::AbsI32ToU32(static_cast<std::int32_t>(rhs_raw));
+  } else {
+    d = static_cast<std::uint32_t>(rhs_raw);
+  }
+  std::uint32_t hi = 0;
+  std::uint32_t lo = a;
+  std::uint32_t dhi = 0;
+  std::uint32_t dlo = d;
+  if (scale_adjust > 0) {
+    if (!integer_math::ShlU32WideChecked(hi, lo,
+                                         static_cast<unsigned>(scale_adjust))) {
+      return negative ? Target::FromRaw(Target::kRawMin)
+                      : Target::FromRaw(Target::kRawMax);
+    }
+  } else if (scale_adjust < 0) {
+    if (!integer_math::ShlU32WideChecked(
+            dhi, dlo, static_cast<unsigned>(-scale_adjust))) {
+      return Target::FromRaw(static_cast<TR>(0));
+    }
+  }
+  while (dhi != 0U) {
+    integer_math::ShrU32Wide(hi, lo, 1U, false);
+    integer_math::ShrU32Wide(dhi, dlo, 1U, false);
+  }
+  if (dlo == 0U) {
+    return negative ? Target::FromRaw(Target::kRawMin)
+                    : Target::FromRaw(Target::kRawMax);
+  }
+  std::uint32_t q = 0;
+  std::uint32_t rem = 0;
+  if (!integer_math::DivU32Wide(hi, lo, dlo, q, rem)) {
+    return negative ? Target::FromRaw(Target::kRawMin)
+                    : Target::FromRaw(Target::kRawMax);
+  }
+  if (rem >= dlo - rem) {
+    if (q != std::numeric_limits<std::uint32_t>::max()) {
+      ++q;
+    }
+  }
+  return fixed_point_internal::FromWideProduct32<typename Target::rep_type,
+                                                 Target::kDeclaredMax>(
+      0U, q, negative, 0);
 }
 
 template <typename Rep, auto Max>

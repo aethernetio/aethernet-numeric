@@ -32,14 +32,10 @@ namespace exponential_internal {
 
 template <typename Raw>
 struct MulIntermediate {
-  static_assert(
-      sizeof(Raw) <= 4,
-      "ae-numeric: Exponential/fixed_math mul_intermediate requires the "
-      "work-type Raw width to be at most 32 bits so products fit in "
-      "checked uint64 arithmetic. Provide a custom policy with a safe "
-      "mul path if you need a wider work type.");
-  using type =
-      std::conditional_t<(sizeof(Raw) <= 2), std::int32_t, std::int64_t>;
+  static_assert(sizeof(Raw) <= 4,
+                "Exponential work representations must be at most 32 bits");
+  // Products that exceed this width use the two-limb integer_math helpers.
+  using type = std::int32_t;
 };
 
 inline constexpr int ClampInt(int value, int lo, int hi) {
@@ -130,6 +126,7 @@ struct PickWorkType {
       WorkChoice<std::uint32_t, 1024.0, BoundaryMag, MinMag, MinQuantum>,
       WorkChoice<std::uint32_t, 4096.0, BoundaryMag, MinMag, MinQuantum>,
       WorkChoice<std::uint32_t, 8192.0, BoundaryMag, MinMag, MinQuantum>,
+      WorkChoice<std::uint32_t, BoundaryMag, BoundaryMag, MinMag, MinQuantum>,
       WorkChoice<std::uint32_t, 65536.0, BoundaryMag, MinMag,
                  MinQuantum>>::type;
 };

@@ -192,6 +192,26 @@ static_assert(F::TryFromRuntimeInteger(45).has_value());
 static_assert(F::TryFromRuntimeInteger(45)->RawValue() == 90);
 static_assert(!F::TryFromRuntimeInteger(123).has_value());  // checked failure
 
+// 32-bit edge cases that previously overflowed during rounding, narrowed
+// before saturation, or lost the high bit during mixed-sign conversion.
+using FullU32 = FixedPoint<std::uint32_t, 4294967295U>;
+using HalfI32 = FixedPoint<std::int32_t, 4294967294U>;
+static_assert(FullU32::FromRuntimeInteger(0xffffffffU).RawValue() ==
+              0xffffffffU);
+static_assert(FullU32::TryFromRuntimeInteger(0xffffffffU).has_value());
+static_assert(FullU32::FromRuntimeInteger(-1).RawValue() == 0U);
+static_assert(FullU32::Cast<HalfI32>(FullU32::FromRaw(0x80000000U))
+                  .RawValue() == 0x40000000);
+static_assert(FullU32::Cast<HalfI32>(FullU32::FromRaw(0xffffffffU))
+                  .RawValue() == 0x7fffffff);
+using SignedByte = FixedPoint<std::int8_t, 127>;
+static_assert(AddTo<SignedByte>(SignedByte::FromRaw(100),
+                                SignedByte::FromRaw(100))
+                  .RawValue() == 127);
+static_assert(SubTo<SignedByte>(SignedByte::FromRaw(-100),
+                                SignedByte::FromRaw(100))
+                  .RawValue() == -127);
+
 void test_RuntimeIntegerApis() {
   std::int64_t runtime_in_range = 45;
   std::int64_t runtime_out_of_range = 123;

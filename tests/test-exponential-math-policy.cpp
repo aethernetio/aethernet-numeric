@@ -44,7 +44,7 @@ static_assert(LatencyPolicy::kLogIterations != 11);
 static_assert(
     std::is_same_v<LatencyPolicy::mant_type, FixedPoint<std::uint16_t, 4.0>>);
 static_assert(sizeof(typename LatencyPolicy::mul_intermediate_type) <=
-              sizeof(std::int64_t));
+              sizeof(std::int32_t));
 
 using SecondsE =
     Exponential<RuntimeSeconds, Code, 0.001, kLatencyBoundarySeconds, 510>;

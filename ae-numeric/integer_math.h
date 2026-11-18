@@ -370,6 +370,11 @@ AE_INTEGER_MATH_CONSTEXPR bool DivU32Wide(std::uint32_t hi, std::uint32_t lo,
   if (d == 0 || hi >= d) {
     return false;
   }
+  if (hi == 0U) {
+    quot = lo / d;
+    rem = lo % d;
+    return true;
+  }
   std::uint32_t q = 0;
   for (int i = 0; i < 32; ++i) {
     std::uint32_t const hi_msb = hi >> 31U;
